@@ -1,0 +1,9 @@
+services:
+  web:
+    build: .
+    container_name: smart_member_system
+    ports:
+      - "80:5000"
+    volumes:
+      - .:/app
+    restart: unless-stopped
