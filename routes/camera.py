@@ -1,6 +1,8 @@
 import cv2
 from flask import Blueprint, Response
 
+from services.face_service import detect_faces, draw_face_boxes
+
 camera_bp = Blueprint("camera", __name__)
 
 # 開啟攝影機
@@ -14,6 +16,9 @@ def generate_frames():
 
         if not success:
             break
+
+        faces = detect_faces(frame)
+        frame = draw_face_boxes(frame, faces)
 
         # 把畫面轉成 JPG
         ret, buffer = cv2.imencode(".jpg", frame)
