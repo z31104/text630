@@ -7,10 +7,13 @@ camera_bp = Blueprint("camera", __name__)
 
 # 開啟攝影機
 # 0 通常代表筆電內建攝影機
-cap = cv2.VideoCapture(0)
-
-
 def generate_frames():
+    cap = cv2.VideoCapture(0)
+
+    if not cap.isOpened():
+        print("無法開啟攝影機")
+        return
+
     while True:
         success, frame = cap.read()
 
@@ -20,7 +23,6 @@ def generate_frames():
         faces = detect_faces(frame)
         frame = draw_face_boxes(frame, faces)
 
-        # 把畫面轉成 JPG
         ret, buffer = cv2.imencode(".jpg", frame)
 
         if not ret:
@@ -28,12 +30,12 @@ def generate_frames():
 
         frame = buffer.tobytes()
 
-        # 串流給網頁
         yield (
             b"--frame\r\n"
             b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
         )
 
+    cap.release()
 
 @camera_bp.route("/camera")
 def camera():
