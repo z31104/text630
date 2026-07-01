@@ -1,38 +1,65 @@
 import cv2
+import time
 from flask import Blueprint, Response
 
-from services.face_service import detect_faces, draw_face_boxes
+from services.face_service import detect_faces, draw_face_boxes, log_recognition_result
 
 camera_bp = Blueprint("camera", __name__)
 
-# 開啟攝影機
-# 0 通常代表筆電內建攝影機
-cap = cv2.VideoCapture(0)
+last_log_time = 0
 
 
 def generate_frames():
-    while True:
-        success, frame = cap.read()
+    global last_log_time
 
-        if not success:
-            break
+    # 開啟攝影機
+    # 0 通常代表筆電內建攝影機
+    cap = cv2.VideoCapture(0)
 
-        faces = detect_faces(frame)
-        frame = draw_face_boxes(frame, faces)
+    if not cap.isOpened():
+        print("無法開啟攝影機")
+        return
 
-        # 把畫面轉成 JPG
-        ret, buffer = cv2.imencode(".jpg", frame)
+    try:
+        while True:
+            success, frame = cap.read()
 
-        if not ret:
-            continue
+            if not success:
+                break
 
-        frame = buffer.tobytes()
+            faces = detect_faces(frame)
+            frame = draw_face_boxes(frame, faces)
 
-        # 串流給網頁
-        yield (
-            b"--frame\r\n"
-            b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
-        )
+            guest_count = len(faces)
+
+            if guest_count > 0:
+                status = "Guest Detected"
+                guest_type = "Unknown Guest"
+            else:
+                status = "No Guest"
+                guest_type = "None"
+
+            current_time = time.time()
+
+            # 每 3 秒印一次，避免終端機洗版
+            if current_time - last_log_time >= 3:
+                log_recognition_result(status, guest_count, guest_type)
+                last_log_time = current_time
+
+            ret, buffer = cv2.imencode(".jpg", frame)
+
+            if not ret:
+                continue
+
+            frame = buffer.tobytes()
+
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+            )
+
+    finally:
+        cap.release()
 
 
 @camera_bp.route("/camera")
