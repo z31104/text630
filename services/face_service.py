@@ -13,7 +13,7 @@ AI 人臉偵測服務
 """
 
 import cv2
-
+from datetime import datetime
 
 # 載入 OpenCV 內建的人臉偵測模型
 face_cascade = cv2.CascadeClassifier(
@@ -121,3 +121,13 @@ def draw_face_boxes(frame, faces):
         )
 
     return frame
+
+def log_recognition_result(status, guest_count, guest_type):
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    print("========== Recognition Log ==========")
+    print(f"Time: {now}")
+    print(f"Status: {status}")
+    print(f"Guests: {guest_count}")
+    print(f"Type: {guest_type}")
+    print("=====================================")
