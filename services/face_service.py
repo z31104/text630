@@ -235,21 +235,56 @@ def draw_face_boxes(frame, faces, result=None):
 
     return frame
 
-
-def log_recognition_result(result):
+def build_recognition_log(result):
     """
-    將 AI 辨識結果印在終端機。
-    欄位名稱依照組長統一格式：
-    member_id, name, vip, line_id, confidence
+    將 AI 辨識結果整理成 recognition_logs 未來可寫入資料庫的格式。
+
+    注意：
+    - id 之後由資料庫自動產生，所以這裡不用放 id
+    - 欄位名稱依照目前規劃：
+      member_id, name, vip, line_id, confidence, recognized_at, created_at
     """
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    recognition_log = {
+        "member_id": result.get("member_id"),
+        "name": result.get("name", "Guest"),
+        "vip": result.get("vip", False),
+        "line_id": result.get("line_id"),
+        "confidence": result.get("confidence", 0),
+        "recognized_at": now,
+        "created_at": now
+    }
+
+    return recognition_log
+
+
+def log_recognition_result(result):
+    """
+    將 AI 辨識結果印在終端機。
+    目前先模擬 recognition_logs 寫入資料庫前的資料格式。
+    """
+
+    recognition_log = build_recognition_log(result)
+
     print("========== Recognition Log ==========")
-    print(f"Time: {now}")
-    print(f"member_id: {result['member_id']}")
-    print(f"name: {result['name']}")
-    print(f"vip: {result['vip']}")
-    print(f"line_id: {result['line_id']}")
-    print(f"confidence: {result['confidence']}")
+    print(f"member_id: {recognition_log['member_id']}")
+    print(f"name: {recognition_log['name']}")
+    print(f"vip: {recognition_log['vip']}")
+    print(f"line_id: {recognition_log['line_id']}")
+    print(f"confidence: {recognition_log['confidence']}")
+    print(f"recognized_at: {recognition_log['recognized_at']}")
+    print(f"created_at: {recognition_log['created_at']}")
     print("=====================================")
+
+def save_recognition_log(recognition_log):
+    """
+    預留：之後將辨識紀錄寫入 recognition_logs 資料表。
+
+    目前尚未接資料庫，所以先不執行資料庫寫入。
+    等資料庫同學確認 recognition_logs 欄位與 member_id 型態後，
+    再補上 INSERT SQL。
+    """
+
+    pass
