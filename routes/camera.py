@@ -2,7 +2,7 @@ import cv2
 import time
 from flask import Blueprint, Response
 
-from services.face_service import detect_faces, draw_face_boxes, log_recognition_result
+from services.face_service import detect_face, recognize_face, draw_face_boxes, log_recognition_result
 
 camera_bp = Blueprint("camera", __name__)
 
@@ -27,23 +27,15 @@ def generate_frames():
             if not success:
                 break
 
-            faces = detect_faces(frame)
+            faces = detect_face(frame)
+            result = recognize_face(faces)
             frame = draw_face_boxes(frame, faces)
-
-            guest_count = len(faces)
-
-            if guest_count > 0:
-                status = "Guest Detected"
-                guest_type = "Unknown Guest"
-            else:
-                status = "No Guest"
-                guest_type = "None"
 
             current_time = time.time()
 
             # 每 3 秒印一次，避免終端機洗版
             if current_time - last_log_time >= 3:
-                log_recognition_result(status, guest_count, guest_type)
+                log_recognition_result(result)
                 last_log_time = current_time
 
             ret, buffer = cv2.imencode(".jpg", frame)
@@ -77,6 +69,3 @@ def video_feed():
         generate_frames(),
         mimetype="multipart/x-mixed-replace; boundary=frame"
     )
-
-
-    
