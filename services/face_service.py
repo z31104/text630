@@ -175,15 +175,17 @@ def recognize_face(frame, faces):
     }
 
 
-def draw_face_boxes(frame, faces):
+def draw_face_boxes(frame, faces, result=None):
     """
     在畫面上畫出人臉框框。
     frame: 攝影機畫面
     faces: 偵測到的人臉座標
+    result: 辨識結果，若沒有傳入才重新辨識
     return: 畫好框框的 frame
     """
 
-    result = recognize_face(frame, faces)
+    if result is None:
+        result = recognize_face(frame, faces)
 
     cv2.putText(
         frame,
