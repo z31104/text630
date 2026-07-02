@@ -4,3 +4,93 @@
     display:flex;
     justify-content:space-between;
 }
+
+/* Dashboard Page */
+
+.dashboard-page {
+    min-height: 100vh;
+    background: #f5f7fb;
+}
+
+.dashboard-card {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 24px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    height: 100%;
+    transition: 0.2s ease;
+}
+
+.dashboard-card:hover {
+    transform: translateY(-4px);
+}
+
+.dashboard-card h2 {
+    font-size: 36px;
+    font-weight: 800;
+    margin-bottom: 8px;
+}
+
+.card-label {
+    color: #666;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.card-note {
+    color: #999;
+    font-size: 14px;
+}
+
+.vip-card {
+    border: 2px solid #ffd966;
+}
+
+.panel {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 24px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    height: 100%;
+}
+
+.vip-alert-panel {
+    border-left: 6px solid #ffc107;
+}
+
+.vip-alert-box {
+    background: #fff8e1;
+    border-radius: 14px;
+    padding: 16px;
+}
+
+.vip-alert-box p {
+    font-weight: 700;
+    color: #333;
+}
+
+.table th {
+    color: #666;
+    font-size: 14px;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+/* 手機版調整 */
+@media (max-width: 768px) {
+    .dashboard-card h2 {
+        font-size: 30px;
+    }
+
+    .panel {
+        padding: 18px;
+    }
+
+    .dashboard-page .container {
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+}
+
