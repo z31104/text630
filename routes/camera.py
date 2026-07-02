@@ -28,9 +28,9 @@ def generate_frames():
                 break
 
             faces = detect_face(frame)
-            result = recognize_face(faces)
+            result = recognize_face(frame, faces)
             frame = draw_face_boxes(frame, faces)
-
+            
             current_time = time.time()
 
             # 每 3 秒印一次，避免終端機洗版

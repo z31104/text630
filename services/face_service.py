@@ -4,16 +4,78 @@ AI 人臉偵測服務
 目前版本：
 - 使用 OpenCV Haar Cascade 做基本人臉偵測
 - 偵測到人臉後回傳統一格式
+- 讀取 member_images 裡的會員假資料照片
 - 尚未接資料庫，所以目前先統一回傳訪客資料
 
 後續規劃：
+- 使用 dlib 做會員人臉特徵比對
 - 接會員資料庫
-- 加入會員人臉特徵比對
 - 回傳會員 / VIP / 訪客辨識結果
 """
 
-import cv2
+import os
 from datetime import datetime
+
+import cv2
+import face_recognition
+
+# 取得專案根目錄
+# face_service.py 在 services 資料夾內，所以要往上一層回到專案根目錄
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# 會員假資料照片資料夾
+MEMBER_IMAGE_DIR = os.path.join(BASE_DIR, "member_images")
+
+
+def load_member_faces():
+    """
+    讀取 member_images 資料夾中的會員圖片，
+    並使用 face_recognition 轉成人臉特徵資料。
+    """
+
+    members = []
+
+    if not os.path.exists(MEMBER_IMAGE_DIR):
+        print("找不到會員圖片資料夾:", MEMBER_IMAGE_DIR)
+        return members
+
+    for filename in os.listdir(MEMBER_IMAGE_DIR):
+        if filename.lower().endswith((".jpg", ".jpeg", ".png")):
+            image_path = os.path.join(MEMBER_IMAGE_DIR, filename)
+
+            # 讀取圖片
+            image = face_recognition.load_image_file(image_path)
+
+            # 取得圖片中的人臉特徵
+            encodings = face_recognition.face_encodings(image)
+
+            if len(encodings) == 0:
+                print(f"會員圖片找不到人臉：{filename}")
+                continue
+
+            # 先取第一張臉
+            face_encoding = encodings[0]
+
+            # 目前先用檔名當會員 ID，例如 001.jpg -> 001
+            member_id = os.path.splitext(filename)[0]
+
+            members.append({
+                "member_id": member_id,
+                "name": f"Member {member_id}",
+                "vip": False,
+                "line_id": None,
+                "encoding": face_encoding
+            })
+
+            print(f"已載入會員人臉：{filename}")
+
+    print(f"會員人臉資料載入完成，共 {len(members)} 筆")
+    return members
+
+
+# 程式啟動時先讀取會員圖片
+known_members = load_member_faces()
+
 
 # 載入 OpenCV 內建的人臉偵測模型
 face_cascade = cv2.CascadeClassifier(
@@ -28,10 +90,8 @@ def detect_face(frame):
     return: faces
     """
 
-    # 轉成灰階，讓 OpenCV 比較容易偵測人臉
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    # 偵測人臉
     faces = face_cascade.detectMultiScale(
         gray,
         scaleFactor=1.1,
@@ -42,13 +102,13 @@ def detect_face(frame):
     return faces
 
 
-def recognize_face(faces):
+def recognize_face(frame, faces):
     """
-    根據偵測到的人臉，回傳統一格式的辨識結果。
+    使用 face_recognition 比對攝影機畫面中的人臉是否為會員。
 
-    目前尚未接會員資料庫，所以：
-    - 沒有辨識到會員時，統一回傳訪客
-    - confidence 先給 0
+    frame: 攝影機畫面
+    faces: OpenCV 偵測到的人臉座標
+    return: 辨識結果
     """
 
     if len(faces) == 0:
@@ -60,6 +120,52 @@ def recognize_face(faces):
             "confidence": 0
         }
 
+    # OpenCV 的顏色格式是 BGR
+    # face_recognition 需要 RGB，所以要轉換
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    # 目前先只比對第一張偵測到的人臉
+    x, y, w, h = faces[0]
+
+    # OpenCV 座標格式是 x, y, w, h
+    # face_recognition 座標格式是 top, right, bottom, left
+    face_location = (y, x + w, y + h, x)
+
+    # 將攝影機中的人臉轉成特徵值
+    encodings = face_recognition.face_encodings(rgb_frame, [face_location])
+
+    if len(encodings) == 0:
+        return {
+            "member_id": None,
+            "name": "訪客",
+            "vip": False,
+            "line_id": None,
+            "confidence": 0
+        }
+
+    current_encoding = encodings[0]
+
+    # 逐一和已載入的會員人臉資料比對
+    for member in known_members:
+        distance = face_recognition.face_distance(
+            [member["encoding"]],
+            current_encoding
+        )[0]
+
+        # distance 越小代表越像
+        # 一般可先用 0.6 當門檻
+        confidence = round(1 - distance, 2)
+
+        if distance < 0.6:
+            return {
+                "member_id": member["member_id"],
+                "name": member["name"],
+                "vip": member["vip"],
+                "line_id": member["line_id"],
+                "confidence": confidence
+            }
+
+    # 沒有比對成功就回傳訪客
     return {
         "member_id": None,
         "name": "訪客",
@@ -77,7 +183,7 @@ def draw_face_boxes(frame, faces):
     return: 畫好框框的 frame
     """
 
-    result = recognize_face(faces)
+    result = recognize_face(frame, faces)
 
     cv2.putText(
         frame,
