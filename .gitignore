@@ -12,3 +12,6 @@ __pycache__/
 
 # VS Code
 .vscode/
+
+test_line.py
+test_push.py
