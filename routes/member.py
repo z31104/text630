@@ -17,10 +17,13 @@ def member():
             <th>VIP</th>
             <th>LINE ID</th>
             <th>圖片</th>
+            <th>操作</th>
         </tr>
     """
 
     for m in members:
+        member_id = m["member_id"]
+
         html += f"""
         <tr>
             <td>{m["member_id"]}</td>
@@ -28,6 +31,7 @@ def member():
             <td>{"是" if m["vip"] else "否"}</td>
             <td>{m["line_id"]}</td>
             <td>{m["image"]}</td>
+            <td><a href="/member/delete/{member_id}">刪除</a></td>
         </tr>
         """
 
@@ -55,7 +59,7 @@ def add_member_page():
 
     return """
     <h1>新增會員</h1>
-    
+
     <form method="POST">
         <p>姓名：<input type="text" name="name"></p>
         <p>電話：<input type="text" name="phone"></p>
@@ -72,3 +76,13 @@ def add_member_page():
 
     <p><a href="/member">回會員列表</a></p>
     """
+
+
+@member_bp.route("/member/delete/<int:member_id>")
+def delete_member(member_id):
+    for m in members:
+        if m["member_id"] == member_id:
+            members.remove(m)
+            break
+
+    return redirect("/member")
