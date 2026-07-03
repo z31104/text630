@@ -31,8 +31,12 @@ def member():
             <td>{"是" if m["vip"] else "否"}</td>
             <td>{m["line_id"]}</td>
             <td>{m["image"]}</td>
-            <td><a href="/member/delete/{member_id}">刪除</a></td>
+            <td>
+                <a href="/member/edit/{member_id}">修改</a>
+                <a href="/member/delete/{member_id}">刪除</a>
+            </td>   
         </tr>
+            
         """
 
     html += """
@@ -86,3 +90,45 @@ def delete_member(member_id):
             break
 
     return redirect("/member")
+
+
+@member_bp.route("/member/edit/<int:member_id>", methods=["GET", "POST"])
+def edit_member(member_id):
+    target_member = None
+
+    for m in members:
+        if m["member_id"] == member_id:
+            target_member = m
+            break
+
+    if target_member is None:
+        return "找不到會員"
+
+    if request.method == "POST":
+        target_member["name"] = request.form.get("name")
+        target_member["vip"] = request.form.get("vip") == "1"
+        target_member["line_id"] = request.form.get("line_id")
+
+        return redirect("/member")
+
+    vip_selected = "selected" if target_member["vip"] else ""
+    normal_selected = "" if target_member["vip"] else "selected"
+
+    return f"""
+    <h1>修改會員</h1>
+
+    <form method="POST">
+        <p>會員編號：{target_member['member_id']}</p>
+        <p>姓名：<input type="text" name="name" value="{target_member['name']}"></p>
+        <p>LINE ID：<input type="text" name="line_id" value="{target_member['line_id']}"></p>
+        <p>是否 VIP：
+            <select name="vip">
+                <option value="0" {normal_selected}>一般會員</option>
+                <option value="1" {vip_selected}>VIP會員</option>
+            </select>
+        </p>
+        <button type="submit">儲存修改</button>
+    </form>
+
+    <p><a href="/member">回會員列表</a></p>
+    """
