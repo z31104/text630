@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<section class="hero">
+    <p class="tag">Smart Member Recognition System</p>
+
+    <h1>智慧會員辨識與 VIP 到店通知系統</h1>
+
+    <p class="hero-description">
+        透過人臉辨識、會員資料管理與即時通知，協助店家快速辨識顧客身分，
+        提升服務品質與會員經營效率。
+    </p>
+
+    <div class="hero-actions">
+        <a class="primary-btn" href="/camera">開始辨識</a>
+        <a class="secondary-btn" href="/member">查看會員</a>
+    </div>
+</section>
+
+<section class="section-title">
+    <h2>系統主要功能</h2>
+    <p>前端先建立操作流程畫面，後續再串接 AI、資料庫與 LINE 功能。</p>
+</section>
+
+<section class="cards">
+    <div class="card">
+        <h3>攝影機辨識</h3>
+        <p>顯示即時攝影機畫面、辨識狀態與會員資訊。</p>
+    </div>
+
+    <div class="card">
+        <h3>會員資料管理</h3>
+        <p>提供會員列表、會員等級、聯絡資訊與顧客資料展示。</p>
+    </div>
+
+    <div class="card">
+        <h3>VIP 到店通知</h3>
+        <p>當 VIP 會員到店時，可顯示通知狀態與紀錄。</p>
+    </div>
+</section>
+
+{% endblock %}
