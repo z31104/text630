@@ -1,4 +1,4 @@
-from flask import Blueprint
+from flask import Blueprint, request, redirect
 from database.fake_db import members
 
 member_bp = Blueprint("member", __name__)
@@ -38,12 +38,25 @@ def member():
     return html
 
 
-@member_bp.route("/member/add")
+@member_bp.route("/member/add", methods=["GET", "POST"])
 def add_member_page():
+    if request.method == "POST":
+        new_member = {
+            "member_id": len(members) + 1,
+            "name": request.form.get("name"),
+            "vip": request.form.get("vip") == "1",
+            "line_id": request.form.get("line_id"),
+            "image": "none"
+        }
+
+        members.append(new_member)
+
+        return redirect("/member")
+
     return """
     <h1>新增會員</h1>
-
-    <form>
+    
+    <form method="POST">
         <p>姓名：<input type="text" name="name"></p>
         <p>電話：<input type="text" name="phone"></p>
         <p>Email：<input type="text" name="email"></p>
