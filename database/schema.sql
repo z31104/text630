@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS members (
     name VARCHAR(50) NOT NULL,
     phone VARCHAR(20),
     email VARCHAR(100),
-    is_vip BOOLEAN DEFAULT FALSE,
+    vip BOOLEAN DEFAULT FALSE,
+    line_id VARCHAR(100),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -21,9 +22,11 @@ CREATE TABLE IF NOT EXISTS face_images (
 CREATE TABLE IF NOT EXISTS recognition_logs (
     log_id INT AUTO_INCREMENT PRIMARY KEY,
     member_id INT NULL,
-    visitor_type VARCHAR(20) DEFAULT 'unknown',
-    confidence FLOAT,
+    name VARCHAR(50),
+    vip BOOLEAN DEFAULT FALSE,
+    confidence FLOAT DEFAULT 0,
     recognized_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     camera_location VARCHAR(100),
     FOREIGN KEY (member_id) REFERENCES members(member_id)
 );
@@ -32,6 +35,7 @@ CREATE TABLE IF NOT EXISTS vip_notifications (
     notification_id INT AUTO_INCREMENT PRIMARY KEY,
     member_id INT NOT NULL,
     log_id INT,
+    line_id VARCHAR(100),
     message TEXT,
     status VARCHAR(20) DEFAULT 'pending',
     sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
