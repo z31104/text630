@@ -2,13 +2,14 @@ import cv2
 import time
 from flask import Blueprint, Response
 
-from services.face_service import detect_face, recognize_face, draw_face_boxes, log_recognition_result
+from services.face_service import detect_face, recognize_face, draw_face_boxes, log_recognition_result, notify_vip_arrival
 
 camera_bp = Blueprint("camera", __name__)
 
-last_log_time = 0
+# 每 3 秒才重新做人臉辨識
 last_recognition_time = 0
 
+# 上一次辨識結果，給畫框顯示用
 last_result = {
     "member_id": None,
     "name": "訪客",
@@ -17,9 +18,17 @@ last_result = {
     "confidence": 0
 }
 
+# 記錄每個會員上一次產生 Recognition Log 的時間
+# 格式範例：
+# {
+#     1: 1720000000.123,
+#     2: 1720000030.456
+# }
+last_logged_times = {}
+
 
 def generate_frames():
-    global last_log_time, last_recognition_time, last_result
+    global last_recognition_time, last_result, last_logged_times
 
     # 開啟攝影機
     # 0 通常代表筆電內建攝影機
@@ -41,19 +50,38 @@ def generate_frames():
 
             # 每 3 秒才執行一次 dlib / face_recognition 會員比對
             if current_time - last_recognition_time >= 3:
-                result = recognize_face(frame, faces)
-                last_result = result
+                last_result = recognize_face(frame, faces)
                 last_recognition_time = current_time
-            else:
-                result = last_result
+
+            # 每個會員 30 秒內不重複紀錄
+            LOG_INTERVAL = 30
+
+            # 信心值低於 0.6 的辨識結果先不記錄
+            MIN_CONFIDENCE = 0.6
+
+            current_member_id = last_result.get("member_id")
+            current_confidence = last_result.get("confidence", 0)
+
+            # 只記錄：
+            # 1. 有辨識到會員 member_id
+            # 2. confidence 達到最低門檻
+            if current_member_id is not None and current_confidence >= MIN_CONFIDENCE:
+
+                # 取得這位會員上一次被記錄的時間
+                last_time = last_logged_times.get(current_member_id, 0)
+
+                # 如果這位會員距離上次紀錄已經超過 30 秒，才印 Recognition Log
+                if current_time - last_time >= LOG_INTERVAL:
+                    log_recognition_result(last_result)
+                    
+                    # 如果是 VIP，模擬 VIP 到店通知
+                    notify_vip_arrival(last_result)
+                    
+                    # 更新這位會員的最後紀錄時間
+                    last_logged_times[current_member_id] = current_time
 
             # 畫框時直接使用上一筆辨識結果，不要再重新比對
-            frame = draw_face_boxes(frame, faces, result)
-
-            # 每 5 秒印一次，避免終端機洗版
-            if current_time - last_log_time >= 5:
-                log_recognition_result(result)
-                last_log_time = current_time
+            frame = draw_face_boxes(frame, faces, last_result)
 
             ret, buffer = cv2.imencode(".jpg", frame)
 

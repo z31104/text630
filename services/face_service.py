@@ -21,6 +21,7 @@ from datetime import datetime
 
 import cv2
 import face_recognition
+from database.fake_db import get_member_by_image
 
 # 取得專案根目錄
 # face_service.py 在 services 資料夾內，所以要往上一層回到專案根目錄
@@ -59,14 +60,17 @@ def load_member_faces():
             # 先取第一張臉
             face_encoding = encodings[0]
 
-            # 目前先用檔名當會員 ID，例如 001.jpg -> 001
-            member_id = os.path.splitext(filename)[0]
+            # 用圖片檔名去 fake_db.py 找會員資料，例如 001.jpg -> 王小明
+            member_data = get_member_by_image(filename)
 
+            if member_data is None:
+                print(f"假資料庫找不到對應會員：{filename}")
             members.append({
-                "member_id": member_id,
-                "name": f"Member {member_id}",
-                "vip": False,
-                "line_id": None,
+                "member_id": member_data["member_id"],
+                "name": member_data["name"],
+                "vip": member_data["vip"],
+                "line_id": member_data["line_id"],
+                "image": member_data["image"],
                 "encoding": face_encoding
             })
 
@@ -157,7 +161,7 @@ def recognize_face(frame, faces):
 
         # distance 越小代表越像
         # 一般可先用 0.6 當門檻
-        confidence = round(1 - distance, 2)
+        confidence = float(round(1 - distance, 2))
 
         if distance < 0.6:
             return {
@@ -190,9 +194,19 @@ def draw_face_boxes(frame, faces, result=None):
     if result is None:
         result = recognize_face(frame, faces)
 
+    # OpenCV 的 cv2.putText 不支援中文
+    # 所以攝影機畫面改顯示英文 / member_id
+    # 但 result["name"] 本身不改，終端機和之後資料庫仍可保留中文姓名
+    if result["member_id"] is not None:
+        display_name = f"Member ID: {result['member_id']}"
+        box_name = f"Member {result['member_id']}"
+    else:
+        display_name = "Guest"
+        box_name = "Guest"
+
     cv2.putText(
         frame,
-        f"Name: {result['name']}",
+        f"Name: {display_name}",
         (20, 40),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.8,
@@ -225,7 +239,7 @@ def draw_face_boxes(frame, faces, result=None):
 
         cv2.putText(
             frame,
-            result["name"],
+            box_name,
             (x, y - 10),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
@@ -238,11 +252,6 @@ def draw_face_boxes(frame, faces, result=None):
 def build_recognition_log(result):
     """
     將 AI 辨識結果整理成 recognition_logs 未來可寫入資料庫的格式。
-
-    注意：
-    - id 之後由資料庫自動產生，所以這裡不用放 id
-    - 欄位名稱依照目前規劃：
-      member_id, name, vip, line_id, confidence, recognized_at, created_at
     """
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -254,7 +263,8 @@ def build_recognition_log(result):
         "line_id": result.get("line_id"),
         "confidence": result.get("confidence", 0),
         "recognized_at": now,
-        "created_at": now
+        "created_at": now,
+        "camera_location": "camera_1"
     }
 
     return recognition_log
@@ -263,7 +273,7 @@ def build_recognition_log(result):
 def log_recognition_result(result):
     """
     將 AI 辨識結果印在終端機。
-    目前先模擬 recognition_logs 寫入資料庫前的資料格式。
+    同時模擬 recognition_logs 寫入資料庫前的 INSERT 格式。
     """
 
     recognition_log = build_recognition_log(result)
@@ -276,15 +286,61 @@ def log_recognition_result(result):
     print(f"confidence: {recognition_log['confidence']}")
     print(f"recognized_at: {recognition_log['recognized_at']}")
     print(f"created_at: {recognition_log['created_at']}")
+    print(f"camera_location: {recognition_log['camera_location']}")
     print("=====================================")
+
+    # 模擬未來寫入 recognition_logs
+    save_recognition_log(recognition_log)
 
 def save_recognition_log(recognition_log):
     """
-    預留：之後將辨識紀錄寫入 recognition_logs 資料表。
+    模擬將辨識紀錄寫入 recognition_logs 資料表。
 
-    目前尚未接資料庫，所以先不執行資料庫寫入。
-    等資料庫同學確認 recognition_logs 欄位與 member_id 型態後，
-    再補上 INSERT SQL。
+    目前先不真的連 MySQL，只先整理出未來 INSERT 會用到的 SQL 與資料。
     """
 
-    pass
+    sql = """
+    INSERT INTO recognition_logs
+    (member_id, name, vip, confidence, recognized_at, created_at, camera_location)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """
+
+    values = (
+        recognition_log.get("member_id"),
+        recognition_log.get("name"),
+        recognition_log.get("vip"),
+        recognition_log.get("confidence"),
+        recognition_log.get("recognized_at"),
+        recognition_log.get("created_at"),
+        recognition_log.get("camera_location", "camera_1")
+    )
+
+    print("========== Prepare INSERT recognition_logs ==========")
+    print("SQL:")
+    print(sql)
+    print("VALUES:")
+    print(values)
+    print("=====================================================")
+
+def notify_vip_arrival(result):
+    """
+    模擬 VIP 到店通知。
+    目前先印在終端機，之後可改成呼叫 LINE Bot 推播。
+    """
+
+    # 不是 VIP 就不通知
+    if not result.get("vip"):
+        return
+
+    # 沒有會員資料也不通知
+    if result.get("member_id") is None:
+        return
+
+    message = f"VIP 會員 {result.get('name')} 到店，請店員留意。"
+
+    print("========== VIP Notification ==========")
+    print(f"VIP 會員到店：{result.get('name')}")
+    print(f"member_id: {result.get('member_id')}")
+    print(f"line_id: {result.get('line_id')}")
+    print(f"message: {message}")
+    print("======================================")
