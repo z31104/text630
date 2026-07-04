@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<section class="page-header">
+    <p class="tag">Camera Recognition</p>
+    <h1>攝影機辨識頁面</h1>
+    <p>
+        此頁面為前端靜態畫面，後續將串接 AI 人臉辨識與會員資料。
+    </p>
+</section>
+
+<section class="camera-layout">
+
+    <div class="camera-preview">
+        <div class="camera-placeholder">
+            攝影機畫面預覽區
+        </div>
+
+        <div class="camera-actions">
+            <button class="primary-btn">開始辨識</button>
+            <button class="secondary-btn">停止辨識</button>
+        </div>
+    </div>
+
+    <div class="recognition-panel">
+        <h2>辨識結果</h2>
+
+        <div class="result-card">
+            <p class="result-label">會員姓名</p>
+            <p class="result-value">尚未辨識</p>
+        </div>
+
+        <div class="result-card">
+            <p class="result-label">會員等級</p>
+            <p class="result-value">---</p>
+        </div>
+
+        <div class="result-card">
+            <p class="result-label">辨識狀態</p>
+            <p class="result-value">等待中</p>
+        </div>
+
+        <div class="result-card">
+            <p class="result-label">辨識時間</p>
+            <p class="result-value">---</p>
+        </div>
+    </div>
+
+</section>
+
+{% endblock %}
