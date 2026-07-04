@@ -13,7 +13,9 @@ import os
 from flask import Blueprint, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import FollowEvent, MessageEvent, TextMessage, TextSendMessage
+
+from linebot_service.notify import notify_new_friend
 
 line_bp = Blueprint("line", __name__)
 
@@ -32,6 +34,12 @@ def callback():
         abort(400)
 
     return "OK"
+
+
+@handler.add(FollowEvent)
+def handle_follow(event):
+    # 加好友的瞬間，此時對方應為非會員，先推播一次通用歡迎訊息
+    notify_new_friend(event.source.user_id)
 
 
 @handler.add(MessageEvent, message=TextMessage)
