@@ -26,9 +26,15 @@ last_result = {
 # }
 last_logged_times = {}
 
+# 訪客上一次產生 Recognition Log 的時間
+# 目前先做成註解，之後如果要啟用「訪客紀錄」再取消註解
+# last_guest_log_time = 0
+
 
 def generate_frames():
     global last_recognition_time, last_result, last_logged_times
+    # 如果之後要啟用訪客紀錄，再改成：
+    # # global last_recognition_time, last_result, last_logged_times, last_guest_log_time
 
     # 開啟攝影機
     # 0 通常代表筆電內建攝影機
@@ -79,6 +85,22 @@ def generate_frames():
                     
                     # 更新這位會員的最後紀錄時間
                     last_logged_times[current_member_id] = current_time
+            # -------------------------------
+            # 訪客紀錄功能：目前先保留成註解
+            # 用意：
+            # 1. 讓訪客也可以寫入 recognition_logs
+            # 2. 但避免每一幀都記錄，所以設定訪客紀錄間隔
+            # 3. 之後如果組長 / 資料庫同學確認 recognition_logs 可以接收 member_id = None，
+            #    再取消註解啟用
+            # -------------------------------
+
+            # GUEST_LOG_INTERVAL = 60  # 訪客每 60 秒最多記錄一次，可依需求改成 120 秒
+            #
+            # if current_member_id is None:
+            #     if current_time - last_guest_log_time >= GUEST_LOG_INTERVAL:
+            #         log_recognition_result(last_result)
+            #         last_guest_log_time = current_time
+        
 
             # 畫框時直接使用上一筆辨識結果，不要再重新比對
             frame = draw_face_boxes(frame, faces, last_result)
