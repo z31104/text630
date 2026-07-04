@@ -20,7 +20,11 @@ import os
 from datetime import datetime
 
 import cv2
-import face_recognition
+try:
+    import face_recognition
+except ModuleNotFoundError:
+    face_recognition = None
+    print("警告：尚未安裝 face_recognition，AI 人臉辨識功能暫時無法使用")
 from database.fake_db import get_member_by_image
 
 # 取得專案根目錄
@@ -36,6 +40,10 @@ def load_member_faces():
     讀取 member_images 資料夾中的會員圖片，
     並使用 face_recognition 轉成人臉特徵資料。
     """
+
+    if face_recognition is None:
+        print("尚未安裝 face_recognition，略過會員人臉資料載入")
+        return []
 
     members = []
 
@@ -62,9 +70,11 @@ def load_member_faces():
 
             # 用圖片檔名去 fake_db.py 找會員資料，例如 001.jpg -> 王小明
             member_data = get_member_by_image(filename)
-
+            
             if member_data is None:
                 print(f"假資料庫找不到對應會員：{filename}")
+                continue
+            
             members.append({
                 "member_id": member_data["member_id"],
                 "name": member_data["name"],
@@ -117,6 +127,15 @@ def recognize_face(frame, faces):
     faces: OpenCV 偵測到的人臉座標
     return: 辨識結果
     """
+
+    if face_recognition is None:
+        return {
+            "member_id": None,
+            "name": "AI套件未安裝",
+            "vip": False,
+            "line_id": None,
+            "confidence": 0
+        }
 
     if len(faces) == 0:
         return {
