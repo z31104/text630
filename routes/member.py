@@ -1,11 +1,20 @@
 from flask import Blueprint, request, redirect
-from database.fake_db import members
+from database.db import get_connection
 
 member_bp = Blueprint("member", __name__)
 
 
 @member_bp.route("/member")
 def member():
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT member_id, name, vip, line_id FROM members")
+    db_members = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
     html = """
     <h1>會員資料頁</h1>
     <p><a href="/member/add">新增會員</a></p>
@@ -21,7 +30,7 @@ def member():
         </tr>
     """
 
-    for m in members:
+    for m in db_members:
         member_id = m["member_id"]
 
         html += f"""
@@ -30,13 +39,12 @@ def member():
             <td>{m["name"]}</td>
             <td>{"是" if m["vip"] else "否"}</td>
             <td>{m["line_id"]}</td>
-            <td>{m["image"]}</td>
+            <td>-</td>
             <td>
                 <a href="/member/edit/{member_id}">修改</a>
                 <a href="/member/delete/{member_id}">刪除</a>
-            </td>   
+            </td>
         </tr>
-            
         """
 
     html += """
@@ -49,15 +57,27 @@ def member():
 @member_bp.route("/member/add", methods=["GET", "POST"])
 def add_member_page():
     if request.method == "POST":
-        new_member = {
-            "member_id": len(members) + 1,
-            "name": request.form.get("name"),
-            "vip": request.form.get("vip") == "1",
-            "line_id": request.form.get("line_id"),
-            "image": "none"
-        }
+        conn = get_connection()
+        cursor = conn.cursor()
 
-        members.append(new_member)
+        sql = """
+        INSERT INTO members (name, phone, email, vip, line_id)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+
+        data = (
+            request.form.get("name"),
+            request.form.get("phone"),
+            request.form.get("email"),
+            request.form.get("vip") == "1",
+            request.form.get("line_id")
+        )
+
+        cursor.execute(sql, data)
+        conn.commit()
+
+        cursor.close()
+        conn.close()
 
         return redirect("/member")
 
@@ -84,32 +104,58 @@ def add_member_page():
 
 @member_bp.route("/member/delete/<int:member_id>")
 def delete_member(member_id):
-    for m in members:
-        if m["member_id"] == member_id:
-            members.remove(m)
-            break
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("DELETE FROM members WHERE member_id = %s", (member_id,))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
 
     return redirect("/member")
 
 
 @member_bp.route("/member/edit/<int:member_id>", methods=["GET", "POST"])
 def edit_member(member_id):
-    target_member = None
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
 
-    for m in members:
-        if m["member_id"] == member_id:
-            target_member = m
-            break
+    cursor.execute(
+        "SELECT member_id, name, vip, line_id FROM members WHERE member_id = %s",
+        (member_id,)
+    )
+    target_member = cursor.fetchone()
 
     if target_member is None:
+        cursor.close()
+        conn.close()
         return "找不到會員"
 
     if request.method == "POST":
-        target_member["name"] = request.form.get("name")
-        target_member["vip"] = request.form.get("vip") == "1"
-        target_member["line_id"] = request.form.get("line_id")
+        sql = """
+        UPDATE members
+        SET name = %s, vip = %s, line_id = %s
+        WHERE member_id = %s
+        """
+
+        data = (
+            request.form.get("name"),
+            request.form.get("vip") == "1",
+            request.form.get("line_id"),
+            member_id
+        )
+
+        cursor.execute(sql, data)
+        conn.commit()
+
+        cursor.close()
+        conn.close()
 
         return redirect("/member")
+
+    cursor.close()
+    conn.close()
 
     vip_selected = "selected" if target_member["vip"] else ""
     normal_selected = "" if target_member["vip"] else "selected"
