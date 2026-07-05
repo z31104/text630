@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<section class="page-header">
+    <p class="tag">Member Management</p>
+    <h1>會員資料管理頁面</h1>
+    <p>
+        此頁面為前端靜態畫面，欄位名稱依照組長提供的資料格式設計，
+        後續可串接資料庫或 AI 辨識結果。
+    </p>
+</section>
+
+<section class="member-toolbar">
+    <div>
+        <h2>會員列表</h2>
+        <p>顯示會員姓名、VIP 狀態、LINE 使用者 ID 與辨識資訊。</p>
+    </div>
+
+    <button class="primary-btn">新增會員</button>
+</section>
+
+<section class="search-box">
+    <input type="text" placeholder="搜尋 name、member_id 或 line_id">
+    <button class="secondary-btn">搜尋</button>
+</section>
+
+<section class="member-table-card">
+    <table class="member-table">
+        <thead>
+            <tr>
+                <th>id</th>
+                <th>member_id</th>
+                <th>name</th>
+                <th>vip</th>
+                <th>line_id</th>
+                <th>confidence</th>
+                <th>recognized_at</th>
+                <th>created_at</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            <tr>
+                <td>1</td>
+                <td>1</td>
+                <td>王小明</td>
+                <td><span class="badge vip">true</span></td>
+                <td>U123456789</td>
+                <td>0.95</td>
+                <td>2026-07-02 19:30:00</td>
+                <td>2026-07-02 19:30:00</td>
+            </tr>
+
+            <tr>
+                <td>2</td>
+                <td>2</td>
+                <td>林怡君</td>
+                <td><span class="badge normal">false</span></td>
+                <td>U987654321</td>
+                <td>0.88</td>
+                <td>2026-07-03 14:20:00</td>
+                <td>2026-07-03 14:20:00</td>
+            </tr>
+
+            <tr>
+                <td>3</td>
+                <td>null</td>
+                <td>訪客</td>
+                <td><span class="badge normal">false</span></td>
+                <td>null</td>
+                <td>0</td>
+                <td>---</td>
+                <td>---</td>
+            </tr>
+        </tbody>
+    </table>
+</section>
+
+<section class="data-rule-card">
+    <h2>顯示規則</h2>
+
+    <div class="rule-grid">
+        <div class="rule-item">
+            <h3>vip = true</h3>
+            <p>顯示：王小明 VIP會員</p>
+        </div>
+
+        <div class="rule-item">
+            <h3>vip = false</h3>
+            <p>顯示：訪客</p>
+        </div>
+    </div>
+</section>
+
+{% endblock %}
