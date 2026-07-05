@@ -6,7 +6,7 @@
     <p class="tag">Camera Recognition</p>
     <h1>攝影機辨識頁面</h1>
     <p>
-        此頁面為前端靜態畫面，後續將串接 AI 人臉辨識與會員資料。
+        此頁面為前端靜態畫面，依照 AI 回傳資料中的 name 與 vip 欄位顯示會員身分。
     </p>
 </section>
 
@@ -18,8 +18,8 @@
         </div>
 
         <div class="camera-actions">
-            <button class="primary-btn">開始辨識</button>
-            <button class="secondary-btn">停止辨識</button>
+            <button class="primary-btn">開啟攝影機</button>
+            <button class="secondary-btn">偵測人臉</button>
         </div>
     </div>
 
@@ -27,23 +27,23 @@
         <h2>辨識結果</h2>
 
         <div class="result-card">
-            <p class="result-label">會員姓名</p>
-            <p class="result-value">尚未辨識</p>
+            <p class="result-label">name</p>
+            <p class="result-value">王小明</p>
         </div>
 
         <div class="result-card">
-            <p class="result-label">會員等級</p>
-            <p class="result-value">---</p>
+            <p class="result-label">vip</p>
+            <p class="result-value">true</p>
         </div>
 
-        <div class="result-card">
-            <p class="result-label">辨識狀態</p>
-            <p class="result-value">等待中</p>
+        <div class="member-display vip-member">
+            王小明 VIP會員
         </div>
 
-        <div class="result-card">
-            <p class="result-label">辨識時間</p>
-            <p class="result-value">---</p>
+        <div class="rule-note">
+            <p>顯示規則：</p>
+            <p>vip = true：顯示「姓名 + VIP會員」</p>
+            <p>vip = false：顯示「訪客」</p>
         </div>
     </div>
 
