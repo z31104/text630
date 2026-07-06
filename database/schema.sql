@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS recognition_logs (
     member_id INT NULL,
     name VARCHAR(50),
     vip BOOLEAN DEFAULT FALSE,
+    line_id VARCHAR(100),
     confidence FLOAT DEFAULT 0,
     recognized_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

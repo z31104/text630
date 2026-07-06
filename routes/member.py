@@ -1,4 +1,4 @@
-from flask import Blueprint, request, redirect
+from flask import Blueprint, request, redirect, jsonify
 from database.db import get_connection
 
 member_bp = Blueprint("member", __name__)
@@ -52,6 +52,55 @@ def member():
     """
 
     return html
+
+
+@member_bp.route("/member/recognition_log", methods=["POST"])
+def add_recognition_log():
+    data = request.get_json()
+
+    member_id = data.get("member_id")
+    name = data.get("name")
+    vip = data.get("vip", False)
+    line_id = data.get("line_id")
+    confidence = data.get("confidence", 0)
+    recognized_at = data.get("recognized_at")
+    camera_location = data.get("camera_location")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    sql = """
+    INSERT INTO recognition_logs
+    (member_id, name, vip, line_id, confidence, recognized_at, camera_location)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """
+
+    values = (
+        member_id,
+        name,
+        vip,
+        line_id,
+        confidence,
+        recognized_at,
+        camera_location
+    )
+
+    cursor.execute(sql, values)
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({
+        "message": "辨識紀錄新增成功",
+        "member_id": member_id,
+        "name": name,
+        "vip": vip,
+        "line_id": line_id,
+        "confidence": confidence,
+        "recognized_at": recognized_at,
+        "camera_location": camera_location
+    })
 
 
 @member_bp.route("/member/add", methods=["GET", "POST"])
