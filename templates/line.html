@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<section class="page-header">
+    <p class="tag">LINE Bot Notification</p>
+    <h1>LINE 通知測試頁面</h1>
+    <p>
+        此頁面為前端靜態畫面，後續將串接 LINE Bot，
+        用於顯示 VIP 會員到店通知狀態與通知紀錄。
+    </p>
+</section>
+
+<section class="line-status-layout">
+
+    <div class="line-status-card">
+        <h2>LINE Bot 狀態</h2>
+
+        <div class="status-row">
+            <span>連線狀態</span>
+            <span class="status active">待串接</span>
+        </div>
+
+        <div class="status-row">
+            <span>Channel Token</span>
+            <span class="status inactive">未設定</span>
+        </div>
+
+        <div class="status-row">
+            <span>通知功能</span>
+            <span class="status inactive">尚未啟用</span>
+        </div>
+    </div>
+
+    <div class="line-test-card">
+        <h2>測試通知</h2>
+        <p>
+            目前按鈕僅為前端畫面，尚未實際發送 LINE 訊息。
+        </p>
+
+        <button class="primary-btn">發送測試通知</button>
+    </div>
+
+</section>
+
+<section class="notification-log-card">
+    <h2>通知紀錄</h2>
+
+    <table class="notification-table">
+        <thead>
+            <tr>
+                <th>時間</th>
+                <th>會員姓名</th>
+                <th>VIP</th>
+                <th>LINE ID</th>
+                <th>通知狀態</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            <tr>
+                <td>2026-07-02 19:30:00</td>
+                <td>王小明</td>
+                <td><span class="badge vip">true</span></td>
+                <td>U123456789</td>
+                <td><span class="status active">已通知</span></td>
+            </tr>
+
+            <tr>
+                <td>2026-07-03 14:20:00</td>
+                <td>訪客</td>
+                <td><span class="badge normal">false</span></td>
+                <td>null</td>
+                <td><span class="status inactive">未通知</span></td>
+            </tr>
+        </tbody>
+    </table>
+</section>
+
+<section class="data-rule-card">
+    <h2>LINE 通知規則</h2>
+
+    <div class="rule-grid">
+        <div class="rule-item">
+            <h3>vip = true</h3>
+            <p>顯示 VIP 會員資訊，後續可發送 LINE 到店通知。</p>
+        </div>
+
+        <div class="rule-item">
+            <h3>vip = false</h3>
+            <p>顯示訪客，不發送 VIP 通知。</p>
+        </div>
+    </div>
+</section>
+
+{% endblock %}
