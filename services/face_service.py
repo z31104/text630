@@ -232,10 +232,12 @@ def draw_face_boxes(frame, faces, result=None):
         (0, 255, 0),
         2
     )
-
+    
+    member_type = "VIP Member" if result["vip"] else "Normal Member"
+    
     cv2.putText(
         frame,
-        f"VIP: {result['vip']}",
+        f"Type: {member_type}",
         (20, 75),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.8,
