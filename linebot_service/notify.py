@@ -3,7 +3,13 @@ from linebot import LineBotApi
 from linebot.exceptions import LineBotApiError
 from linebot.models import TextSendMessage
 
-line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
+# 延後初始化 LineBotApi：若環境變數未設定，將停用 LINE 推播而不造成例外
+_LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+if not _LINE_CHANNEL_ACCESS_TOKEN:
+    line_bot_api = None
+    print("警告：未設定 LINE_CHANNEL_ACCESS_TOKEN，LINE 推播功能已停用")
+else:
+    line_bot_api = LineBotApi(_LINE_CHANNEL_ACCESS_TOKEN)
 
 
 def push_message(line_id, text):
@@ -14,6 +20,10 @@ def push_message(line_id, text):
     """
     if not line_id:
         print("推播失敗：沒有 line_id")
+        return "failed"
+
+    if line_bot_api is None:
+        print("推播失敗：LINE Channel Access Token 未設定，已停用推播功能")
         return "failed"
 
     try:
