@@ -4,7 +4,7 @@ import mysql.connector
 def get_connection():
     conn = mysql.connector.connect(
         host="localhost",
-        port=3307,
+        port=8625,
         user="root",
         password="root",
         database="smart_member_system"
