@@ -1,5 +1,9 @@
 import os
 import mysql.connector
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 def get_connection():
     conn = mysql.connector.connect(
@@ -11,6 +15,7 @@ def get_connection():
     )
 
     return conn
+
 
 def get_all_members():
     conn = get_connection()
@@ -25,20 +30,32 @@ def get_all_members():
     return members
 
 
-def insert_recognition_log(member_id, name, vip, confidence):
+def insert_recognition_log(
+    member_id,
+    name,
+    vip,
+    line_id=None,
+    confidence=0,
+    recognized_at=None,
+    camera_location=None
+):
     conn = get_connection()
     cursor = conn.cursor()
 
     sql = """
-    INSERT INTO recognition_logs (member_id, name, vip, confidence)
-    VALUES (%s, %s, %s, %s)
+    INSERT INTO recognition_logs
+    (member_id, name, vip, line_id, confidence, recognized_at, camera_location)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
     """
 
     data = (
         member_id,
         name,
         vip,
-        confidence
+        line_id,
+        confidence,
+        recognized_at,
+        camera_location
     )
 
     cursor.execute(sql, data)
@@ -57,7 +74,8 @@ def insert_vip_notification(member_id, log_id, line_id, message, status="sent"):
     cursor = conn.cursor()
 
     sql = """
-    INSERT INTO vip_notifications (member_id, log_id, line_id, message, status)
+    INSERT INTO vip_notifications
+    (member_id, log_id, line_id, message, status)
     VALUES (%s, %s, %s, %s, %s)
     """
 

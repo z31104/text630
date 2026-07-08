@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS members (
     email VARCHAR(100),
     vip BOOLEAN DEFAULT FALSE,
     line_id VARCHAR(100),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS face_images (
@@ -16,7 +17,7 @@ CREATE TABLE IF NOT EXISTS face_images (
     member_id INT NOT NULL,
     image_path VARCHAR(255) NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (member_id) REFERENCES members(member_id)
+    FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS recognition_logs (
@@ -27,19 +28,19 @@ CREATE TABLE IF NOT EXISTS recognition_logs (
     line_id VARCHAR(100),
     confidence FLOAT DEFAULT 0,
     recognized_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     camera_location VARCHAR(100),
-    FOREIGN KEY (member_id) REFERENCES members(member_id)
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS vip_notifications (
     notification_id INT AUTO_INCREMENT PRIMARY KEY,
     member_id INT NOT NULL,
-    log_id INT,
+    log_id INT NULL,
     line_id VARCHAR(100),
     message TEXT,
     status VARCHAR(20) DEFAULT 'pending',
     sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (member_id) REFERENCES members(member_id),
-    FOREIGN KEY (log_id) REFERENCES recognition_logs(log_id)
+    FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE CASCADE,
+    FOREIGN KEY (log_id) REFERENCES recognition_logs(log_id) ON DELETE SET NULL
 );
