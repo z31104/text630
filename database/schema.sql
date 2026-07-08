@@ -44,3 +44,48 @@ CREATE TABLE IF NOT EXISTS vip_notifications (
     FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE CASCADE,
     FOREIGN KEY (log_id) REFERENCES recognition_logs(log_id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS coupons (
+    coupon_id INT AUTO_INCREMENT PRIMARY KEY,
+    coupon_name VARCHAR(100) NOT NULL,
+    description TEXT,
+    discount_type VARCHAR(20),
+    discount_value INT,
+    start_at DATETIME,
+    end_at DATETIME,
+    status VARCHAR(20) DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS member_coupons (
+    member_coupon_id INT AUTO_INCREMENT PRIMARY KEY,
+    member_id INT NOT NULL,
+    coupon_id INT NOT NULL,
+    source VARCHAR(50),
+    status VARCHAR(20) DEFAULT 'unused',
+    issued_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    used_at DATETIME,
+    FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE CASCADE,
+    FOREIGN KEY (coupon_id) REFERENCES coupons(coupon_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS lottery_records (
+    lottery_id INT AUTO_INCREMENT PRIMARY KEY,
+    member_id INT NULL,
+    coupon_id INT NULL,
+    prize_name VARCHAR(100),
+    result VARCHAR(100),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE SET NULL,
+    FOREIGN KEY (coupon_id) REFERENCES coupons(coupon_id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS member_preferences (
+    preference_id INT AUTO_INCREMENT PRIMARY KEY,
+    member_id INT NOT NULL,
+    category VARCHAR(50),
+    preference_value VARCHAR(100),
+    source VARCHAR(50),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE CASCADE
+);
