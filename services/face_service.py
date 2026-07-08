@@ -37,6 +37,12 @@ try:
 except Exception:
     db_get_member_by_id = None
 
+try:
+    from linebot_service.notify import notify_vip_recognition
+except Exception as e:
+    notify_vip_recognition = None
+    print(f"警告：無法載入 LINE Bot 推播函式：{e}")
+
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEMBER_IMAGE_DIR = os.path.join(BASE_DIR, "member_images")
@@ -428,22 +434,35 @@ def save_recognition_log(recognition_log):
 
 def send_line_notify(result):
     """
-    發送 LINE 通知。
-    目前先印在終端機，之後可改成呼叫 LINE Bot 推播。
+    發送 LINE VIP 到店通知。
+
+    觸發條件：
+    - 必須是 VIP
+    - 必須有 member_id
+    - 必須成功載入 LINE Bot 組提供的 notify_vip_recognition()
     """
 
-    if not result.get("vip"):
-        return
+    # 只推播 VIP，不是 VIP 就不處理
+    if result.get("member_level") != "vip" and result.get("vip") is not True:
+        return None
 
+    # 沒有會員 ID，代表不是正式會員資料，不推播
     if result.get("member_id") is None:
-        return
+        return None
 
-    message = f"VIP 會員 {result.get('name')} 到店，請店員留意。"
+    # LINE Bot 組功能尚未接上時，不讓攝影機程式當掉
+    if notify_vip_recognition is None:
+        print("LINE 推播略過：notify_vip_recognition 尚未成功匯入")
+        return None
+
+    # 先呼叫 LINE Bot 組的推播函式，取得回傳結果
+    status = notify_vip_recognition(result)
 
     print("========== LINE Notification ==========")
     print(f"VIP 會員到店：{result.get('name')}")
     print(f"member_id: {result.get('member_id')}")
     print(f"line_user_id: {result.get('line_user_id')}")
-    print(f"message: {message}")
+    print(f"LINE notify status: {status}")
     print("=======================================")
 
+    return status
