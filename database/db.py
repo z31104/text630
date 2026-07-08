@@ -30,6 +30,27 @@ def get_all_members():
     return members
 
 
+def get_member_by_id(member_id):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute(
+        """
+        SELECT member_id, name, phone, email, vip, line_id
+        FROM members
+        WHERE member_id = %s
+        """,
+        (member_id,)
+    )
+
+    member = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    return member
+
+
 def insert_recognition_log(
     member_id,
     name,
@@ -67,6 +88,18 @@ def insert_recognition_log(
     conn.close()
 
     return log_id
+
+
+def save_recognition_log(data):
+    return insert_recognition_log(
+        member_id=data.get("member_id"),
+        name=data.get("name"),
+        vip=data.get("vip", False),
+        line_id=data.get("line_id"),
+        confidence=data.get("confidence", 0),
+        recognized_at=data.get("recognized_at"),
+        camera_location=data.get("camera_location")
+    )
 
 
 def insert_vip_notification(member_id, log_id, line_id, message, status="sent"):
