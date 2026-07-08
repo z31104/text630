@@ -22,14 +22,14 @@ else:
     staff_line_bot_api = LineBotApi(_STAFF_LINE_CHANNEL_ACCESS_TOKEN)
 
 
-def push_message(line_id, text):
+def push_message(line_user_id, text):
     """
     顧客 Bot 的底層推播函式，其他推播給「會員本人」的 notify_* 函式都透過這裡發送。
     失敗時不往外丟例外，避免打斷呼叫端（例如攝影機辨識迴圈）。
     return: "sent" 或 "failed"
     """
-    if not line_id:
-        print("推播失敗：沒有 line_id")
+    if not line_user_id:
+        print("推播失敗：沒有 line_user_id")
         return "failed"
 
     if line_bot_api is None:
@@ -37,7 +37,7 @@ def push_message(line_id, text):
         return "failed"
 
     try:
-        line_bot_api.push_message(line_id, TextSendMessage(text=text))
+        line_bot_api.push_message(line_user_id, TextSendMessage(text=text))
         return "sent"
     except LineBotApiError as e:
         print(f"LINE 推播失敗：{e}")
@@ -69,17 +69,18 @@ def notify_vip_recognition(data):
     """
     觸發時機①：人臉辨識掃到 VIP 會員時呼叫（由 face_service.py 呼叫）。
     這則通知是給「店員」看的，所以固定推到店員 Bot（STAFF_LINE_USER_ID），
-    不是推給會員自己的 line_id。
+    不是推給會員自己的 line_user_id。
     data 格式範例：
     {
         "member_id": 1,
         "name": "王小明",
         "vip": True,
-        "line_id": "U123456789",
+        "member_level": "vip",
+        "line_user_id": "U123456789",
         "confidence": 0.95
     }
     """
-    if not data.get("vip"):
+    if data.get("member_level") != "vip" and data.get("vip") != True:
         return None
 
     name = data.get("name")
@@ -94,25 +95,25 @@ def notify_vip_upgrade(member):
     {
         "member_id": 1,
         "name": "王小明",
-        "line_id": "U123456789"
+        "line_user_id": "U123456789"
     }
     """
-    line_id = member.get("line_id")
+    line_user_id = member.get("line_user_id")
     name = member.get("name")
 
-    if not line_id:
+    if not line_user_id:
         return None
 
     message = f"恭喜 {name}，您已成功升級為 VIP 會員！"
-    return push_message(line_id, message)
+    return push_message(line_user_id, message)
 
 
-def notify_new_friend(line_id):
+def notify_new_friend(line_user_id):
     """
     觸發時機③：使用者加入 LINE 好友的瞬間呼叫（此時應為非會員，由 routes/line.py 呼叫）。
     """
-    if not line_id:
+    if not line_user_id:
         return None
 
     message = "感謝加入好友！歡迎申請成為會員，即可享有 VIP 專屬通知服務。"
-    return push_message(line_id, message)
+    return push_message(line_user_id, message)
