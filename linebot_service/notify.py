@@ -75,11 +75,12 @@ def notify_vip_recognition(data):
         "member_id": 1,
         "name": "王小明",
         "vip": True,
+        "member_level": "vip",
         "line_user_id": "U123456789",
         "confidence": 0.95
     }
     """
-    if not data.get("vip"):
+    if data.get("member_level") != "vip" and data.get("vip") != True:
         return None
 
     name = data.get("name")
