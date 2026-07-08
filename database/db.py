@@ -48,8 +48,11 @@ def get_member_by_id(member_id):
     cursor.close()
     conn.close()
 
-    return member
+    if member:
+        member["member_level"] = "VIP" if member["vip"] else "normal"
+        member["line_user_id"] = member["line_id"]
 
+    return member
 
 def insert_recognition_log(
     member_id,
@@ -95,9 +98,9 @@ def save_recognition_log(data):
         member_id=data.get("member_id"),
         name=data.get("name"),
         vip=data.get("vip", False),
-        line_id=data.get("line_id"),
+        line_id=data.get("line_id") or data.get("line_user_id"),
         confidence=data.get("confidence", 0),
-        recognized_at=data.get("recognized_at"),
+        recognized_at=data.get("recognized_at") or data.get("recognition_time"),
         camera_location=data.get("camera_location")
     )
 
