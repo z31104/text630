@@ -4,6 +4,7 @@ from linebot.exceptions import LineBotApiError
 from linebot.models import TextSendMessage
 
 # 延後初始化 LineBotApi：若環境變數未設定，將停用 LINE 推播而不造成例外
+# 顧客用 LINE 官方帳號
 _LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 if not _LINE_CHANNEL_ACCESS_TOKEN:
     line_bot_api = None
@@ -11,10 +12,19 @@ if not _LINE_CHANNEL_ACCESS_TOKEN:
 else:
     line_bot_api = LineBotApi(_LINE_CHANNEL_ACCESS_TOKEN)
 
+# 店員用 LINE 官方帳號，固定推播給 STAFF_LINE_USER_ID（VIP 到店通知用）
+_STAFF_LINE_CHANNEL_ACCESS_TOKEN = os.getenv("STAFF_LINE_CHANNEL_ACCESS_TOKEN")
+STAFF_LINE_USER_ID = os.getenv("STAFF_LINE_USER_ID")
+if not _STAFF_LINE_CHANNEL_ACCESS_TOKEN:
+    staff_line_bot_api = None
+    print("警告：未設定 STAFF_LINE_CHANNEL_ACCESS_TOKEN，店員 LINE 推播功能已停用")
+else:
+    staff_line_bot_api = LineBotApi(_STAFF_LINE_CHANNEL_ACCESS_TOKEN)
+
 
 def push_message(line_id, text):
     """
-    共用的底層推播函式，其他 notify_* 函式都透過這裡發送。
+    顧客 Bot 的底層推播函式，其他推播給「會員本人」的 notify_* 函式都透過這裡發送。
     失敗時不往外丟例外，避免打斷呼叫端（例如攝影機辨識迴圈）。
     return: "sent" 或 "failed"
     """
@@ -34,9 +44,32 @@ def push_message(line_id, text):
         return "failed"
 
 
+def push_staff_message(text):
+    """
+    店員 Bot 的底層推播函式，固定推給 STAFF_LINE_USER_ID。
+    return: "sent" 或 "failed"
+    """
+    if not STAFF_LINE_USER_ID:
+        print("推播失敗：未設定 STAFF_LINE_USER_ID")
+        return "failed"
+
+    if staff_line_bot_api is None:
+        print("推播失敗：STAFF_LINE_CHANNEL_ACCESS_TOKEN 未設定，已停用店員推播功能")
+        return "failed"
+
+    try:
+        staff_line_bot_api.push_message(STAFF_LINE_USER_ID, TextSendMessage(text=text))
+        return "sent"
+    except LineBotApiError as e:
+        print(f"店員 LINE 推播失敗：{e}")
+        return "failed"
+
+
 def notify_vip_recognition(data):
     """
     觸發時機①：人臉辨識掃到 VIP 會員時呼叫（由 face_service.py 呼叫）。
+    這則通知是給「店員」看的，所以固定推到店員 Bot（STAFF_LINE_USER_ID），
+    不是推給會員自己的 line_id。
     data 格式範例：
     {
         "member_id": 1,
@@ -49,14 +82,9 @@ def notify_vip_recognition(data):
     if not data.get("vip"):
         return None
 
-    line_id = data.get("line_id")
     name = data.get("name")
-
-    if not line_id:
-        return None
-
     message = f"VIP會員 {name} 到店了！"
-    return push_message(line_id, message)
+    return push_staff_message(message)
 
 
 def notify_vip_upgrade(member):
