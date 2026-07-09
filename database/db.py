@@ -1,16 +1,16 @@
-import os
 import mysql.connector
+
 
 def get_connection():
     conn = mysql.connector.connect(
-        host=os.getenv("DB_HOST", "localhost"),
-        port=int(os.getenv("DB_PORT", 8625)),
-        user=os.getenv("DB_USER", "root"),
-        password=os.getenv("DB_PASSWORD", "root"),
-        database=os.getenv("DB_NAME", "smart_member_system")
+        host="localhost",
+        port=3306,
+        user="root",
+        password="f129659029",
+        database="smart_member_system"
     )
-
     return conn
+
 
 def get_all_members():
     conn = get_connection()
