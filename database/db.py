@@ -1,16 +1,23 @@
+import os
 import mysql.connector
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
+def clean_env(value):
+    if value is None:
+        return None
+    return value.replace('"', '').replace("'", "")
+
+
 def get_connection():
     conn = mysql.connector.connect(
-        host="localhost",
-        port=3306,
-        user="root",
-        password="f129659029",
-        database="smart_member_system"
+        host=clean_env(os.getenv("DB_HOST", "localhost")),
+        port=int(clean_env(os.getenv("DB_PORT", "3306"))),
+        user=clean_env(os.getenv("DB_USER", "root")),
+        password=clean_env(os.getenv("DB_PASSWORD", "")),
+        database=clean_env(os.getenv("DB_NAME", "smart_member_system"))
     )
     return conn
 
