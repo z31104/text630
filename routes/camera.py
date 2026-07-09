@@ -71,10 +71,12 @@ def open_camera(camera_index=0):
     開啟攝影機。
 
     函式名稱對齊專題規格：open_camera()
-    camera_index=0 通常代表筆電內建攝影機。
+    攝影機編號設定
+    0: 內建鏡頭，1: 外接 Logi C270 HD WebCam
     """
 
-    cap = cv2.VideoCapture(camera_index)
+    CAMERA_INDEX = 1  
+    cap = cv2.VideoCapture(CAMERA_INDEX)
 
     if not cap.isOpened():
         print("無法開啟攝影機")
