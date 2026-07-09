@@ -1,17 +1,6 @@
 """
 AI 人臉偵測與會員比對服務
 
-本週版本重點：
-- 使用 OpenCV Haar Cascade 做基本人臉偵測
-- 使用 face_recognition / dlib 做會員人臉特徵比對
-- 欄位名稱統一對齊 members 與 recognition_logs 資料表
-- 辨識結果統一分成：Guest / normal / vip
-- recognition_logs 格式加入 visit_time、leave_time、stay_minutes
-
-正式整合時：
-- get_member_by_id(member_id) 改接正式會員資料庫
-- save_recognition_log(data) 改成真正 INSERT 到 MySQL
-- send_line_notify(result) 改成呼叫 LINE Bot 推播函式
 """
 
 import os
@@ -170,7 +159,10 @@ def get_member_by_id(member_id):
         return None
 
     if db_get_member_by_id is not None:
-        return normalize_member_data(db_get_member_by_id(member_id))
+        try:
+            return normalize_member_data(db_get_member_by_id(member_id))
+        except Exception as e:
+            print(f"正式資料庫查詢失敗，改用 known_members：{e}")
 
     for member in known_members:
         if member.get("member_id") == member_id:
@@ -201,8 +193,13 @@ def load_member_faces():
             continue
 
         image_path = os.path.join(MEMBER_IMAGE_DIR, filename)
-        image = face_recognition.load_image_file(image_path)
-        encodings = face_recognition.face_encodings(image)
+
+        try:
+            image = face_recognition.load_image_file(image_path)
+            encodings = face_recognition.face_encodings(image)
+        except Exception as e:
+            print(f"會員圖片讀取或編碼失敗：{filename}，原因：{e}")
+            continue
 
         if len(encodings) == 0:
             print(f"會員圖片找不到人臉：{filename}")
@@ -238,6 +235,13 @@ face_cascade = cv2.CascadeClassifier(
 def detect_face(frame):
     """偵測畫面中的人臉，並回傳人臉座標。"""
 
+    if frame is None:
+        return []
+
+    if face_cascade.empty():
+        print("Haar Cascade 載入失敗，無法偵測人臉")
+        return []
+
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     faces = face_cascade.detectMultiScale(
@@ -266,13 +270,20 @@ def recognize_face(frame, faces):
     if len(faces) == 0:
         return build_result(confidence=0, recognition_status="no_face")
 
+    if len(known_members) == 0:
+        return build_result(confidence=0, recognition_status="Guest")
+
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     # MVP 階段先只處理第一張臉
     x, y, w, h = faces[0]
     face_location = (y, x + w, y + h, x)
 
-    encodings = face_recognition.face_encodings(rgb_frame, [face_location])
+    try:
+        encodings = face_recognition.face_encodings(rgb_frame, [face_location])
+    except Exception as e:
+        print(f"即時人臉編碼失敗：{e}")
+        return build_result(confidence=0, recognition_status="failed")
 
     if len(encodings) == 0:
         return build_result(confidence=0, recognition_status="failed")
@@ -280,6 +291,9 @@ def recognize_face(frame, faces):
     current_encoding = encodings[0]
 
     for member in known_members:
+        if "encoding" not in member:
+            continue
+
         distance = face_recognition.face_distance(
             [member["encoding"]],
             current_encoding
@@ -440,6 +454,9 @@ def send_line_notify(result):
     - 必須是 VIP
     - 必須有 member_id
     - 必須成功載入 LINE Bot 組提供的 notify_vip_recognition()
+
+    注意：
+    - LINE 推播失敗時，不讓攝影機串流中斷
     """
 
     # 只推播 VIP，不是 VIP 就不處理
@@ -455,14 +472,26 @@ def send_line_notify(result):
         print("LINE 推播略過：notify_vip_recognition 尚未成功匯入")
         return None
 
-    # 先呼叫 LINE Bot 組的推播函式，取得回傳結果
-    status = notify_vip_recognition(result)
+    try:
+        # 呼叫 LINE Bot 組的推播函式，取得回傳結果
+        status = notify_vip_recognition(result)
 
-    print("========== LINE Notification ==========")
-    print(f"VIP 會員到店：{result.get('name')}")
-    print(f"member_id: {result.get('member_id')}")
-    print(f"line_user_id: {result.get('line_user_id')}")
-    print(f"LINE notify status: {status}")
-    print("=======================================")
+        print("========== LINE Notification ==========")
+        print(f"VIP 會員到店：{result.get('name')}")
+        print(f"member_id: {result.get('member_id')}")
+        print(f"line_user_id: {result.get('line_user_id')}")
+        print(f"LINE notify status: {status}")
+        print("=======================================")
 
-    return status
+        return status
+
+    except Exception as e:
+        print("========== LINE Notification Failed ==========")
+        print(f"VIP 會員到店：{result.get('name')}")
+        print(f"member_id: {result.get('member_id')}")
+        print(f"line_user_id: {result.get('line_user_id')}")
+        print(f"LINE notify error: {e}")
+        print("==============================================")
+
+        # 推播失敗時回傳 failed，但不要讓 camera 串流當掉
+        return "failed"

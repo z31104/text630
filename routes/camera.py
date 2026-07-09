@@ -1,7 +1,14 @@
+import os
 import cv2
 import time
 from datetime import datetime
 from flask import Blueprint, Response
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
 from services.face_service import (
     detect_face,
@@ -12,6 +19,24 @@ from services.face_service import (
 )
 
 camera_bp = Blueprint("camera", __name__)
+
+# =============================
+# 攝影機設定
+# =============================
+
+def get_int_env(name, default):
+    """安全讀取整數環境變數，讀不到就使用預設值。"""
+    try:
+        return int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+# 0: 內建鏡頭，1: 外接 Logi C270 HD WebCam
+CAMERA_INDEX = get_int_env("CAMERA_INDEX", 1)
+CAMERA_WIDTH = get_int_env("CAMERA_WIDTH", 640)
+CAMERA_HEIGHT = get_int_env("CAMERA_HEIGHT", 480)
+CAMERA_FPS = get_int_env("CAMERA_FPS", 30)
 
 # 每 3 秒才重新做人臉辨識
 last_recognition_time = 0
@@ -37,15 +62,6 @@ last_result = {
 last_logged_times = {}
 
 # 記錄每個會員目前是否在店內，用來計算 visit_time / leave_time / stay_minutes
-# 格式範例：
-# {
-#     1: {
-#         "result": {...},
-#         "visit_timestamp": 1720000000.123,
-#         "visit_time": "2026-07-07 13:00:00",
-#         "last_seen_timestamp": 1720000010.456
-#     }
-# }
 active_visits = {}
 
 # 訪客上一次產生 recognition log 的時間
@@ -62,26 +78,40 @@ CAMERA_ID = "camera_1"         # 對應 recognition_logs.camera_id
 
 def now_text():
     """回傳目前時間文字，格式統一給 recognition_logs 使用。"""
-
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def open_camera(camera_index=0):
+def open_camera(camera_index=CAMERA_INDEX):
     """
     開啟攝影機。
 
-    函式名稱對齊專題規格：open_camera()
-    攝影機編號設定
-    0: 內建鏡頭，1: 外接 Logi C270 HD WebCam
+    Windows 建議使用 cv2.CAP_DSHOW，外接 USB 攝影機會比較快開啟，
+    也比較不容易出現 MSMF can\'t grab frame 的問題。
+
+    0: 內建鏡頭
+    1: 外接 Logi C270 HD WebCam
     """
 
-    CAMERA_INDEX = 1  
-    cap = cv2.VideoCapture(CAMERA_INDEX)
+    print(f"嘗試開啟攝影機，camera_index={camera_index}")
+
+    cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+    cap.set(cv2.CAP_PROP_FPS, CAMERA_FPS)
 
     if not cap.isOpened():
-        print("無法開啟攝影機")
+        print(f"無法開啟攝影機，camera_index={camera_index}")
+        cap.release()
         return None
 
+    # 先讀一張測試影像，避免網頁已開啟但畫面是黑的或卡住
+    success, _ = cap.read()
+    if not success:
+        print(f"攝影機已開啟，但讀不到畫面，camera_index={camera_index}")
+        cap.release()
+        return None
+
+    print(f"已開啟攝影機，camera_index={camera_index}")
     return cap
 
 
@@ -91,6 +121,8 @@ def update_member_visit(result, current_time):
 
     第一次看到會員：記錄 visit_time
     持續看到會員：更新 last_seen_timestamp
+
+    注意：LINE 推播失敗時，不讓 camera 串流中斷。
     """
 
     member_id = result.get("member_id")
@@ -108,7 +140,6 @@ def update_member_visit(result, current_time):
             "last_seen_timestamp": current_time
         }
 
-        # 到店開始紀錄，對應 recognition_logs.visit_status
         log_recognition_result(
             result,
             visit_time=visit_time,
@@ -118,7 +149,10 @@ def update_member_visit(result, current_time):
             camera_id=CAMERA_ID
         )
 
-        send_line_notify(result)
+        try:
+            send_line_notify(result)
+        except Exception as e:
+            print("LINE notify error:", e)
 
     else:
         active_visits[member_id]["result"] = result
@@ -133,7 +167,7 @@ def close_timeout_visits(current_time):
 
     leaving_member_ids = []
 
-    for member_id, visit_data in active_visits.items():
+    for member_id, visit_data in list(active_visits.items()):
         last_seen = visit_data["last_seen_timestamp"]
 
         if current_time - last_seen >= LEAVE_TIMEOUT:
@@ -159,16 +193,20 @@ def close_timeout_visits(current_time):
 def generate_frames():
     global last_recognition_time, last_result, last_logged_times, last_guest_log_time
 
-    cap = open_camera(0)
+    cap = open_camera(CAMERA_INDEX)
 
     if cap is None:
+        print("攝影機串流停止：無法取得攝影機")
         return
 
     try:
         while True:
+            time.sleep(0.01)
+            
             success, frame = cap.read()
 
-            if not success:
+            if not success or frame is None:
+                print("讀取攝影機畫面失敗，結束本次串流")
                 break
 
             faces = detect_face(frame)
@@ -204,7 +242,6 @@ def generate_frames():
                     last_logged_times[current_member_id] = current_time
 
             # Guest 紀錄：有偵測到臉，但沒有 member_id
-            # MVP 階段不追蹤單一 Guest 身份，只做低頻率紀錄
             elif has_face and current_member_id is None:
                 if current_time - last_guest_log_time >= GUEST_LOG_INTERVAL:
                     log_recognition_result(
@@ -218,7 +255,6 @@ def generate_frames():
 
                     last_guest_log_time = current_time
 
-            # 離店判斷：超過一段時間沒再看到同一會員，就先視為離店
             close_timeout_visits(current_time)
 
             # 畫框時直接使用上一筆辨識結果，不要再重新比對
@@ -229,15 +265,28 @@ def generate_frames():
             if not ret:
                 continue
 
-            frame = buffer.tobytes()
+            frame_bytes = buffer.tobytes()
 
             yield (
                 b"--frame\r\n"
-                b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
             )
 
+    except GeneratorExit:
+        print("瀏覽器已關閉攝影機串流")
+
+    except KeyboardInterrupt:
+        print("使用者按下 Ctrl+C，攝影機串流停止")
+
+    except Exception as e:
+        print("camera stream error:", e)
+
     finally:
-        cap.release()
+        if cap is not None:
+            cap.release()
+
+        cv2.destroyAllWindows()
+        print("攝影機已釋放")
 
 
 @camera_bp.route("/camera")
