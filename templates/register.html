@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>會員註冊｜智慧會員系統</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body class="customer-page">
+
+    <main class="customer-register-container">
+
+        <section class="customer-register-hero promo-hero">
+            <div class="promo-decoration promo-light-left"></div>
+            <div class="promo-decoration promo-light-right"></div>
+
+            <p class="promo-tag">Welcome Gift</p>
+
+            <h1>歡迎加入會員</h1>
+
+            <p class="promo-subtitle">
+                立即註冊會員，領取專屬優惠券，並參加一次輪盤抽獎活動。
+            </p>
+
+            <div class="promo-coupon-row">
+                <div class="promo-coupon">
+                <span>首購禮</span>
+                <strong>$100</strong>
+                <p>首次購物現折</p>
+            </div>
+
+        <div class="promo-coupon">
+            <span>開卡禮</span>
+            <strong>$100</strong>
+            <p>完成會員資料</p>
+        </div>
+
+        <div class="promo-coupon">
+            <span>生日禮</span>
+            <strong>$200</strong>
+            <p>生日當月贈送</p>
+        </div>
+
+        <div class="promo-coupon">
+            <span>分享禮</span>
+            <strong>$100</strong>
+            <p>邀請好友加入</p>
+        </div>
+    </div>
+
+    <div class="promo-bottom-badge">
+        每筆訂單再享 <strong>5%</strong> 購物金回饋
+    </div>
+</section>
+
+        <section class="customer-register-layout">
+
+            <div class="register-card">
+                <h2>會員註冊</h2>
+
+                <form class="register-form">
+                    <div class="form-group">
+                        <label for="name">姓名</label>
+                        <input type="text" id="name" placeholder="請輸入姓名">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="phone">手機號碼</label>
+                        <input type="text" id="phone" placeholder="請輸入手機號碼">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="line_user_id">LINE User ID</label>
+                        <input type="text" id="line_user_id" placeholder="後續可串接 LINE 綁定">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="birthday">生日</label>
+                        <input type="date" id="birthday">
+                    </div>
+
+                    <button type="button" class="primary-btn">完成註冊</button>
+                </form>
+            </div>
+
+            <div class="customer-benefits">
+
+                <div class="benefit-card">
+                    <p class="benefit-label">新會員優惠</p>
+                    <h2>折 50 元優惠券</h2>
+                    <p>註冊成功後即可獲得首次消費折抵優惠。</p>
+
+                    <div class="coupon-ticket">
+                        <span>NEW MEMBER</span>
+                        <strong>折 50 元</strong>
+                    </div>
+                </div>
+
+                <div class="benefit-card">
+                    <p class="benefit-label">會員限定活動</p>
+                    <h2>輪盤抽獎</h2>
+                    <p>完成註冊後，可參加一次抽獎活動。</p>
+
+                    <div class="mini-wheel">
+                        <span>抽獎</span>
+                    </div>
+
+                    <button type="button" class="secondary-btn">開始抽獎</button>
+                </div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+</body>
+</html>

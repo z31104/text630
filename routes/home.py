@@ -10,4 +10,6 @@ def home():
 def dashboard():
     return render_template("dashboard.html")
 
-
+@home_bp.route("/register")
+def register():
+    return render_template("register.html")
