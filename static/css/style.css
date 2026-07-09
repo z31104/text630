@@ -1,8 +1,10 @@
-.navbar{
-    background-color:#1f2937;
-    height:70px;
-    display:flex;
-    justify-content:space-between;
+.navbar {
+    background-color: #1f2937;
+    height: 70px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 48px;
 }
 
 /* Dashboard Page */
@@ -577,3 +579,608 @@ body {
     }
 }
 
+.dashboard-header {
+    max-width: 1100px;
+    margin: 40px auto 32px;
+    padding: 48px;
+    background-color: white;
+    border-radius: 24px;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+}
+
+.dashboard-header h1 {
+    margin: 0 0 12px;
+    font-size: 42px;
+    color: #1f2937;
+}
+
+.dashboard-header p {
+    color: #64748b;
+    font-size: 18px;
+}
+
+.dashboard-stats {
+    max-width: 1100px;
+    margin: 0 auto 40px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+}
+
+.dashboard-card {
+    background-color: white;
+    padding: 28px;
+    border-radius: 18px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.dashboard-card.highlight {
+    border: 2px solid #fbbf24;
+}
+
+.dashboard-card p {
+    margin: 0 0 12px;
+    color: #4b5563;
+    font-weight: 600;
+}
+
+.dashboard-card h2 {
+    margin: 0;
+    font-size: 42px;
+    color: #111827;
+}
+
+.dashboard-card span {
+    display: block;
+    margin-top: 10px;
+    color: #9ca3af;
+}
+
+.dashboard-main {
+    max-width: 1100px;
+    margin: 0 auto 48px;
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 24px;
+}
+
+.vip-alert-card,
+.recognition-log-card {
+    background-color: white;
+    padding: 28px;
+    border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+.vip-alert-card {
+    border-left: 6px solid #fbbf24;
+}
+
+.vip-alert-card h2,
+.recognition-log-card h2 {
+    margin-top: 0;
+    color: #111827;
+}
+
+.vip-alert {
+    background-color: #fef3c7;
+    padding: 18px;
+    border-radius: 14px;
+    margin-top: 16px;
+}
+
+.vip-alert h3 {
+    margin: 0 0 8px;
+    font-size: 18px;
+    color: #111827;
+}
+
+.vip-alert p {
+    margin: 0;
+    color: #4b5563;
+}
+
+.table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.table-header span {
+    background-color: #6b7280;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+}
+
+.dashboard-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 18px;
+}
+
+.dashboard-table th,
+.dashboard-table td {
+    padding: 14px 10px;
+    border-bottom: 1px solid #e5e7eb;
+    text-align: left;
+}
+
+.dashboard-table th {
+    color: #4b5563;
+    font-size: 14px;
+}
+
+.dashboard-table td {
+    color: #111827;
+}
+
+.badge.vip {
+    background-color: #facc15;
+    color: #111827;
+}
+
+.badge.member {
+    background-color: #2563eb;
+    color: white;
+}
+
+.badge.normal {
+    background-color: #6b7280;
+    color: white;
+}
+
+.status.pending {
+    background-color: #06b6d4;
+    color: white;
+}
+
+.register-layout {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.register-card,
+.benefit-card {
+    background-color: white;
+    padding: 28px;
+    border-radius: 18px;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+.register-card h2,
+.benefit-card h2 {
+    margin-top: 0;
+    color: #1f2937;
+}
+
+.register-form {
+    margin-top: 24px;
+}
+
+.form-group {
+    margin-bottom: 18px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #374151;
+    font-weight: 700;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    font-size: 15px;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #2563eb;
+}
+
+.register-benefits {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 24px;
+}
+
+.benefit-label {
+    color: #2563eb;
+    font-weight: 700;
+    margin: 0 0 12px;
+}
+
+.benefit-card p {
+    color: #4b5563;
+    line-height: 1.7;
+}
+
+.coupon-ticket {
+    margin-top: 20px;
+    padding: 20px;
+    border: 2px dashed #2563eb;
+    border-radius: 16px;
+    background-color: #eff6ff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.coupon-ticket span {
+    color: #2563eb;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.coupon-ticket strong {
+    color: #1f2937;
+    font-size: 26px;
+}
+
+.mini-wheel {
+    width: 170px;
+    height: 170px;
+    margin: 20px auto;
+    border-radius: 50%;
+    border: 10px solid #2563eb;
+    background: conic-gradient(
+        #dbeafe 0deg 60deg,
+        #ffffff 60deg 120deg,
+        #bfdbfe 120deg 180deg,
+        #dbeafe 180deg 240deg,
+        #ffffff 240deg 300deg,
+        #bfdbfe 300deg 360deg
+    );
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: 700;
+}
+
+@media (max-width: 768px) {
+    .register-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .coupon-ticket {
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+    }
+}
+
+.customer-page {
+    margin: 0;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #eff6ff, #f8fafc);
+}
+
+.customer-register-container {
+    width: 92%;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 48px 0;
+}
+
+.customer-register-hero {
+    background: linear-gradient(135deg, #ffffff, #eaf2ff);
+    padding: 48px;
+    border-radius: 24px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    margin-bottom: 28px;
+}
+
+.customer-register-hero h1 {
+    font-size: 40px;
+    margin: 12px 0 16px;
+}
+
+.customer-register-hero p {
+    color: #4b5563;
+    line-height: 1.8;
+}
+
+.customer-register-layout {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 24px;
+}
+
+.register-card,
+.benefit-card {
+    background-color: white;
+    padding: 28px;
+    border-radius: 18px;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+.register-card h2,
+.benefit-card h2 {
+    margin-top: 0;
+    color: #1f2937;
+}
+
+.register-form {
+    margin-top: 24px;
+}
+
+.form-group {
+    margin-bottom: 18px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #374151;
+    font-weight: 700;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    font-size: 15px;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #2563eb;
+}
+
+.customer-benefits {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 24px;
+}
+
+.benefit-label {
+    color: #2563eb;
+    font-weight: 700;
+    margin: 0 0 12px;
+}
+
+.benefit-card p {
+    color: #4b5563;
+    line-height: 1.7;
+}
+
+.coupon-ticket {
+    margin-top: 20px;
+    padding: 20px;
+    border: 2px dashed #2563eb;
+    border-radius: 16px;
+    background-color: #eff6ff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.coupon-ticket span {
+    color: #2563eb;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.coupon-ticket strong {
+    color: #1f2937;
+    font-size: 26px;
+}
+
+.mini-wheel {
+    width: 170px;
+    height: 170px;
+    margin: 20px auto;
+    border-radius: 50%;
+    border: 10px solid #2563eb;
+    background: conic-gradient(
+        #dbeafe 0deg 60deg,
+        #ffffff 60deg 120deg,
+        #bfdbfe 120deg 180deg,
+        #dbeafe 180deg 240deg,
+        #ffffff 240deg 300deg,
+        #bfdbfe 300deg 360deg
+    );
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: 700;
+}
+
+@media (max-width: 768px) {
+    .customer-register-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .customer-register-hero {
+        padding: 32px;
+    }
+
+    .customer-register-hero h1 {
+        font-size: 32px;
+    }
+
+    .coupon-ticket {
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+    }
+}
+
+.promo-hero {
+    position: relative;
+    overflow: hidden;
+    background: radial-gradient(circle at top, #2563eb 0%, #1e3a8a 45%, #0f172a 100%);
+    color: white;
+    padding: 56px;
+    border-radius: 28px;
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.18);
+}
+
+.promo-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.22), transparent 16%),
+        radial-gradient(circle at 80% 10%, rgba(250, 204, 21, 0.26), transparent 14%),
+        radial-gradient(circle at 50% 100%, rgba(59, 130, 246, 0.35), transparent 22%);
+    pointer-events: none;
+}
+
+.promo-hero::after {
+    content: "✦  ✦  ✦  ✦  ✦";
+    position: absolute;
+    top: 28px;
+    right: 48px;
+    color: #fde68a;
+    font-size: 24px;
+    letter-spacing: 14px;
+    opacity: 0.85;
+}
+
+
+
+.promo-hero h1 {
+    position: relative;
+    z-index: 1;
+    font-size: 56px;
+    margin: 0 0 18px;
+    color: #fff7cc;
+    text-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.promo-subtitle {
+    position: relative;
+    z-index: 1;
+    max-width: 760px;
+    color: #e0f2fe;
+    font-size: 20px;
+    line-height: 1.8;
+    margin-bottom: 34px;
+}
+
+.promo-coupon-row {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+}
+
+.promo-coupon {
+    background: linear-gradient(180deg, #fff7cc, #fde68a);
+    color: #1e3a8a;
+    padding: 22px 16px;
+    border-radius: 18px;
+    text-align: center;
+    box-shadow: 0 10px 20px rgba(15, 23, 42, 0.22);
+    border: 2px solid rgba(255, 255, 255, 0.55);
+}
+
+.promo-coupon span {
+    display: inline-block;
+    background-color: #1d4ed8;
+    color: white;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-weight: 800;
+    margin-bottom: 12px;
+}
+
+.promo-coupon strong {
+    display: block;
+    font-size: 42px;
+    line-height: 1;
+    font-weight: 900;
+    color: #1d4ed8;
+    margin-bottom: 10px;
+}
+
+.promo-coupon p {
+    margin: 0;
+    font-weight: 700;
+    color: #1e40af;
+}
+
+.promo-bottom-badge {
+    position: relative;
+    z-index: 1;
+    width: fit-content;
+    margin: 26px auto 0;
+    padding: 12px 28px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #fff7cc, #facc15);
+    color: #1e3a8a;
+    font-size: 20px;
+    font-weight: 900;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.22);
+}
+
+.promo-bottom-badge strong {
+    color: #dc2626;
+    font-size: 28px;
+}
+
+.promo-decoration {
+    position: absolute;
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    filter: blur(20px);
+    opacity: 0.45;
+}
+
+.promo-light-left {
+    left: -40px;
+    top: 40px;
+    background-color: #60a5fa;
+}
+
+.promo-light-right {
+    right: -40px;
+    top: 20px;
+    background-color: #facc15;
+}
+
+@media (max-width: 768px) {
+    .promo-hero {
+        padding: 36px 24px;
+    }
+
+    .promo-hero h1 {
+        font-size: 38px;
+    }
+
+    .promo-subtitle {
+        font-size: 17px;
+    }
+
+    .promo-coupon-row {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .promo-coupon strong {
+        font-size: 34px;
+    }
+
+    .promo-bottom-badge {
+        font-size: 16px;
+        text-align: center;
+    }
+}
+
+.promo-hero .promo-tag {
+    color: #dbeafe;
+}
+
+.promo-hero .promo-subtitle {
+    color: #e0f2fe;
+}
