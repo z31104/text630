@@ -1,45 +1,190 @@
 """
 AI 人臉偵測與會員比對服務
 
-目前版本：
+本週版本重點：
 - 使用 OpenCV Haar Cascade 做基本人臉偵測
 - 使用 face_recognition / dlib 做會員人臉特徵比對
-- 讀取 member_images 裡的會員假資料照片
-- 比對成功回傳 Member 001 / Member 002 / Member 003
-- 比對失敗回傳訪客資料
-- 尚未接正式會員資料庫
+- 欄位名稱統一對齊 members 與 recognition_logs 資料表
+- 辨識結果統一分成：Guest / normal / vip
+- recognition_logs 格式加入 visit_time、leave_time、stay_minutes
 
-後續規劃：
-- 接會員資料庫
-- 回傳正式會員姓名 / VIP / LINE ID
-- 加入陌生熟客判斷
-- 加入第幾位客人來店優惠
+正式整合時：
+- get_member_by_id(member_id) 改接正式會員資料庫
+- save_recognition_log(data) 改成真正 INSERT 到 MySQL
+- send_line_notify(result) 改成呼叫 LINE Bot 推播函式
 """
 
 import os
 from datetime import datetime
 
 import cv2
+
 try:
     import face_recognition
 except ModuleNotFoundError:
     face_recognition = None
     print("警告：尚未安裝 face_recognition，AI 人臉辨識功能暫時無法使用")
-from database.fake_db import get_member_by_image
 
-# 取得專案根目錄
-# face_service.py 在 services 資料夾內，所以要往上一層回到專案根目錄
+# MVP 階段仍先用圖片檔名找 fake_db 會員資料。
+# 正式版會由資料庫同學提供 get_member_by_id(member_id)。
+try:
+    from database.fake_db import get_member_by_image
+except Exception:
+    get_member_by_image = None
+
+try:
+    from database.member_repository import get_member_by_id as db_get_member_by_id
+except Exception:
+    db_get_member_by_id = None
+
+try:
+    from linebot_service.notify import notify_vip_recognition
+except Exception as e:
+    notify_vip_recognition = None
+    print(f"警告：無法載入 LINE Bot 推播函式：{e}")
+
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-# 會員假資料照片資料夾
 MEMBER_IMAGE_DIR = os.path.join(BASE_DIR, "member_images")
+DEFAULT_CAMERA_ID = "camera_1"
 
+
+# -----------------------------
+# 會員資料欄位統一處理
+# -----------------------------
+
+def get_member_level(vip=False, member_id=None, member_level=None):
+    """
+    統一會員等級名稱。
+
+    Guest：陌生客 / 訪客
+    normal：一般會員
+    vip：VIP 會員
+    """
+
+    if member_id is None:
+        return "Guest"
+
+
+    if member_level in ("Guest", "normal", "vip"):
+        return member_level
+
+    if vip:
+        return "vip"
+
+    return "normal"
+
+
+def get_member_level_text(member_level):
+    """將 member_level 轉成中文顯示文字。"""
+
+    level_map = {
+        "Guest": "陌生客",
+        "normal": "一般會員",
+        "vip": "VIP 會員"
+    }
+
+    return level_map.get(member_level, "陌生客")
+
+
+def normalize_member_data(member_data):
+    """
+    將 fake_db 或正式 DB 回傳資料整理成 members 資料表欄位名稱。
+    """
+
+    if member_data is None:
+        return None
+
+    member_id = member_data.get("member_id")
+    vip = bool(member_data.get("vip", False))
+    member_level = get_member_level(
+        vip=vip,
+        member_id=member_id,
+        member_level=member_data.get("member_level")
+    )
+
+    return {
+        "member_id": member_id,
+        "name": member_data.get("name", "Guest"),
+        "phone": member_data.get("phone"),
+        "vip": vip,
+        "member_level": member_level,
+        "visit_count": member_data.get("visit_count", 0),
+        "line_user_id": member_data.get("line_user_id"),
+        "total_amount": member_data.get("total_amount", 0),
+        "favorite_product": member_data.get("favorite_product"),
+        "face_image": member_data.get("face_image"),
+        "created_at": member_data.get("created_at"),
+        "updated_at": member_data.get("updated_at")
+    }
+
+
+def build_result(member_data=None, confidence=0, recognition_status="Guest"):
+    """
+    建立統一辨識結果格式。
+
+    欄位盡量對齊 members 資料表：
+    member_id, name, phone, vip, member_level, visit_count,
+    line_user_id, total_amount, favorite_product, face_image,
+    created_at, updated_at
+    """
+
+    member_data = normalize_member_data(member_data)
+
+    if member_data is None:
+        member_data = {
+            "member_id": None,
+            "name": "Guest",
+            "phone": None,
+            "vip": False,
+            "member_level": "Guest",
+            "visit_count": 0,
+            "line_user_id": None,
+            "total_amount": 0,
+            "favorite_product": None,
+            "face_image": None,
+            "created_at": None,
+            "updated_at": None
+        }
+
+    result = {
+        **member_data,
+        "confidence": confidence,
+        "recognition_status": recognition_status,
+        "member_level_text": get_member_level_text(member_data["member_level"])
+    }
+
+
+    return result
+
+
+def get_member_by_id(member_id):
+    """
+    查詢會員資料。
+
+    正式版請由資料庫組提供同名函式，回傳 members 資料表欄位。
+    目前如果沒有正式 DB 函式，就先從已載入的 known_members 裡面找。
+    """
+
+    if member_id is None:
+        return None
+
+    if db_get_member_by_id is not None:
+        return normalize_member_data(db_get_member_by_id(member_id))
+
+    for member in known_members:
+        if member.get("member_id") == member_id:
+            return normalize_member_data(member)
+
+    return None
+
+
+# -----------------------------
+# 人臉資料載入與辨識
+# -----------------------------
 
 def load_member_faces():
-    """
-    讀取 member_images 資料夾中的會員圖片，
-    並使用 face_recognition 轉成人臉特徵資料。
-    """
+    """讀取 member_images 資料夾中的會員圖片，並轉成人臉特徵資料。"""
 
     if face_recognition is None:
         print("尚未安裝 face_recognition，略過會員人臉資料載入")
@@ -52,60 +197,46 @@ def load_member_faces():
         return members
 
     for filename in os.listdir(MEMBER_IMAGE_DIR):
-        if filename.lower().endswith((".jpg", ".jpeg", ".png")):
-            image_path = os.path.join(MEMBER_IMAGE_DIR, filename)
+        if not filename.lower().endswith((".jpg", ".jpeg", ".png")):
+            continue
 
-            # 讀取圖片
-            image = face_recognition.load_image_file(image_path)
+        image_path = os.path.join(MEMBER_IMAGE_DIR, filename)
+        image = face_recognition.load_image_file(image_path)
+        encodings = face_recognition.face_encodings(image)
 
-            # 取得圖片中的人臉特徵
-            encodings = face_recognition.face_encodings(image)
+        if len(encodings) == 0:
+            print(f"會員圖片找不到人臉：{filename}")
+            continue
 
-            if len(encodings) == 0:
-                print(f"會員圖片找不到人臉：{filename}")
-                continue
+        if get_member_by_image is None:
+            print("找不到 fake_db.get_member_by_image，無法載入會員假資料")
+            continue
 
-            # 先取第一張臉
-            face_encoding = encodings[0]
+        # MVP 階段先用圖片檔名找會員資料；正式版會改成會員人臉資料表。
+        member_data = normalize_member_data(get_member_by_image(filename))
 
-            # 用圖片檔名去 fake_db.py 找會員資料，例如 001.jpg -> 王小明
-            member_data = get_member_by_image(filename)
-            
-            if member_data is None:
-                print(f"假資料庫找不到對應會員：{filename}")
-                continue
-            
-            members.append({
-                "member_id": member_data["member_id"],
-                "name": member_data["name"],
-                "vip": member_data["vip"],
-                "line_id": member_data["line_id"],
-                "image": member_data["image"],
-                "encoding": face_encoding
-            })
+        if member_data is None:
+            print(f"假資料庫找不到對應會員：{filename}")
+            continue
 
-            print(f"已載入會員人臉：{filename}")
+        member_data["encoding"] = encodings[0]
+        members.append(member_data)
+
+        print(f"已載入會員人臉：{filename}")
 
     print(f"會員人臉資料載入完成，共 {len(members)} 筆")
     return members
 
 
-# 程式啟動時先讀取會員圖片
 known_members = load_member_faces()
 
-
-# 載入 OpenCV 內建的人臉偵測模型
 face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
 
 
 def detect_face(frame):
-    """
-    偵測畫面中的人臉，並回傳人臉座標。
-    frame: 攝影機讀到的原始畫面
-    return: faces
-    """
+    """偵測畫面中的人臉，並回傳人臉座標。"""
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -121,219 +252,176 @@ def detect_face(frame):
 
 def recognize_face(frame, faces):
     """
-    使用 face_recognition 比對攝影機畫面中的人臉是否為會員。
+    辨識會員。
 
-    frame: 攝影機畫面
-    faces: OpenCV 偵測到的人臉座標
-    return: 辨識結果
+    回傳欄位名稱已統一為：
+    member_id, name, phone, vip, member_level, visit_count,
+    line_user_id, total_amount, favorite_product, face_image,
+    confidence, recognition_status
     """
 
     if face_recognition is None:
-        return {
-            "member_id": None,
-            "name": "AI套件未安裝",
-            "vip": False,
-            "line_id": None,
-            "confidence": 0
-        }
+        return build_result(confidence=0, recognition_status="failed")
 
     if len(faces) == 0:
-        return {
-            "member_id": None,
-            "name": "訪客",
-            "vip": False,
-            "line_id": None,
-            "confidence": 0
-        }
+        return build_result(confidence=0, recognition_status="no_face")
 
-    # OpenCV 的顏色格式是 BGR
-    # face_recognition 需要 RGB，所以要轉換
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    # 目前先只比對第一張偵測到的人臉
+    # MVP 階段先只處理第一張臉
     x, y, w, h = faces[0]
-
-    # OpenCV 座標格式是 x, y, w, h
-    # face_recognition 座標格式是 top, right, bottom, left
     face_location = (y, x + w, y + h, x)
 
-    # 將攝影機中的人臉轉成特徵值
     encodings = face_recognition.face_encodings(rgb_frame, [face_location])
 
     if len(encodings) == 0:
-        return {
-            "member_id": None,
-            "name": "訪客",
-            "vip": False,
-            "line_id": None,
-            "confidence": 0
-        }
+        return build_result(confidence=0, recognition_status="failed")
 
     current_encoding = encodings[0]
 
-    # 逐一和已載入的會員人臉資料比對
     for member in known_members:
         distance = face_recognition.face_distance(
             [member["encoding"]],
             current_encoding
         )[0]
 
-        # distance 越小代表越像
-        # 一般可先用 0.6 當門檻
         confidence = float(round(1 - distance, 2))
 
         if distance < 0.6:
-            return {
-                "member_id": member["member_id"],
-                "name": member["name"],
-                "vip": member["vip"],
-                "line_id": member["line_id"],
-                "confidence": confidence
-            }
+            member_data = get_member_by_id(member["member_id"]) or member
+            return build_result(
+                member_data=member_data,
+                confidence=confidence,
+                recognition_status="recognized"
+            )
 
-    # 沒有比對成功就回傳訪客
-    return {
-        "member_id": None,
-        "name": "訪客",
-        "vip": False,
-        "line_id": None,
-        "confidence": 0
-    }
+    return build_result(confidence=0, recognition_status="Guest")
 
+
+# -----------------------------
+# 畫面顯示
+# -----------------------------
 
 def draw_face_boxes(frame, faces, result=None):
     """
     在畫面上畫出人臉框框。
-    frame: 攝影機畫面
-    faces: 偵測到的人臉座標
-    result: 辨識結果，若沒有傳入才重新辨識
-    return: 畫好框框的 frame
+    OpenCV cv2.putText 不支援中文，所以畫面上用英文顯示，
+    但 log / 資料庫仍保留中文姓名與中文類型。
     """
 
     if result is None:
         result = recognize_face(frame, faces)
 
-    # OpenCV 的 cv2.putText 不支援中文
-    # 所以攝影機畫面改顯示英文 / member_id
-    # 但 result["name"] 本身不改，終端機和之後資料庫仍可保留中文姓名
-    if result["member_id"] is not None:
+    member_level = result.get("member_level", "Guest")
+
+    if member_level == "vip":
         display_name = f"Member ID: {result['member_id']}"
+        member_type = "VIP Member"
+        box_name = f"VIP {result['member_id']}"
+    elif member_level == "normal":
+        display_name = f"Member ID: {result['member_id']}"
+        member_type = "Normal Member"
         box_name = f"Member {result['member_id']}"
     else:
         display_name = "Guest"
+        member_type = "Guest"
         box_name = "Guest"
 
-    cv2.putText(
-        frame,
-        f"Name: {display_name}",
-        (20, 40),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (0, 255, 0),
-        2
-    )
-    
-    member_type = "VIP Member" if result["vip"] else "Normal Member"
-    
-    cv2.putText(
-        frame,
-        f"Type: {member_type}",
-        (20, 75),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (0, 255, 0),
-        2
-    )
-
-    cv2.putText(
-        frame,
-        f"Confidence: {result['confidence']}",
-        (20, 110),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (0, 255, 0),
-        2
-    )
+    cv2.putText(frame, f"Name: {display_name}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+    cv2.putText(frame, f"Type: {member_type}", (20, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+    cv2.putText(frame, f"Confidence: {result.get('confidence', 0)}", (20, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
     for (x, y, w, h) in faces:
         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-        cv2.putText(
-            frame,
-            box_name,
-            (x, y - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 255, 0),
-            2
-        )
+        cv2.putText(frame, box_name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
     return frame
 
-def build_recognition_log(result):
+
+# -----------------------------
+# recognition_logs 欄位統一處理
+# -----------------------------
+
+def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes=None, visit_status="recognition", camera_id=DEFAULT_CAMERA_ID):
     """
-    將 AI 辨識結果整理成 recognition_logs 未來可寫入資料庫的格式。
+    將 AI 辨識結果整理成 recognition_logs 資料表格式。
+
+    recognition_logs 欄位：
+    visit_id, member_id, camera_id, confidence, member_level, recognition_status,
+    visit_status, visit_time, leave_time, stay_minutes, created_at
     """
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    recognition_log = {
+    return {
+        # visit_id 由資料庫 AUTO_INCREMENT 產生，Python 不需要給
         "member_id": result.get("member_id"),
-        "name": result.get("name", "Guest"),
-        "vip": result.get("vip", False),
-        "line_id": result.get("line_id"),
+        "camera_id": camera_id,
         "confidence": result.get("confidence", 0),
-        "recognized_at": now,
-        "created_at": now,
-        "camera_location": "camera_1"
+        "member_level": result.get("member_level", "Guest"),
+        "recognition_status": result.get("recognition_status", "Guest"),
+        "visit_status": visit_status,
+        "visit_time": visit_time,
+        "leave_time": leave_time,
+        "stay_minutes": stay_minutes,
+        "created_at": now
     }
 
-    return recognition_log
 
-
-def log_recognition_result(result):
+def log_recognition_result(result, visit_time=None, leave_time=None, stay_minutes=None, visit_status="recognition", camera_id=DEFAULT_CAMERA_ID):
     """
-    將 AI 辨識結果印在終端機。
-    同時模擬 recognition_logs 寫入資料庫前的 INSERT 格式。
+    將 AI 辨識結果印在終端機，並整理成 recognition_logs INSERT 格式。
     """
 
-    recognition_log = build_recognition_log(result)
+    recognition_log = build_recognition_log(
+        result,
+        visit_time=visit_time,
+        leave_time=leave_time,
+        stay_minutes=stay_minutes,
+        visit_status=visit_status,
+        camera_id=camera_id
+    )
 
     print("========== Recognition Log ==========")
     print(f"member_id: {recognition_log['member_id']}")
-    print(f"name: {recognition_log['name']}")
-    print(f"vip: {recognition_log['vip']}")
-    print(f"line_id: {recognition_log['line_id']}")
+    print(f"camera_id: {recognition_log['camera_id']}")
     print(f"confidence: {recognition_log['confidence']}")
-    print(f"recognized_at: {recognition_log['recognized_at']}")
+    print(f"member_level: {recognition_log['member_level']}")
+    print(f"recognition_status: {recognition_log['recognition_status']}")
+    print(f"visit_status: {recognition_log['visit_status']}")
+    print(f"visit_time: {recognition_log['visit_time']}")
+    print(f"leave_time: {recognition_log['leave_time']}")
+    print(f"stay_minutes: {recognition_log['stay_minutes']}")
     print(f"created_at: {recognition_log['created_at']}")
-    print(f"camera_location: {recognition_log['camera_location']}")
     print("=====================================")
 
-    # 模擬未來寫入 recognition_logs
     save_recognition_log(recognition_log)
+
 
 def save_recognition_log(recognition_log):
     """
-    模擬將辨識紀錄寫入 recognition_logs 資料表。
-
-    目前先不真的連 MySQL，只先整理出未來 INSERT 會用到的 SQL 與資料。
+    模擬寫入 recognition_logs 資料表。
+    正式版可改成呼叫資料庫組提供的 insert_recognition_log(data)。
     """
 
     sql = """
     INSERT INTO recognition_logs
-    (member_id, name, vip, confidence, recognized_at, created_at, camera_location)
-    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    (member_id, camera_id, confidence, member_level, recognition_status,
+     visit_status, visit_time, leave_time, stay_minutes, created_at)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
     values = (
         recognition_log.get("member_id"),
-        recognition_log.get("name"),
-        recognition_log.get("vip"),
+        recognition_log.get("camera_id"),
         recognition_log.get("confidence"),
-        recognition_log.get("recognized_at"),
-        recognition_log.get("created_at"),
-        recognition_log.get("camera_location", "camera_1")
+        recognition_log.get("member_level"),
+        recognition_log.get("recognition_status"),
+        recognition_log.get("visit_status"),
+        recognition_log.get("visit_time"),
+        recognition_log.get("leave_time"),
+        recognition_log.get("stay_minutes"),
+        recognition_log.get("created_at")
     )
 
     print("========== Prepare INSERT recognition_logs ==========")
@@ -343,25 +431,38 @@ def save_recognition_log(recognition_log):
     print(values)
     print("=====================================================")
 
-def notify_vip_arrival(result):
+
+def send_line_notify(result):
     """
-    模擬 VIP 到店通知。
-    目前先印在終端機，之後可改成呼叫 LINE Bot 推播。
+    發送 LINE VIP 到店通知。
+
+    觸發條件：
+    - 必須是 VIP
+    - 必須有 member_id
+    - 必須成功載入 LINE Bot 組提供的 notify_vip_recognition()
     """
 
-    # 不是 VIP 就不通知
-    if not result.get("vip"):
-        return
+    # 只推播 VIP，不是 VIP 就不處理
+    if result.get("member_level") != "vip" and result.get("vip") is not True:
+        return None
 
-    # 沒有會員資料也不通知
+    # 沒有會員 ID，代表不是正式會員資料，不推播
     if result.get("member_id") is None:
-        return
+        return None
 
-    message = f"VIP 會員 {result.get('name')} 到店，請店員留意。"
+    # LINE Bot 組功能尚未接上時，不讓攝影機程式當掉
+    if notify_vip_recognition is None:
+        print("LINE 推播略過：notify_vip_recognition 尚未成功匯入")
+        return None
 
-    print("========== VIP Notification ==========")
+    # 先呼叫 LINE Bot 組的推播函式，取得回傳結果
+    status = notify_vip_recognition(result)
+
+    print("========== LINE Notification ==========")
     print(f"VIP 會員到店：{result.get('name')}")
     print(f"member_id: {result.get('member_id')}")
-    print(f"line_id: {result.get('line_id')}")
-    print(f"message: {message}")
-    print("======================================")
+    print(f"line_user_id: {result.get('line_user_id')}")
+    print(f"LINE notify status: {status}")
+    print("=======================================")
+
+    return status

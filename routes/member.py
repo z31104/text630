@@ -56,7 +56,10 @@ def member():
 
 @member_bp.route("/member/recognition_log", methods=["POST"])
 def add_recognition_log():
-    data = request.get_json()
+    data = request.get_json(silent=True)
+
+    if not data:
+        return jsonify({"error": "請傳入 JSON 格式資料"}), 400
 
     member_id = data.get("member_id")
     name = data.get("name")
@@ -156,7 +159,11 @@ def delete_member(member_id):
     conn = get_connection()
     cursor = conn.cursor()
 
+    cursor.execute("DELETE FROM vip_notifications WHERE member_id = %s", (member_id,))
+    cursor.execute("DELETE FROM recognition_logs WHERE member_id = %s", (member_id,))
+    cursor.execute("DELETE FROM face_images WHERE member_id = %s", (member_id,))
     cursor.execute("DELETE FROM members WHERE member_id = %s", (member_id,))
+
     conn.commit()
 
     cursor.close()
@@ -164,14 +171,13 @@ def delete_member(member_id):
 
     return redirect("/member")
 
-
 @member_bp.route("/member/edit/<int:member_id>", methods=["GET", "POST"])
 def edit_member(member_id):
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
 
     cursor.execute(
-        "SELECT member_id, name, vip, line_id FROM members WHERE member_id = %s",
+        "SELECT member_id, name, phone, email, vip, line_id FROM members WHERE member_id = %s",
         (member_id,)
     )
     target_member = cursor.fetchone()
@@ -184,12 +190,14 @@ def edit_member(member_id):
     if request.method == "POST":
         sql = """
         UPDATE members
-        SET name = %s, vip = %s, line_id = %s
+        SET name = %s, phone = %s, email = %s, vip = %s, line_id = %s
         WHERE member_id = %s
         """
 
         data = (
             request.form.get("name"),
+            request.form.get("phone"),
+            request.form.get("email"),
             request.form.get("vip") == "1",
             request.form.get("line_id"),
             member_id
@@ -214,8 +222,10 @@ def edit_member(member_id):
 
     <form method="POST">
         <p>會員編號：{target_member['member_id']}</p>
-        <p>姓名：<input type="text" name="name" value="{target_member['name']}"></p>
-        <p>LINE ID：<input type="text" name="line_id" value="{target_member['line_id']}"></p>
+        <p>姓名：<input type="text" name="name" value="{target_member['name'] or ''}"></p>
+        <p>電話：<input type="text" name="phone" value="{target_member['phone'] or ''}"></p>
+        <p>Email：<input type="text" name="email" value="{target_member['email'] or ''}"></p>
+        <p>LINE ID：<input type="text" name="line_id" value="{target_member['line_id'] or ''}"></p>
         <p>是否 VIP：
             <select name="vip">
                 <option value="0" {normal_selected}>一般會員</option>
