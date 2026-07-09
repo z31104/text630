@@ -5,7 +5,7 @@ members = [
         "name": "王小明",
         "phone": "0912345678",
         "vip": True,
-        "member_level": "VIP",
+        "member_level": "vip",
         "visit_count": 12,
         "line_user_id": "U123456789",
         "total_amount": 5800,
@@ -19,7 +19,7 @@ members = [
         "name": "李小華",
         "phone": "0922333444",
         "vip": False,
-        "member_level": "一般會員",
+        "member_level": "normal",
         "visit_count": 3,
         "line_user_id": "U987654321",
         "total_amount": 900,
@@ -33,7 +33,7 @@ members = [
         "name": "陳大文",
         "phone": "0933555666",
         "vip": True,
-        "member_level": "VIP",
+        "member_level": "vip",
         "visit_count": 20,
         "line_user_id": "U111222333",
         "total_amount": 12000,
@@ -65,6 +65,14 @@ def get_member_by_face_image(face_image):
             return member
     return None
 
+
+def get_member_by_image(filename):
+    """
+    給 services/face_service.py 使用。
+    根據 member_images 裡的圖片檔名取得會員假資料。
+    """
+
+    return get_member_by_face_image(filename)
 
 if __name__ == "__main__":
     print(get_member_by_id(1))

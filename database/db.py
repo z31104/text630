@@ -85,31 +85,44 @@ def get_member_by_id(member_id):
 
 
 def insert_recognition_log(
-    member_id,
-    name,
-    vip,
-    line_user_id=None,
+    member_id=None,
+    camera_id=None,
     confidence=0,
-    recognized_at=None,
-    camera_location=None
+    member_level=None,
+    recognition_status=None,
+    visit_status=None,
+    visit_time=None,
+    leave_time=None,
+    stay_minutes=None
 ):
     conn = get_connection()
     cursor = conn.cursor()
 
     sql = """
-    INSERT INTO recognition_logs
-    (member_id, name, vip, line_user_id, confidence, recognized_at, camera_location)
-    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    INSERT INTO recognition_logs (
+        member_id,
+        camera_id,
+        confidence,
+        member_level,
+        recognition_status,
+        visit_status,
+        visit_time,
+        leave_time,
+        stay_minutes
+    )
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
 
     data = (
         member_id,
-        name,
-        vip,
-        line_user_id,
+        camera_id,
         confidence,
-        recognized_at,
-        camera_location
+        member_level,
+        recognition_status,
+        visit_status,
+        visit_time,
+        leave_time,
+        stay_minutes
     )
 
     cursor.execute(sql, data)
@@ -126,12 +139,14 @@ def insert_recognition_log(
 def save_recognition_log(data):
     return insert_recognition_log(
         member_id=data.get("member_id"),
-        name=data.get("name"),
-        vip=data.get("vip", False),
-        line_user_id=data.get("line_user_id"),
+        camera_id=data.get("camera_id"),
         confidence=data.get("confidence", 0),
-        recognized_at=data.get("recognized_at") or data.get("recognition_time"),
-        camera_location=data.get("camera_location")
+        member_level=data.get("member_level"),
+        recognition_status=data.get("recognition_status"),
+        visit_status=data.get("visit_status"),
+        visit_time=data.get("visit_time"),
+        leave_time=data.get("leave_time"),
+        stay_minutes=data.get("stay_minutes")
     )
 
 

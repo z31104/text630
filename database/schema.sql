@@ -26,16 +26,24 @@ CREATE TABLE IF NOT EXISTS face_images (
 
 CREATE TABLE IF NOT EXISTS recognition_logs (
     log_id INT AUTO_INCREMENT PRIMARY KEY,
+
     member_id INT NULL,
-    name VARCHAR(50),
-    vip BOOLEAN DEFAULT FALSE,
-    line_user_id VARCHAR(100),
+    camera_id INT NULL,
+
     confidence FLOAT DEFAULT 0,
-    recognized_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    member_level VARCHAR(20),
+    recognition_status VARCHAR(20),
+    visit_status VARCHAR(20),
+
+    visit_time DATETIME,
+    leave_time DATETIME,
+    stay_minutes INT,
+
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    camera_location VARCHAR(100),
-    FOREIGN KEY (member_id) REFERENCES members(member_id)
+
+    FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE SET NULL
 );
+
 CREATE TABLE IF NOT EXISTS vip_notifications (
     notification_id INT AUTO_INCREMENT PRIMARY KEY,
     member_id INT NOT NULL,
