@@ -4,28 +4,43 @@ members = [
         "member_id": 1,
         "name": "王小明",
         "phone": "0912345678",
-        "email": "ming@example.com",
         "vip": True,
-        "line_id": "U123456789",
-        "image": "001.jpg"
+        "member_level": "VIP",
+        "visit_count": 12,
+        "line_user_id": "U123456789",
+        "total_amount": 5800,
+        "favorite_product": "拿鐵",
+        "face_image": "001.jpg",
+        "created_at": "2026-07-09 10:00:00",
+        "updated_at": "2026-07-09 10:00:00"
     },
     {
         "member_id": 2,
         "name": "李小華",
         "phone": "0922333444",
-        "email": "hua@example.com",
         "vip": False,
-        "line_id": "U987654321",
-        "image": "002.jpg"
+        "member_level": "一般會員",
+        "visit_count": 3,
+        "line_user_id": "U987654321",
+        "total_amount": 900,
+        "favorite_product": "美式咖啡",
+        "face_image": "002.jpg",
+        "created_at": "2026-07-09 10:00:00",
+        "updated_at": "2026-07-09 10:00:00"
     },
     {
         "member_id": 3,
         "name": "陳大文",
         "phone": "0933555666",
-        "email": "wen@example.com",
         "vip": True,
-        "line_id": "U111222333",
-        "image": "003.jpg"
+        "member_level": "VIP",
+        "visit_count": 20,
+        "line_user_id": "U111222333",
+        "total_amount": 12000,
+        "favorite_product": "焦糖瑪奇朵",
+        "face_image": "003.jpg",
+        "created_at": "2026-07-09 10:00:00",
+        "updated_at": "2026-07-09 10:00:00"
     }
 ]
 
@@ -44,9 +59,9 @@ def get_member_by_name(name):
     return None
 
 
-def get_member_by_image(image):
+def get_member_by_face_image(face_image):
     for member in members:
-        if member["image"] == image:
+        if member["face_image"] == face_image:
             return member
     return None
 
@@ -54,4 +69,4 @@ def get_member_by_image(image):
 if __name__ == "__main__":
     print(get_member_by_id(1))
     print(get_member_by_name("李小華"))
-    print(get_member_by_image("003.jpg"))
+    print(get_member_by_face_image("003.jpg"))

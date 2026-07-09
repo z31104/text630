@@ -9,7 +9,12 @@ def member():
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
 
-    cursor.execute("SELECT member_id, name, vip, line_id FROM members")
+    cursor.execute("""
+        SELECT member_id, name, phone, vip, member_level,
+               visit_count, line_user_id, total_amount,
+               favorite_product, face_image, created_at, updated_at
+        FROM members
+    """)
     db_members = cursor.fetchall()
 
     cursor.close()
@@ -23,9 +28,14 @@ def member():
         <tr>
             <th>會員編號</th>
             <th>姓名</th>
+            <th>電話</th>
             <th>VIP</th>
-            <th>LINE ID</th>
-            <th>圖片</th>
+            <th>會員等級</th>
+            <th>來店次數</th>
+            <th>LINE User ID</th>
+            <th>累積消費</th>
+            <th>偏好商品</th>
+            <th>人臉圖片</th>
             <th>操作</th>
         </tr>
     """
@@ -37,9 +47,14 @@ def member():
         <tr>
             <td>{m["member_id"]}</td>
             <td>{m["name"]}</td>
+            <td>{m["phone"] or ""}</td>
             <td>{"是" if m["vip"] else "否"}</td>
-            <td>{m["line_id"]}</td>
-            <td>-</td>
+            <td>{m["member_level"] or ""}</td>
+            <td>{m["visit_count"]}</td>
+            <td>{m["line_user_id"] or ""}</td>
+            <td>{m["total_amount"]}</td>
+            <td>{m["favorite_product"] or ""}</td>
+            <td>{m["face_image"] or ""}</td>
             <td>
                 <a href="/member/edit/{member_id}">修改</a>
                 <a href="/member/delete/{member_id}">刪除</a>
@@ -64,7 +79,7 @@ def add_recognition_log():
     member_id = data.get("member_id")
     name = data.get("name")
     vip = data.get("vip", False)
-    line_id = data.get("line_id")
+    line_user_id = data.get("line_user_id")
     confidence = data.get("confidence", 0)
     recognized_at = data.get("recognized_at")
     camera_location = data.get("camera_location")
@@ -74,7 +89,7 @@ def add_recognition_log():
 
     sql = """
     INSERT INTO recognition_logs
-    (member_id, name, vip, line_id, confidence, recognized_at, camera_location)
+    (member_id, name, vip, line_user_id, confidence, recognized_at, camera_location)
     VALUES (%s, %s, %s, %s, %s, %s, %s)
     """
 
@@ -82,7 +97,7 @@ def add_recognition_log():
         member_id,
         name,
         vip,
-        line_id,
+        line_user_id,
         confidence,
         recognized_at,
         camera_location
@@ -99,7 +114,7 @@ def add_recognition_log():
         "member_id": member_id,
         "name": name,
         "vip": vip,
-        "line_id": line_id,
+        "line_user_id": line_user_id,
         "confidence": confidence,
         "recognized_at": recognized_at,
         "camera_location": camera_location
@@ -113,16 +128,22 @@ def add_member_page():
         cursor = conn.cursor()
 
         sql = """
-        INSERT INTO members (name, phone, email, vip, line_id)
-        VALUES (%s, %s, %s, %s, %s)
+        INSERT INTO members
+        (name, phone, vip, member_level, visit_count, line_user_id,
+         total_amount, favorite_product, face_image)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         data = (
             request.form.get("name"),
             request.form.get("phone"),
-            request.form.get("email"),
             request.form.get("vip") == "1",
-            request.form.get("line_id")
+            request.form.get("member_level") or "一般會員",
+            int(request.form.get("visit_count") or 0),
+            request.form.get("line_user_id"),
+            int(request.form.get("total_amount") or 0),
+            request.form.get("favorite_product"),
+            request.form.get("face_image")
         )
 
         cursor.execute(sql, data)
@@ -139,8 +160,12 @@ def add_member_page():
     <form method="POST">
         <p>姓名：<input type="text" name="name"></p>
         <p>電話：<input type="text" name="phone"></p>
-        <p>Email：<input type="text" name="email"></p>
-        <p>LINE ID：<input type="text" name="line_id"></p>
+        <p>LINE User ID：<input type="text" name="line_user_id"></p>
+        <p>會員等級：<input type="text" name="member_level" value="一般會員"></p>
+        <p>來店次數：<input type="number" name="visit_count" value="0"></p>
+        <p>累積消費：<input type="number" name="total_amount" value="0"></p>
+        <p>偏好商品：<input type="text" name="favorite_product"></p>
+        <p>人臉圖片路徑：<input type="text" name="face_image"></p>
         <p>是否 VIP：
             <select name="vip">
                 <option value="0">一般會員</option>
@@ -171,15 +196,20 @@ def delete_member(member_id):
 
     return redirect("/member")
 
+
 @member_bp.route("/member/edit/<int:member_id>", methods=["GET", "POST"])
 def edit_member(member_id):
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
 
-    cursor.execute(
-        "SELECT member_id, name, phone, email, vip, line_id FROM members WHERE member_id = %s",
-        (member_id,)
-    )
+    cursor.execute("""
+        SELECT member_id, name, phone, vip, member_level,
+               visit_count, line_user_id, total_amount,
+               favorite_product, face_image
+        FROM members
+        WHERE member_id = %s
+    """, (member_id,))
+
     target_member = cursor.fetchone()
 
     if target_member is None:
@@ -190,16 +220,28 @@ def edit_member(member_id):
     if request.method == "POST":
         sql = """
         UPDATE members
-        SET name = %s, phone = %s, email = %s, vip = %s, line_id = %s
+        SET name = %s,
+            phone = %s,
+            vip = %s,
+            member_level = %s,
+            visit_count = %s,
+            line_user_id = %s,
+            total_amount = %s,
+            favorite_product = %s,
+            face_image = %s
         WHERE member_id = %s
         """
 
         data = (
             request.form.get("name"),
             request.form.get("phone"),
-            request.form.get("email"),
             request.form.get("vip") == "1",
-            request.form.get("line_id"),
+            request.form.get("member_level") or "一般會員",
+            int(request.form.get("visit_count") or 0),
+            request.form.get("line_user_id"),
+            int(request.form.get("total_amount") or 0),
+            request.form.get("favorite_product"),
+            request.form.get("face_image"),
             member_id
         )
 
@@ -224,8 +266,12 @@ def edit_member(member_id):
         <p>會員編號：{target_member['member_id']}</p>
         <p>姓名：<input type="text" name="name" value="{target_member['name'] or ''}"></p>
         <p>電話：<input type="text" name="phone" value="{target_member['phone'] or ''}"></p>
-        <p>Email：<input type="text" name="email" value="{target_member['email'] or ''}"></p>
-        <p>LINE ID：<input type="text" name="line_id" value="{target_member['line_id'] or ''}"></p>
+        <p>LINE User ID：<input type="text" name="line_user_id" value="{target_member['line_user_id'] or ''}"></p>
+        <p>會員等級：<input type="text" name="member_level" value="{target_member['member_level'] or ''}"></p>
+        <p>來店次數：<input type="number" name="visit_count" value="{target_member['visit_count'] or 0}"></p>
+        <p>累積消費：<input type="number" name="total_amount" value="{target_member['total_amount'] or 0}"></p>
+        <p>偏好商品：<input type="text" name="favorite_product" value="{target_member['favorite_product'] or ''}"></p>
+        <p>人臉圖片路徑：<input type="text" name="face_image" value="{target_member['face_image'] or ''}"></p>
         <p>是否 VIP：
             <select name="vip">
                 <option value="0" {normal_selected}>一般會員</option>

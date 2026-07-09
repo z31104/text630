@@ -5,9 +5,13 @@ CREATE TABLE IF NOT EXISTS members (
     member_id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
     phone VARCHAR(20),
-    email VARCHAR(100),
     vip BOOLEAN DEFAULT FALSE,
-    line_id VARCHAR(100),
+    member_level VARCHAR(20) DEFAULT '一般會員',
+    visit_count INT DEFAULT 0,
+    line_user_id VARCHAR(100),
+    total_amount INT DEFAULT 0,
+    favorite_product VARCHAR(100),
+    face_image VARCHAR(255),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -25,24 +29,23 @@ CREATE TABLE IF NOT EXISTS recognition_logs (
     member_id INT NULL,
     name VARCHAR(50),
     vip BOOLEAN DEFAULT FALSE,
-    line_id VARCHAR(100),
+    line_user_id VARCHAR(100),
     confidence FLOAT DEFAULT 0,
     recognized_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    camera_location VARCHAR(100),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE SET NULL
+    camera_location VARCHAR(100),
+    FOREIGN KEY (member_id) REFERENCES members(member_id)
 );
-
 CREATE TABLE IF NOT EXISTS vip_notifications (
     notification_id INT AUTO_INCREMENT PRIMARY KEY,
     member_id INT NOT NULL,
-    log_id INT NULL,
-    line_id VARCHAR(100),
+    log_id INT,
+    line_user_id VARCHAR(100),
     message TEXT,
     status VARCHAR(20) DEFAULT 'pending',
     sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE CASCADE,
-    FOREIGN KEY (log_id) REFERENCES recognition_logs(log_id) ON DELETE SET NULL
+    FOREIGN KEY (member_id) REFERENCES members(member_id),
+    FOREIGN KEY (log_id) REFERENCES recognition_logs(log_id)
 );
 
 CREATE TABLE IF NOT EXISTS coupons (
