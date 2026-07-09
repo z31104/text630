@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS recognition_logs (
     log_id INT AUTO_INCREMENT PRIMARY KEY,
 
     member_id INT NULL,
-    camera_id INT NULL,
+   camera_id VARCHAR(50) NULL,
 
     confidence FLOAT DEFAULT 0,
     member_level VARCHAR(20),
