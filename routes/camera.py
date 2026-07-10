@@ -44,18 +44,18 @@ last_recognition_time = 0
 # 上一次辨識結果，給畫框顯示用
 last_result = {
     "member_id": None,
-    "name": "Guest",
+    "name": "No Face",
     "phone": None,
     "vip": False,
-    "member_level": "Guest",
+    "member_level": "guest",
     "visit_count": 0,
     "line_user_id": None,
     "total_amount": 0,
     "favorite_product": None,
     "face_image": None,
     "confidence": 0,
-    "recognition_status": "Guest",
-    "member_level_text": "陌生客"
+    "recognition_status": "no_face",
+    "member_level_text": "No Face"
 }
 
 # 記錄每個會員上一次產生 recognition log 的時間，避免同一個人一直寫入
@@ -116,14 +116,7 @@ def open_camera(camera_index=CAMERA_INDEX):
 
 
 def update_member_visit(result, current_time):
-    """
-    更新會員到店狀態。
-
-    第一次看到會員：記錄 visit_time
-    持續看到會員：更新 last_seen_timestamp
-
-    注意：LINE 推播失敗時，不讓 camera 串流中斷。
-    """
+    global last_logged_times
 
     member_id = result.get("member_id")
 
@@ -148,6 +141,10 @@ def update_member_visit(result, current_time):
             visit_status="visit_start",
             camera_id=CAMERA_ID
         )
+
+        # 從現在開始計算 30 秒
+        # 避免 visit_start 後馬上又寫一筆 recognition
+        last_logged_times[member_id] = current_time
 
         try:
             send_line_notify(result)
@@ -191,7 +188,10 @@ def close_timeout_visits(current_time):
 
 
 def generate_frames():
-    global last_recognition_time, last_result, last_logged_times, last_guest_log_time
+    global last_recognition_time
+    global last_result
+    global last_logged_times
+    global last_guest_log_time
 
     cap = open_camera(CAMERA_INDEX)
 
@@ -202,7 +202,7 @@ def generate_frames():
     try:
         while True:
             time.sleep(0.01)
-            
+
             success, frame = cap.read()
 
             if not success or frame is None:
@@ -211,24 +211,78 @@ def generate_frames():
 
             faces = detect_face(frame)
             current_time = time.time()
+            has_face = len(faces) > 0
 
-            # 每 3 秒才執行一次 dlib / face_recognition 會員比對
-            if current_time - last_recognition_time >= RECOGNITION_INTERVAL:
+            # 畫面沒有偵測到人臉
+            # 清除上一筆會員或 guest 的顯示資料
+            if not has_face:
+                last_result = {
+                    "member_id": None,
+                    "name": "No Face",
+                    "phone": None,
+                    "vip": False,
+                    "member_level": "guest",
+                    "visit_count": 0,
+                    "line_user_id": None,
+                    "total_amount": 0,
+                    "favorite_product": None,
+                    "face_image": None,
+                    "confidence": 0,
+                    "recognition_status": "no_face",
+                    "member_level_text": "No Face"
+                }
+
+            # 畫面有偵測到人臉，而且超過辨識間隔
+            # 才執行會員人臉比對
+            elif (
+                current_time - last_recognition_time
+                >= RECOGNITION_INTERVAL
+            ):
                 last_result = recognize_face(frame, faces)
                 last_recognition_time = current_time
 
             current_member_id = last_result.get("member_id")
             current_confidence = last_result.get("confidence", 0)
-            has_face = len(faces) > 0
 
-            # 會員紀錄：有 member_id 且信心值足夠，才當成正式會員紀錄
-            if current_member_id is not None and current_confidence >= MIN_CONFIDENCE:
-                update_member_visit(last_result, current_time)
+            current_recognition_status = last_result.get(
+                "recognition_status",
+                "no_face"
+            )
 
-                last_time = last_logged_times.get(current_member_id, 0)
+            # ----------------------------------------
+            # 正式會員紀錄
+            # ----------------------------------------
+            # 條件：
+            # 1. 畫面有偵測到人臉
+            # 2. 有正式 member_id
+            # 3. 信心值達到最低門檻
+            # 4. 辨識狀態為 recognized
+            if (
+                has_face
+                and current_member_id is not None
+                and current_confidence >= MIN_CONFIDENCE
+                and current_recognition_status == "recognized"
+            ):
+                # 第一次看到會員時建立 visit_start
+                # 持續看到會員時更新最後出現時間
+                update_member_visit(
+                    last_result,
+                    current_time
+                )
 
-                if current_time - last_time >= MEMBER_LOG_INTERVAL:
-                    visit_time = active_visits[current_member_id]["visit_time"]
+                last_time = last_logged_times.get(
+                    current_member_id,
+                    0
+                )
+
+                # 避免每一幀都寫入 recognition_logs
+                if (
+                    current_time - last_time
+                    >= MEMBER_LOG_INTERVAL
+                ):
+                    visit_time = active_visits[
+                        current_member_id
+                    ]["visit_time"]
 
                     log_recognition_result(
                         last_result,
@@ -239,11 +293,27 @@ def generate_frames():
                         camera_id=CAMERA_ID
                     )
 
-                    last_logged_times[current_member_id] = current_time
+                    last_logged_times[
+                        current_member_id
+                    ] = current_time
 
-            # Guest 紀錄：有偵測到臉，但沒有 member_id
-            elif has_face and current_member_id is None:
-                if current_time - last_guest_log_time >= GUEST_LOG_INTERVAL:
+            # ----------------------------------------
+            # Guest 紀錄
+            # ----------------------------------------
+            # 必須是：
+            # 1. 畫面確實有人臉
+            # 2. 沒有辨識到正式會員
+            # 3. recognize_face 已確認狀態為 guest
+            elif (
+                has_face
+                and current_member_id is None
+                and current_recognition_status == "guest"
+            ):
+                # 避免同一位 Guest 每一幀都重複寫入
+                if (
+                    current_time - last_guest_log_time
+                    >= GUEST_LOG_INTERVAL
+                ):
                     log_recognition_result(
                         last_result,
                         visit_time=now_text(),
@@ -255,38 +325,47 @@ def generate_frames():
 
                     last_guest_log_time = current_time
 
+            # 檢查已經超過離店等待時間的會員
+            # 並建立 visit_end 紀錄
             close_timeout_visits(current_time)
 
-            # 畫框時直接使用上一筆辨識結果，不要再重新比對
-            frame = draw_face_boxes(frame, faces, last_result)
+            # 只有畫面有人臉時才畫框與辨識文字
+            if has_face:
+                frame = draw_face_boxes(
+                    frame,
+                    faces,
+                    last_result
+                )
 
-            ret, buffer = cv2.imencode(".jpg", frame)
+            # 將 OpenCV 畫面轉成 JPEG
+            ret, buffer = cv2.imencode(
+                ".jpg",
+                frame
+            )
 
             if not ret:
                 continue
 
             frame_bytes = buffer.tobytes()
 
+            # 傳送給 Flask 網頁串流
             yield (
                 b"--frame\r\n"
-                b"Content-Type: image/jpeg\r\n\r\n" + frame_bytes + b"\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n"
+                + frame_bytes
+                + b"\r\n"
             )
 
     except GeneratorExit:
         print("瀏覽器已關閉攝影機串流")
 
-    except KeyboardInterrupt:
-        print("使用者按下 Ctrl+C，攝影機串流停止")
-
     except Exception as e:
-        print("camera stream error:", e)
+        print(f"攝影機串流發生錯誤：{e}")
 
     finally:
         if cap is not None:
             cap.release()
-
-        cv2.destroyAllWindows()
-        print("攝影機已釋放")
+            print("攝影機已釋放")
 
 
 @camera_bp.route("/camera")

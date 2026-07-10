@@ -27,6 +27,12 @@ except Exception:
     db_get_member_by_id = None
 
 try:
+    from database.db import save_recognition_log as db_save_recognition_log
+except Exception as e:
+    db_save_recognition_log = None
+    print(f"警告：無法載入 recognition_logs 寫入函式：{e}")
+
+try:
     from linebot_service.notify import notify_vip_recognition
 except Exception as e:
     notify_vip_recognition = None
@@ -46,7 +52,7 @@ def get_member_level(vip=False, member_id=None, member_level=None):
     """
     統一會員等級名稱。
 
-    Guest：陌生客 / 訪客
+    guest：陌生客 / 訪客
     normal：一般會員
     vip：VIP 會員
     """
@@ -94,7 +100,7 @@ def normalize_member_data(member_data):
 
     return {
         "member_id": member_id,
-        "name": member_data.get("name", "Guest"),
+        "name": member_data.get("name", "guest"),
         "phone": member_data.get("phone"),
         "vip": vip,
         "member_level": member_level,
@@ -108,7 +114,7 @@ def normalize_member_data(member_data):
     }
 
 
-def build_result(member_data=None, confidence=0, recognition_status="Guest"):
+def build_result(member_data=None, confidence=0, recognition_status="guest"):
     """
     建立統一辨識結果格式。
 
@@ -233,7 +239,7 @@ face_cascade = cv2.CascadeClassifier(
 
 
 def detect_face(frame):
-    """偵測畫面中的人臉，並回傳人臉座標。"""
+    """偵測畫面中的人臉，並過濾明顯不合理的誤判框。"""
 
     if frame is None:
         return []
@@ -244,14 +250,46 @@ def detect_face(frame):
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    faces = face_cascade.detectMultiScale(
+    # 改善光線差異
+    gray = cv2.equalizeHist(gray)
+
+    detected_faces = face_cascade.detectMultiScale(
         gray,
-        scaleFactor=1.1,
-        minNeighbors=5,
-        minSize=(60, 60)
+        scaleFactor=1.15,
+        minNeighbors=7,
+        minSize=(90, 90),
+        maxSize=(450, 450)
     )
 
-    return faces
+    frame_height, frame_width = frame.shape[:2]
+    valid_faces = []
+
+    for x, y, w, h in detected_faces:
+        aspect_ratio = w / float(h)
+
+        # 一般正面人臉框比例通常接近正方形
+        if not 0.75 <= aspect_ratio <= 1.30:
+            continue
+
+        center_x = x + w / 2
+        center_y = y + h / 2
+
+        # 排除過度靠近畫面四周的誤判
+        if center_x < frame_width * 0.03:
+            continue
+
+        if center_x > frame_width * 0.97:
+            continue
+
+        if center_y < frame_height * 0.03:
+            continue
+
+        if center_y > frame_height * 0.97:
+            continue
+
+        valid_faces.append((x, y, w, h))
+
+    return valid_faces
 
 
 def recognize_face(frame, faces):
@@ -265,28 +303,59 @@ def recognize_face(frame, faces):
     """
 
     if face_recognition is None:
-        return build_result(confidence=0, recognition_status="failed")
+        return build_result(
+            confidence=0,
+            recognition_status="failed"
+        )
 
+    # 畫面完全沒有偵測到人臉
     if len(faces) == 0:
-        return build_result(confidence=0, recognition_status="no_face")
+        return build_result(
+            confidence=0,
+            recognition_status="no_face"
+        )
 
+    # 有偵測到臉，但沒有任何會員人臉資料可供比對
+    # 這種情況視為 guest
     if len(known_members) == 0:
-        return build_result(confidence=0, recognition_status="Guest")
+        return build_result(
+            confidence=0,
+            recognition_status="guest"
+        )
 
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    rgb_frame = cv2.cvtColor(
+        frame,
+        cv2.COLOR_BGR2RGB
+    )
 
     # MVP 階段先只處理第一張臉
     x, y, w, h = faces[0]
-    face_location = (y, x + w, y + h, x)
+    face_location = (
+        y,
+        x + w,
+        y + h,
+        x
+    )
 
     try:
-        encodings = face_recognition.face_encodings(rgb_frame, [face_location])
+        encodings = face_recognition.face_encodings(
+            rgb_frame,
+            [face_location]
+        )
+
     except Exception as e:
         print(f"即時人臉編碼失敗：{e}")
-        return build_result(confidence=0, recognition_status="failed")
+
+        return build_result(
+            confidence=0,
+            recognition_status="failed"
+        )
 
     if len(encodings) == 0:
-        return build_result(confidence=0, recognition_status="failed")
+        return build_result(
+            confidence=0,
+            recognition_status="failed"
+        )
 
     current_encoding = encodings[0]
 
@@ -299,17 +368,27 @@ def recognize_face(frame, faces):
             current_encoding
         )[0]
 
-        confidence = float(round(1 - distance, 2))
+        confidence = float(
+            round(1 - distance, 2)
+        )
 
         if distance < 0.6:
-            member_data = get_member_by_id(member["member_id"]) or member
+            member_data = (
+                get_member_by_id(member["member_id"])
+                or member
+            )
+
             return build_result(
                 member_data=member_data,
                 confidence=confidence,
                 recognition_status="recognized"
             )
 
-    return build_result(confidence=0, recognition_status="Guest")
+    # 有偵測到人臉，但沒有比對到任何會員
+    return build_result(
+        confidence=0,
+        recognition_status="guest"
+    )
 
 
 # -----------------------------
@@ -326,7 +405,7 @@ def draw_face_boxes(frame, faces, result=None):
     if result is None:
         result = recognize_face(frame, faces)
 
-    member_level = result.get("member_level", "Guest")
+    member_level = result.get("member_level", "guest")
 
     if member_level == "vip":
         display_name = f"Member ID: {result['member_id']}"
@@ -337,9 +416,9 @@ def draw_face_boxes(frame, faces, result=None):
         member_type = "Normal Member"
         box_name = f"Member {result['member_id']}"
     else:
-        display_name = "Guest"
-        member_type = "Guest"
-        box_name = "Guest"
+        display_name = "guest"
+        member_type = "guest"
+        box_name = "guest"
 
     cv2.putText(frame, f"Name: {display_name}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
     cv2.putText(frame, f"Type: {member_type}", (20, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
@@ -372,8 +451,8 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
         "member_id": result.get("member_id"),
         "camera_id": camera_id,
         "confidence": result.get("confidence", 0),
-        "member_level": result.get("member_level", "Guest"),
-        "recognition_status": result.get("recognition_status", "Guest"),
+        "member_level": result.get("member_level", "guest"),
+        "recognition_status": result.get("recognition_status", "guest"),
         "visit_status": visit_status,
         "visit_time": visit_time,
         "leave_time": leave_time,
@@ -409,42 +488,35 @@ def log_recognition_result(result, visit_time=None, leave_time=None, stay_minute
     print(f"created_at: {recognition_log['created_at']}")
     print("=====================================")
 
-    save_recognition_log(recognition_log)
+    return save_recognition_log(recognition_log)
 
 
 def save_recognition_log(recognition_log):
     """
-    模擬寫入 recognition_logs 資料表。
-    正式版可改成呼叫資料庫組提供的 insert_recognition_log(data)。
+    將 recognition_log 寫入 MySQL。
+
+    資料庫錯誤由 database.db 負責 rollback 與 close；
+    此處捕捉錯誤，避免攝影機串流因單次寫入失敗而中斷。
     """
+    if db_save_recognition_log is None:
+        print("recognition_logs 寫入失敗：資料庫寫入函式未成功匯入")
+        return None
 
-    sql = """
-    INSERT INTO recognition_logs
-    (member_id, camera_id, confidence, member_level, recognition_status,
-     visit_status, visit_time, leave_time, stay_minutes, created_at)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """
+    try:
+        log_id = db_save_recognition_log(recognition_log)
 
-    values = (
-        recognition_log.get("member_id"),
-        recognition_log.get("camera_id"),
-        recognition_log.get("confidence"),
-        recognition_log.get("member_level"),
-        recognition_log.get("recognition_status"),
-        recognition_log.get("visit_status"),
-        recognition_log.get("visit_time"),
-        recognition_log.get("leave_time"),
-        recognition_log.get("stay_minutes"),
-        recognition_log.get("created_at")
-    )
+        print("========== recognition_logs INSERT success ==========")
+        print(f"log_id: {log_id}")
+        print("=====================================================")
 
-    print("========== Prepare INSERT recognition_logs ==========")
-    print("SQL:")
-    print(sql)
-    print("VALUES:")
-    print(values)
-    print("=====================================================")
+        return log_id
 
+    except Exception as e:
+        print("========== recognition_logs INSERT failed ==========")
+        print(f"error: {e}")
+        print("====================================================")
+
+        return None
 
 def send_line_notify(result):
     """
