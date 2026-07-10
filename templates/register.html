@@ -6,6 +6,7 @@
     <title>會員註冊｜智慧會員系統</title>
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 
 <body class="customer-page">
@@ -60,10 +61,14 @@
             <div class="register-card">
                 <h2>會員註冊</h2>
 
-                <form class="register-form">
+                <p class="form-hint" id="lineHint">
+                    正在確認您的 LINE 身分...
+                </p>
+
+                <form class="register-form" id="registerForm">
                     <div class="form-group">
                         <label for="name">姓名</label>
-                        <input type="text" id="name" placeholder="請輸入姓名">
+                        <input type="text" id="name" placeholder="請輸入姓名" required>
                     </div>
 
                     <div class="form-group">
@@ -73,7 +78,7 @@
 
                     <div class="form-group">
                         <label for="line_user_id">LINE User ID</label>
-                        <input type="text" id="line_user_id" placeholder="後續可串接 LINE 綁定">
+                        <input type="text" id="line_user_id" placeholder="由 LINE 自動帶入" readonly>
                     </div>
 
                     <div class="form-group">
@@ -81,8 +86,22 @@
                         <input type="date" id="birthday">
                     </div>
 
-                    <button type="button" class="primary-btn">完成註冊</button>
+                    <div class="form-group">
+                        <label>喜好項目（可複選）</label>
+                        <div class="pref-options">
+                            <label class="pref-option"><input type="checkbox" name="preference" value="咖啡"> 咖啡</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="甜點"> 甜點</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="飲品"> 飲品</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="服飾"> 服飾</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="保養品"> 保養品</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="新品通知"> 新品通知</label>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="primary-btn" id="registerButton">完成註冊</button>
                 </form>
+
+                <div class="register-result" id="registerResult" hidden></div>
             </div>
 
             <div class="customer-benefits">
@@ -118,7 +137,7 @@
         </div>
     </div>
 
-    <button type="button" class="secondary-btn" id="spinButton">
+    <button type="button" class="secondary-btn" id="spinButton" disabled>
         開始抽獎
     </button>
 
