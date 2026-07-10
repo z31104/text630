@@ -1,5 +1,5 @@
 from flask import Blueprint, request, redirect, jsonify
-from database.db import get_connection
+from database.db import get_connection, save_recognition_log
 
 member_bp = Blueprint("member", __name__)
 
@@ -76,16 +76,20 @@ def add_recognition_log():
     if not data:
         return jsonify({"error": "請傳入 JSON 格式資料"}), 400
 
-    member_id = data.get("member_id")
-    name = data.get("name")
-    vip = data.get("vip", False)
-    line_user_id = data.get("line_user_id")
-    confidence = data.get("confidence", 0)
-    recognized_at = data.get("recognized_at")
-    camera_location = data.get("camera_location")
+    try:
+        log_id = save_recognition_log(data)
 
-    conn = get_connection()
-    cursor = conn.cursor()
+        return jsonify({
+            "message": "辨識紀錄新增成功",
+            "log_id": log_id,
+            "data": data
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "辨識紀錄新增失敗",
+            "detail": str(e)
+        }), 500
 
     sql = """
     INSERT INTO recognition_logs

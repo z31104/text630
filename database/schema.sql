@@ -1,4 +1,7 @@
-CREATE DATABASE IF NOT EXISTS smart_member_system;
+CREATE DATABASE IF NOT EXISTS smart_member_system
+CHARACTER SET utf8mb4
+COLLATE utf8mb4_unicode_ci;
+
 USE smart_member_system;
 
 CREATE TABLE IF NOT EXISTS members (
@@ -28,17 +31,23 @@ CREATE TABLE IF NOT EXISTS recognition_logs (
     log_id INT AUTO_INCREMENT PRIMARY KEY,
 
     member_id INT NULL,
-   camera_id VARCHAR(50) NULL,
+    camera_id VARCHAR(50),
+
+    name VARCHAR(50),
+    vip BOOLEAN DEFAULT FALSE,
+    line_user_id VARCHAR(100),
 
     confidence FLOAT DEFAULT 0,
     member_level VARCHAR(20),
-    recognition_status VARCHAR(20),
-    visit_status VARCHAR(20),
+    recognition_status VARCHAR(30),
+    visit_status VARCHAR(30),
 
+    recognized_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     visit_time DATETIME,
     leave_time DATETIME,
-    stay_minutes INT,
+    stay_minutes INT DEFAULT 0,
 
+    camera_location VARCHAR(100),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
     FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE SET NULL
