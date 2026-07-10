@@ -103,11 +103,29 @@
                     <h2>輪盤抽獎</h2>
                     <p>完成註冊後，可參加一次抽獎活動。</p>
 
-                    <div class="mini-wheel">
-                        <span>抽獎</span>
-                    </div>
+                    
+                    <div class="lottery-area">
+    <div class="wheel-wrapper">
+        <div class="wheel-pointer"></div>
 
-                    <button type="button" class="secondary-btn">開始抽獎</button>
+        <div class="spin-wheel" id="spinWheel">
+            <span class="wheel-item item-1">現折 50 元</span>
+            <span class="wheel-item item-2">9 折券</span>
+            <span class="wheel-item item-3">200元<br>購物券</span>
+            <span class="wheel-item item-4">神秘小禮</span>
+            <span class="wheel-item item-5">贈品<br>三選一</span>
+            <span class="wheel-item item-6">再接再厲</span>
+        </div>
+    </div>
+
+    <button type="button" class="secondary-btn" id="spinButton">
+        開始抽獎
+    </button>
+
+    <p class="lottery-result" id="lotteryResult">
+        完成註冊後可獲得一次抽獎機會
+    </p>
+</div>
                 </div>
 
             </div>
@@ -115,6 +133,6 @@
         </section>
 
     </main>
-
+    <script src="{{ url_for('static', filename='js/register.js') }}"></script>
 </body>
 </html>
