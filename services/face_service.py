@@ -156,11 +156,7 @@ def build_result(member_data=None, confidence=0, recognition_status="guest"):
 def get_member_by_id(member_id):
     """
     查詢會員資料。
-
-    正式版請由資料庫組提供同名函式，回傳 members 資料表欄位。
-    目前如果沒有正式 DB 函式，就先從已載入的 known_members 裡面找。
     """
-
     if member_id is None:
         return None
 
@@ -176,10 +172,77 @@ def get_member_by_id(member_id):
 
     return None
 
-
 # -----------------------------
 # 人臉資料載入與辨識
 # -----------------------------
+
+# 第三週的新函式 validate_member_face_image
+def validate_member_face_image(image_path):
+    """
+    驗證新會員上傳的照片。
+
+    條件：
+    1. 照片必須存在
+    2. 照片必須剛好只有一張人臉
+    3. 成功後回傳 128 維 encoding
+    """
+
+    if face_recognition is None:
+        return {
+            "success": False,
+            "message": "尚未安裝 face_recognition",
+            "encoding": None
+        }
+
+    if not image_path or not os.path.exists(image_path):
+        return {
+            "success": False,
+            "message": "找不到會員照片",
+            "encoding": None
+        }
+
+    try:
+        image = face_recognition.load_image_file(image_path)
+        face_locations = face_recognition.face_locations(image)
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"照片讀取失敗：{e}",
+            "encoding": None
+        }
+
+    if len(face_locations) == 0:
+        return {
+            "success": False,
+            "message": "照片中沒有偵測到人臉",
+            "encoding": None
+        }
+
+    if len(face_locations) > 1:
+        return {
+            "success": False,
+            "message": "照片中偵測到多張人臉，請只上傳單人照片",
+            "encoding": None
+        }
+
+    encodings = face_recognition.face_encodings(
+        image,
+        face_locations
+    )
+
+    if len(encodings) == 0:
+        return {
+            "success": False,
+            "message": "無法建立人臉特徵",
+            "encoding": None
+        }
+
+    return {
+        "success": True,
+        "message": "人臉照片驗證成功",
+        "encoding": encodings[0]
+    }
+
 
 def load_member_faces():
     """讀取 member_images 資料夾中的會員圖片，並轉成人臉特徵資料。"""
@@ -232,6 +295,25 @@ def load_member_faces():
 
 
 known_members = load_member_faces()
+
+def reload_member_faces():
+    """
+    重新載入會員人臉資料。
+
+    新會員註冊完成後可以呼叫，
+    讓攝影機不用重新啟動 app.py 就能辨識新會員。
+    """
+
+    global known_members
+
+    known_members = load_member_faces()
+
+    print(
+        f"會員人臉資料已重新載入，共 {len(known_members)} 筆"
+    )
+
+    return known_members
+
 
 face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
