@@ -10,6 +10,10 @@ from routes.line import line_bp
 
 app = Flask(__name__)
 
+# 第三週新增：限制註冊照片最大 8 MB
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
+
+
 app.register_blueprint(home_bp)
 app.register_blueprint(camera_bp)
 app.register_blueprint(member_bp)
