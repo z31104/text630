@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
@@ -70,16 +70,8 @@
                         <label for="name">姓名</label>
                         <input type="text" id="name" placeholder="請輸入姓名" required>
                     </div>
+                    <input type="hidden" id="line_user_id">
 
-                    <div class="form-group">
-                        <label for="phone">手機號碼</label>
-                        <input type="text" id="phone" placeholder="請輸入手機號碼">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="line_user_id">LINE User ID</label>
-                        <input type="text" id="line_user_id" placeholder="由 LINE 自動帶入" readonly>
-                    </div>
 
                     <div class="form-group">
                         <label for="birthday">生日</label>
@@ -155,3 +147,4 @@
     <script src="{{ url_for('static', filename='js/register.js') }}"></script>
 </body>
 </html>
+

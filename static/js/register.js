@@ -1,4 +1,4 @@
-const LIFF_ID = "2010668858-gsTCqv7v";
+﻿const LIFF_ID = "2010668858-gsTCqv7v";
 
 const spinWheel = document.getElementById("spinWheel");
 const spinButton = document.getElementById("spinButton");
@@ -41,7 +41,7 @@ registerForm.addEventListener("submit", function (event) {
     event.preventDefault();
 
     const name = document.getElementById("name").value.trim();
-    const phone = document.getElementById("phone").value.trim();
+    const phone = null;
     const lineUserId = lineUserIdInput.value.trim();
     const birthday = document.getElementById("birthday").value;
     const preferences = Array.from(
