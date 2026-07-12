@@ -1,5 +1,6 @@
 import os
 import mysql.connector
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -225,5 +226,187 @@ def insert_vip_notification(member_id, log_id, line_user_id, message, status="se
     finally:
         if cursor:
             cursor.close()
+        if conn:
+            conn.close()
+def insert_member(
+    name,
+    phone=None,
+    vip=False,
+    member_level="一般會員",
+    line_user_id=None,
+    face_image=None
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        sql = """
+        INSERT INTO members (
+            name,
+            phone,
+            vip,
+            member_level,
+            line_user_id,
+            face_image
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """
+
+        cursor.execute(
+            sql,
+            (
+                name,
+                phone,
+                vip,
+                member_level,
+                line_user_id,
+                face_image
+            )
+        )
+
+        conn.commit()
+        return cursor.lastrowid
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+
+        print("新增會員失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+def insert_face_image(member_id, image_path, encoding_data):
+    conn = None
+    cursor = None
+
+    try:
+        if member_id is None:
+            raise ValueError("member_id 不可為空")
+
+        if encoding_data is None:
+            raise ValueError("encoding_data 不可為空")
+
+        # 支援 NumPy array
+        if hasattr(encoding_data, "tolist"):
+            encoding_data = encoding_data.tolist()
+
+        # 如果是 Python list，先檢查是否為 128 維
+        if isinstance(encoding_data, (list, tuple)):
+            if len(encoding_data) != 128:
+                raise ValueError(
+                    f"encoding_data 必須是 128 維，目前為 {len(encoding_data)} 維"
+                )
+
+            encoding_data = json.dumps(
+                list(encoding_data),
+                ensure_ascii=False
+            )
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        sql = """
+        INSERT INTO face_images (
+            member_id,
+            image_path,
+            encoding_data
+        )
+        VALUES (%s, %s, %s)
+        """
+
+        cursor.execute(
+            sql,
+            (
+                member_id,
+                image_path,
+                encoding_data
+            )
+        )
+
+        conn.commit()
+        return cursor.lastrowid
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+
+        print("新增人臉資料失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+def get_all_member_faces():
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+        SELECT
+            fi.face_id,
+            fi.member_id,
+            fi.image_path,
+            fi.encoding_data,
+            fi.created_at,
+            m.name,
+            m.vip,
+            m.member_level,
+            m.line_user_id
+        FROM face_images fi
+        JOIN members m
+            ON fi.member_id = m.member_id
+        WHERE fi.encoding_data IS NOT NULL
+          AND fi.encoding_data <> ''
+        ORDER BY fi.face_id ASC
+        """
+
+        cursor.execute(sql)
+        rows = cursor.fetchall()
+
+        valid_rows = []
+
+        for row in rows:
+            try:
+                encoding = json.loads(row["encoding_data"])
+
+                if not isinstance(encoding, list):
+                    continue
+
+                if len(encoding) != 128:
+                    continue
+
+                row["encoding_data"] = encoding
+                valid_rows.append(row)
+
+            except (TypeError, json.JSONDecodeError):
+                print(
+                    f"face_id={row['face_id']} 的 encoding_data 格式錯誤"
+                )
+
+        return valid_rows
+
+    except Exception as e:
+        print("取得會員人臉資料失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
         if conn:
             conn.close()
