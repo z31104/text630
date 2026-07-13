@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS members (
     name VARCHAR(50) NOT NULL,
     phone VARCHAR(20),
     vip BOOLEAN DEFAULT FALSE,
-    member_level VARCHAR(20) DEFAULT '一般會員',
+    member_level VARCHAR(20) DEFAULT 'normal',
     visit_count INT DEFAULT 0,
     line_user_id VARCHAR(100),
     total_amount INT DEFAULT 0,
@@ -44,14 +44,6 @@ CREATE TABLE IF NOT EXISTS members (
     registration_source VARCHAR(20) DEFAULT 'line',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-CREATE TABLE IF NOT EXISTS product_categories (
-    category_id INT AUTO_INCREMENT PRIMARY KEY,
-    category_name VARCHAR(100) NOT NULL UNIQUE,
-    description VARCHAR(255),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        ON UPDATE CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS purchase_records (
@@ -121,6 +113,9 @@ CREATE TABLE IF NOT EXISTS vip_notifications (
     message TEXT,
     status VARCHAR(20) DEFAULT 'pending',
     sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE KEY uq_vip_notifications_log_id (log_id),
+
     FOREIGN KEY (member_id) REFERENCES members(member_id),
     FOREIGN KEY (log_id) REFERENCES recognition_logs(log_id)
 );
@@ -169,16 +164,19 @@ CREATE TABLE IF NOT EXISTS member_preferences (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE CASCADE
 );
-INSERT IGNORE INTO product_categories
-(category_name, description)
+INSERT IGNORE INTO product_categories (
+    category_name,
+    description
+)
 VALUES
 ('沙發', '客廳沙發與扶手椅'),
 ('桌椅', '餐桌、書桌與各類座椅'),
 ('收納', '收納櫃、層架與收納盒'),
 ('燈具', '桌燈、立燈與吊燈'),
 ('寢具', '床架、床墊與寢具用品');
-INSERT IGNORE INTO products
-(
+
+
+INSERT IGNORE INTO products (
     product_code,
     product_name,
     category_id,
@@ -192,7 +190,7 @@ VALUES
 (
     'SOFA001',
     'KIVIK 三人座沙發',
-    11,
+    1,
     24990,
     10,
     '舒適寬敞的三人座沙發',
@@ -202,7 +200,7 @@ VALUES
 (
     'SOFA002',
     'EKTORP 雙人座沙發',
-    11,
+    1,
     18990,
     8,
     '經典造型雙人座沙發，椅套可拆洗',
@@ -212,7 +210,7 @@ VALUES
 (
     'TABLE001',
     'LACK 邊桌',
-    12,
+    2,
     399,
     50,
     '簡約輕巧的客廳邊桌',
@@ -222,7 +220,7 @@ VALUES
 (
     'CHAIR001',
     'POÄNG 扶手椅',
-    12,
+    2,
     3999,
     20,
     '符合人體工學的彎曲木製扶手椅',
@@ -232,7 +230,7 @@ VALUES
 (
     'STORAGE001',
     'KALLAX 層架組',
-    13,
+    3,
     2999,
     25,
     '適合客廳與臥室的收納層架',
@@ -242,7 +240,7 @@ VALUES
 (
     'STORAGE002',
     'BILLY 書櫃',
-    13,
+    3,
     2499,
     18,
     '經典簡約多層書櫃，適合居家收納',
@@ -252,7 +250,7 @@ VALUES
 (
     'LIGHT001',
     'TERTIAL 工作燈',
-    14,
+    4,
     699,
     30,
     '可調整方向的工作桌燈',
@@ -262,7 +260,7 @@ VALUES
 (
     'LIGHT002',
     'HEKTAR 立燈',
-    14,
+    4,
     1999,
     15,
     '工業風可調整式立燈',
@@ -272,7 +270,7 @@ VALUES
 (
     'BED001',
     'MALM 雙人床架',
-    15,
+    5,
     8999,
     12,
     '簡約設計雙人床架',
@@ -282,7 +280,7 @@ VALUES
 (
     'BED002',
     'HEMNES 單人床框',
-    15,
+    5,
     12990,
     6,
     '附收納抽屜的多功能單人床框',

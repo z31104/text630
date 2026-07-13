@@ -1,9 +1,24 @@
 import os
 import mysql.connector
 import json
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+# 辨識狀態
+RECOGNITION_STATUS_RECOGNIZED = "recognized"
+RECOGNITION_STATUS_UNKNOWN = "unknown"
+
+# 到店狀態
+VISIT_STATUS_VISITING = "visiting"
+VISIT_STATUS_ENDED = "visit_end"
+
+# VIP 通知狀態
+NOTIFICATION_STATUS_PENDING = "pending"
+NOTIFICATION_STATUS_SENT = "sent"
+NOTIFICATION_STATUS_FAILED = "failed"
 
 
 def clean_env(value):
@@ -97,8 +112,8 @@ def insert_recognition_log(
     camera_location=None,
     camera_id=None,
     member_level=None,
-    recognition_status=None,
-    visit_status=None,
+    recognition_status=RECOGNITION_STATUS_RECOGNIZED,
+visit_status=VISIT_STATUS_VISITING,
     visit_time=None,
     leave_time=None,
     stay_minutes=0,
@@ -189,7 +204,13 @@ def save_recognition_log(data):
         created_at=data.get("created_at")
     )
 
-def insert_vip_notification(member_id, log_id, line_user_id, message, status="sent"):
+def insert_vip_notification(
+    member_id,
+    log_id,
+    line_user_id,
+    message,
+    status="pending"
+):
     conn = None
     cursor = None
 
@@ -198,8 +219,13 @@ def insert_vip_notification(member_id, log_id, line_user_id, message, status="se
         cursor = conn.cursor()
 
         sql = """
-        INSERT INTO vip_notifications
-        (member_id, log_id, line_user_id, message, status)
+        INSERT INTO vip_notifications (
+            member_id,
+            log_id,
+            line_user_id,
+            message,
+            status
+        )
         VALUES (%s, %s, %s, %s, %s)
         """
 
@@ -216,6 +242,20 @@ def insert_vip_notification(member_id, log_id, line_user_id, message, status="se
 
         return cursor.lastrowid
 
+    except mysql.connector.IntegrityError as e:
+        if conn:
+            conn.rollback()
+
+        # 1062：同一個 log_id 已經有通知
+        if e.errno == 1062:
+            print(
+                f"VIP 通知已存在，略過重複新增：log_id={log_id}"
+            )
+            return None
+
+        print("新增 vip_notifications 失敗：", e)
+        raise
+
     except Exception as e:
         if conn:
             conn.rollback()
@@ -226,14 +266,14 @@ def insert_vip_notification(member_id, log_id, line_user_id, message, status="se
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
 
+        if conn and conn.is_connected():
+            conn.close()
 
 def update_recognition_last_seen(log_id, last_seen_at):
     conn = None
     cursor = None
-
+            
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -300,6 +340,7 @@ def close_recognition_visit(
         cursor.execute(
             sql,
             (
+                VISIT_STATUS_ENDED,
                 last_seen_at,
                 leave_time,
                 stay_seconds,
@@ -496,7 +537,7 @@ def register_member_with_face(
         conn = get_connection()
         conn.start_transaction()
         cursor = conn.cursor()
-        
+
         # 第一步：新增會員
         member_sql = """
         INSERT INTO members (
