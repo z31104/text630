@@ -103,9 +103,10 @@ CREATE TABLE IF NOT EXISTS recognition_logs (
 
     recognized_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     visit_time DATETIME,
-    leave_time DATETIME,
-    stay_minutes INT DEFAULT 0,
-
+    last_seen_at DATETIME NULL,
+    leave_time DATETIME NULL,
+    stay_seconds INT DEFAULT 0,
+    stay_minutes DECIMAL(10,2) DEFAULT 0,
     camera_location VARCHAR(100),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 

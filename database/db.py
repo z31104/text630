@@ -228,6 +228,104 @@ def insert_vip_notification(member_id, log_id, line_user_id, message, status="se
             cursor.close()
         if conn:
             conn.close()
+
+
+def update_recognition_last_seen(log_id, last_seen_at):
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        sql = """
+        UPDATE recognition_logs
+        SET
+            last_seen_at = %s,
+            recognition_status = 'recognized'
+        WHERE log_id = %s
+        """
+
+        cursor.execute(
+            sql,
+            (
+                last_seen_at,
+                log_id
+            )
+        )
+
+        conn.commit()
+        return cursor.rowcount
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+
+        print("更新 recognition_logs last_seen_at 失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
+
+def close_recognition_visit(
+    log_id,
+    last_seen_at,
+    leave_time,
+    stay_seconds,
+    stay_minutes
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        sql = """
+        UPDATE recognition_logs
+        SET
+            visit_status = 'visit_end',
+            last_seen_at = %s,
+            leave_time = %s,
+            stay_seconds = %s,
+            stay_minutes = %s
+        WHERE log_id = %s
+        """
+
+        cursor.execute(
+            sql,
+            (
+                last_seen_at,
+                leave_time,
+                stay_seconds,
+                stay_minutes,
+                log_id
+            )
+        )
+
+        conn.commit()
+        return cursor.rowcount
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+
+        print("更新會員離店紀錄失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()    
+
+
 def insert_member(
     name,
     phone=None,
@@ -286,6 +384,8 @@ VALUES (%s, %s, %s, %s, %s, %s, %s)
 
         if conn:
             conn.close()
+
+            
 def insert_face_image(member_id, image_path, encoding_data):
     conn = None
     cursor = None
@@ -350,6 +450,126 @@ def insert_face_image(member_id, image_path, encoding_data):
 
         if conn:
             conn.close()
+
+def register_member_with_face(
+    name,
+    phone=None,
+    vip=False,
+    member_level="normal",
+    line_user_id=None,
+    face_image=None,
+    registration_source="line",
+    image_path=None,
+    encoding_data=None
+):
+    conn = None
+    cursor = None
+
+    try:
+        if not name:
+            raise ValueError("name 不可為空")
+
+        if not image_path:
+            raise ValueError("image_path 不可為空")
+
+        if encoding_data is None:
+            raise ValueError("encoding_data 不可為空")
+
+        # NumPy array 轉成 Python list
+        if hasattr(encoding_data, "tolist"):
+            encoding_data = encoding_data.tolist()
+
+        # 檢查人臉特徵是否為 128 維
+        if isinstance(encoding_data, (list, tuple)):
+            if len(encoding_data) != 128:
+                raise ValueError(
+                    f"encoding_data 必須是 128 維，目前為 {len(encoding_data)} 維"
+                )
+
+            encoding_data = json.dumps(
+                list(encoding_data),
+                ensure_ascii=False
+            )
+        if not face_image:
+            face_image = image_path
+
+        conn = get_connection()
+        conn.start_transaction()
+        cursor = conn.cursor()
+        
+        # 第一步：新增會員
+        member_sql = """
+        INSERT INTO members (
+            name,
+            phone,
+            vip,
+            member_level,
+            line_user_id,
+            face_image,
+            registration_source
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+
+        cursor.execute(
+            member_sql,
+            (
+                name,
+                phone,
+                vip,
+                member_level,
+                line_user_id,
+                face_image,
+                registration_source
+            )
+        )
+
+        member_id = cursor.lastrowid
+
+        # 第二步：新增人臉資料
+        face_sql = """
+        INSERT INTO face_images (
+            member_id,
+            image_path,
+            encoding_data
+        )
+        VALUES (%s, %s, %s)
+        """
+
+        cursor.execute(
+            face_sql,
+            (
+                member_id,
+                image_path,
+                encoding_data
+            )
+        )
+
+        face_id = cursor.lastrowid
+
+        # 兩個都成功才提交
+        conn.commit()
+
+        return {
+            "member_id": member_id,
+            "face_id": face_id,
+            "success": True
+        }
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+
+        print("會員與人臉資料註冊失敗，已 rollback：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
+
 
 def get_all_member_faces():
     conn = None
