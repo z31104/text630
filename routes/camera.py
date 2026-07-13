@@ -15,6 +15,8 @@ from services.face_service import (
     recognize_face,
     draw_face_boxes,
     log_recognition_result,
+    update_recognition_last_seen,
+    close_recognition_visit,
     send_line_notify
 )
 
@@ -58,8 +60,6 @@ last_result = {
     "member_level_text": "No Face"
 }
 
-# 記錄每個會員上一次產生 recognition log 的時間，避免同一個人一直寫入
-last_logged_times = {}
 
 # 記錄每個會員目前是否在店內，用來計算 visit_time / leave_time / stay_minutes
 active_visits = {}
@@ -69,7 +69,7 @@ last_guest_log_time = 0
 
 # 設定參數
 RECOGNITION_INTERVAL = 3       # 每 3 秒做一次人臉比對
-MEMBER_LOG_INTERVAL = 30       # 同一會員每 30 秒最多記錄一次 recognition log
+LAST_SEEN_UPDATE_INTERVAL = 15 # 每 15 秒更新一次資料庫
 GUEST_LOG_INTERVAL = 60        # Guest 每 60 秒最多記錄一次，避免太頻繁
 MIN_CONFIDENCE = 0.6           # 信心值低於 0.6 的會員辨識結果先不記錄
 LEAVE_TIMEOUT = 60             # 超過 60 秒沒再看到同一會員，就先視為離店
@@ -116,73 +116,148 @@ def open_camera(camera_index=CAMERA_INDEX):
 
 
 def update_member_visit(result, current_time):
-    global last_logged_times
+    """
+    第一次看到會員時新增一筆 recognition_logs。
+    持續看到同一會員時，只更新原本紀錄的 last_seen_at。
+    """
 
     member_id = result.get("member_id")
 
     if member_id is None:
         return
 
+    current_time_text = now_text()
+
+    # 第一次看到這位會員
     if member_id not in active_visits:
-        visit_time = now_text()
+        visit_time = current_time_text
 
-        active_visits[member_id] = {
-            "result": result,
-            "visit_timestamp": current_time,
-            "visit_time": visit_time,
-            "last_seen_timestamp": current_time
-        }
-
-        log_recognition_result(
+        log_id = log_recognition_result(
             result,
             visit_time=visit_time,
             leave_time=None,
-            stay_minutes=None,
+            stay_minutes=0,
             visit_status="visit_start",
             camera_id=CAMERA_ID
         )
 
-        # 從現在開始計算 30 秒
-        # 避免 visit_start 後馬上又寫一筆 recognition
-        last_logged_times[member_id] = current_time
+        if log_id is None:
+            print(
+                f"會員到店紀錄新增失敗，"
+                f"member_id={member_id}"
+            )
+            return
+
+        active_visits[member_id] = {
+            "log_id": log_id,
+            "result": result,
+            "visit_timestamp": current_time,
+            "visit_time": visit_time,
+            "last_seen_timestamp": current_time,
+            "last_seen_at": current_time_text,
+            "last_db_update_timestamp": current_time
+        }
+
+        print("========== Member Visit Started ==========")
+        print(f"member_id: {member_id}")
+        print(f"log_id: {log_id}")
+        print(f"visit_time: {visit_time}")
+        print("==========================================")
 
         try:
             send_line_notify(result)
         except Exception as e:
             print("LINE notify error:", e)
 
+    # 持續看到同一位會員
     else:
-        active_visits[member_id]["result"] = result
-        active_visits[member_id]["last_seen_timestamp"] = current_time
+        visit_data = active_visits[member_id]
+
+        # 記憶體中的最後看到時間每次更新，
+        # 供離店判斷使用
+        visit_data["result"] = result
+        visit_data["last_seen_timestamp"] = current_time
+        visit_data["last_seen_at"] = current_time_text
+
+        last_db_update_timestamp = visit_data.get(
+            "last_db_update_timestamp",
+            0
+        )
+
+        # 每隔一段時間才更新資料庫
+        if (
+            current_time - last_db_update_timestamp
+            >= LAST_SEEN_UPDATE_INTERVAL
+        ):
+            log_id = visit_data.get("log_id")
+
+            update_recognition_last_seen(
+                log_id=log_id,
+                last_seen_at=current_time_text
+            )
+
+            visit_data["last_db_update_timestamp"] = current_time
 
 
 def close_timeout_visits(current_time):
     """
-    檢查哪些會員已經超過 LEAVE_TIMEOUT 沒被拍到，
-    先視為離店並計算 stay_minutes。
+    檢查已超過 LEAVE_TIMEOUT 沒被辨識到的會員。
+
+    不再新增 visit_end 紀錄，
+    而是更新第一次到店所建立的同一筆 recognition_logs。
     """
 
     leaving_member_ids = []
 
     for member_id, visit_data in list(active_visits.items()):
-        last_seen = visit_data["last_seen_timestamp"]
+        last_seen_timestamp = visit_data["last_seen_timestamp"]
 
-        if current_time - last_seen >= LEAVE_TIMEOUT:
-            leave_time = now_text()
-            stay_seconds = current_time - visit_data["visit_timestamp"]
-            stay_minutes = round(stay_seconds / 60, 2)
+        if current_time - last_seen_timestamp >= LEAVE_TIMEOUT:
+            log_id = visit_data.get("log_id")
 
-            log_recognition_result(
-                visit_data["result"],
-                visit_time=visit_data["visit_time"],
-                leave_time=leave_time,
-                stay_minutes=stay_minutes,
-                visit_status="visit_end",
-                camera_id=CAMERA_ID
+            last_seen_at = visit_data.get(
+                "last_seen_at",
+                now_text()
             )
 
-            leaving_member_ids.append(member_id)
+            # 離店時間使用最後一次實際看到會員的時間
+            leave_time = last_seen_at
 
+            stay_seconds = int(
+                round(
+                    last_seen_timestamp
+                    - visit_data["visit_timestamp"]
+                )
+            )
+
+            # 避免停留秒數出現負數
+            stay_seconds = max(stay_seconds, 0)
+
+            stay_minutes = round(
+                stay_seconds / 60,
+                2
+            )
+
+            closed = close_recognition_visit(
+                log_id=log_id,
+                last_seen_at=last_seen_at,
+                leave_time=leave_time,
+                stay_seconds=stay_seconds,
+                stay_minutes=stay_minutes
+            )
+
+            if closed:
+                print("========== Member Visit Ended ==========")
+                print(f"member_id: {member_id}")
+                print(f"log_id: {log_id}")
+                print(f"leave_time: {leave_time}")
+                print(f"stay_seconds: {stay_seconds}")
+                print(f"stay_minutes: {stay_minutes}")
+                print("========================================")
+
+                leaving_member_ids.append(member_id)
+
+    # 更新成功後才從目前在店會員中移除
     for member_id in leaving_member_ids:
         del active_visits[member_id]
 
@@ -190,7 +265,6 @@ def close_timeout_visits(current_time):
 def generate_frames():
     global last_recognition_time
     global last_result
-    global last_logged_times
     global last_guest_log_time
 
     cap = open_camera(CAMERA_INDEX)
@@ -270,32 +344,7 @@ def generate_frames():
                     current_time
                 )
 
-                last_time = last_logged_times.get(
-                    current_member_id,
-                    0
-                )
-
-                # 避免每一幀都寫入 recognition_logs
-                if (
-                    current_time - last_time
-                    >= MEMBER_LOG_INTERVAL
-                ):
-                    visit_time = active_visits[
-                        current_member_id
-                    ]["visit_time"]
-
-                    log_recognition_result(
-                        last_result,
-                        visit_time=visit_time,
-                        leave_time=None,
-                        stay_minutes=None,
-                        visit_status="recognition",
-                        camera_id=CAMERA_ID
-                    )
-
-                    last_logged_times[
-                        current_member_id
-                    ] = current_time
+        
 
             # ----------------------------------------
             # Guest 紀錄

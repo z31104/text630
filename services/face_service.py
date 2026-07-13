@@ -35,6 +35,16 @@ except Exception as e:
     print(f"警告：無法載入 recognition_logs 寫入函式：{e}")
 
 try:
+    from database.db import (
+        update_recognition_last_seen as db_update_recognition_last_seen,
+        close_recognition_visit as db_close_recognition_visit
+    )
+except Exception as e:
+    db_update_recognition_last_seen = None
+    db_close_recognition_visit = None
+    print(f"警告：無法載入 recognition_logs 更新函式：{e}")
+
+try:
     from database.db import get_all_member_faces
 except Exception as e:
     get_all_member_faces = None
@@ -762,6 +772,96 @@ def save_recognition_log(recognition_log):
         print("====================================================")
 
         return None
+    
+
+def update_recognition_last_seen(log_id, last_seen_at):
+    """
+    同一位會員持續出現在鏡頭前時，
+    更新原本 recognition_logs 的 last_seen_at，
+    不再新增新的辨識紀錄。
+    """
+
+    if log_id is None:
+        print("更新 last_seen_at 失敗：log_id 不可為空")
+        return False
+
+    if db_update_recognition_last_seen is None:
+        print("更新 last_seen_at 失敗：資料庫更新函式未成功匯入")
+        return False
+
+    try:
+        updated_rows = db_update_recognition_last_seen(
+            log_id=log_id,
+            last_seen_at=last_seen_at
+        )
+
+        # 有實際更新資料時才顯示，
+        # 避免相同時間造成大量 updated_rows: 0
+        if updated_rows > 0:
+            print("========== Recognition Log UPDATE ==========")
+            print(f"log_id: {log_id}")
+            print(f"last_seen_at: {last_seen_at}")
+            print("============================================")
+            
+        return True
+
+    except Exception as e:
+        print("========== Recognition Log UPDATE Failed ==========")
+        print(f"log_id: {log_id}")
+        print(f"error: {e}")
+        print("===================================================")
+
+        return False
+
+
+def close_recognition_visit(
+    log_id,
+    last_seen_at,
+    leave_time,
+    stay_seconds,
+    stay_minutes
+):
+    """
+    會員超過離店等待時間後，
+    更新原本的 recognition_logs 紀錄為 visit_end。
+    """
+
+    if log_id is None:
+        print("關閉會員到店紀錄失敗：log_id 不可為空")
+        return False
+
+    if db_close_recognition_visit is None:
+        print("關閉會員到店紀錄失敗：資料庫更新函式未成功匯入")
+        return False
+
+    try:
+        updated_rows = db_close_recognition_visit(
+            log_id=log_id,
+            last_seen_at=last_seen_at,
+            leave_time=leave_time,
+            stay_seconds=stay_seconds,
+            stay_minutes=stay_minutes
+        )
+
+        print("========== Recognition Visit Closed ==========")
+        print(f"log_id: {log_id}")
+        print(f"last_seen_at: {last_seen_at}")
+        print(f"leave_time: {leave_time}")
+        print(f"stay_seconds: {stay_seconds}")
+        print(f"stay_minutes: {stay_minutes}")
+        print(f"updated_rows: {updated_rows}")
+        print("==============================================")
+
+        return updated_rows > 0
+
+    except Exception as e:
+        print("========== Close Recognition Visit Failed ==========")
+        print(f"log_id: {log_id}")
+        print(f"error: {e}")
+        print("====================================================")
+
+        return False
+
 
 def send_line_notify(result):
     """
