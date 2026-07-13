@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 
 import cv2
+import numpy as np
 
 try:
     import face_recognition
@@ -22,15 +23,28 @@ except Exception:
     get_member_by_image = None
 
 try:
-    from database.member_repository import get_member_by_id as db_get_member_by_id
-except Exception:
+    from database.db import get_member_by_id as db_get_member_by_id
+except Exception as e:
     db_get_member_by_id = None
+    print(f"警告：無法載入會員查詢函式：{e}")
 
 try:
     from database.db import save_recognition_log as db_save_recognition_log
 except Exception as e:
     db_save_recognition_log = None
     print(f"警告：無法載入 recognition_logs 寫入函式：{e}")
+
+try:
+    from database.db import get_all_member_faces
+except Exception as e:
+    get_all_member_faces = None
+    print(f"警告：無法載入會員人臉資料函式：{e}")
+
+try:
+    from database.db import insert_face_image
+except Exception as e:
+    insert_face_image = None
+    print(f"警告：無法載入人臉資料寫入函式：{e}")
 
 try:
     from linebot_service.notify import notify_vip_recognition
@@ -244,8 +258,95 @@ def validate_member_face_image(image_path):
     }
 
 
+def register_member_face(member_id, image_path):
+    """
+    為已建立的會員進行人臉建檔。
+
+    流程：
+    1. 驗證照片只有一張人臉
+    2. 產生 128 維 encoding
+    3. 寫入 face_images
+    4. 重新載入會員人臉快取
+    """
+
+    if member_id is None:
+        return {
+            "success": False,
+            "message": "member_id 不可為空",
+            "member_id": None,
+            "face_id": None
+        }
+
+    if not image_path:
+        return {
+            "success": False,
+            "message": "image_path 不可為空",
+            "member_id": member_id,
+            "face_id": None
+        }
+
+    if insert_face_image is None:
+        return {
+            "success": False,
+            "message": "人臉資料寫入函式尚未載入",
+            "member_id": member_id,
+            "face_id": None
+        }
+
+    face_result = validate_member_face_image(image_path)
+
+    if not face_result.get("success"):
+        return {
+            "success": False,
+            "message": face_result.get("message", "人臉照片驗證失敗"),
+            "member_id": member_id,
+            "face_id": None
+        }
+
+    encoding = face_result.get("encoding")
+
+    if encoding is None or len(encoding) != 128:
+        return {
+            "success": False,
+            "message": "人臉 encoding 不是有效的 128 維資料",
+            "member_id": member_id,
+            "face_id": None
+        }
+
+    try:
+        face_id = insert_face_image(
+            member_id=member_id,
+            image_path=image_path,
+            encoding_data=encoding
+        )
+
+        loaded_members = reload_member_faces()
+
+        return {
+            "success": True,
+            "message": "會員人臉建檔成功",
+            "member_id": member_id,
+            "face_id": face_id,
+            "encoding_length": len(encoding),
+            "loaded_member_count": len(loaded_members)
+        }
+
+    except Exception as e:
+        print(f"會員人臉建檔失敗：{e}")
+
+        return {
+            "success": False,
+            "message": f"會員人臉建檔失敗：{e}",
+            "member_id": member_id,
+            "face_id": None
+        }
+
+
 def load_member_faces():
-    """讀取 member_images 資料夾中的會員圖片，並轉成人臉特徵資料。"""
+    """
+    優先從正式資料庫讀取會員人臉 encoding。
+    若資料庫無資料或連線失敗，暫時退回 member_images 假資料。
+    """
 
     if face_recognition is None:
         print("尚未安裝 face_recognition，略過會員人臉資料載入")
@@ -253,6 +354,64 @@ def load_member_faces():
 
     members = []
 
+    # 先嘗試從正式資料庫載入
+    if get_all_member_faces is not None:
+        try:
+            rows = get_all_member_faces()
+
+            for row in rows:
+                encoding_data = row.get("encoding_data")
+
+                if not isinstance(encoding_data, list):
+                    continue
+
+                if len(encoding_data) != 128:
+                    continue
+
+                member_data = {
+                    "member_id": row.get("member_id"),
+                    "name": row.get("name", "guest"),
+                    "phone": row.get("phone"),
+                    "vip": bool(row.get("vip", False)),
+                    "member_level": row.get("member_level"),
+                    "visit_count": row.get("visit_count", 0),
+                    "line_user_id": row.get("line_user_id"),
+                    "total_amount": row.get("total_amount", 0),
+                    "favorite_product": row.get("favorite_product"),
+                    "face_image": row.get("image_path"),
+                    "created_at": row.get("created_at"),
+                    "updated_at": row.get("updated_at"),
+                    "encoding": np.array(
+                        encoding_data,
+                        dtype=float
+                    )
+                }
+
+                member_data = normalize_member_data(member_data)
+                member_data["encoding"] = np.array(
+                    encoding_data,
+                    dtype=float
+                )
+
+                members.append(member_data)
+
+                print(
+                    f"已從資料庫載入會員人臉："
+                    f"member_id={row.get('member_id')}"
+                )
+
+            if members:
+                print(
+                    f"正式資料庫會員人臉載入完成，共 {len(members)} 筆"
+                )
+                return members
+
+            print("正式資料庫目前沒有可用的人臉資料，改用 member_images")
+
+        except Exception as e:
+            print(f"正式資料庫人臉資料載入失敗，改用 member_images：{e}")
+
+    # 以下保留你原本掃描 member_images 的舊程式
     if not os.path.exists(MEMBER_IMAGE_DIR):
         print("找不到會員圖片資料夾:", MEMBER_IMAGE_DIR)
         return members
@@ -278,8 +437,9 @@ def load_member_faces():
             print("找不到 fake_db.get_member_by_image，無法載入會員假資料")
             continue
 
-        # MVP 階段先用圖片檔名找會員資料；正式版會改成會員人臉資料表。
-        member_data = normalize_member_data(get_member_by_image(filename))
+        member_data = normalize_member_data(
+            get_member_by_image(filename)
+        )
 
         if member_data is None:
             print(f"假資料庫找不到對應會員：{filename}")
@@ -531,6 +691,9 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
     return {
         # visit_id 由資料庫 AUTO_INCREMENT 產生，Python 不需要給
         "member_id": result.get("member_id"),
+        "name": result.get("name"),
+        "vip": result.get("vip", False),
+        "line_user_id": result.get("line_user_id"),
         "camera_id": camera_id,
         "confidence": result.get("confidence", 0),
         "member_level": result.get("member_level", "guest"),
