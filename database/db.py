@@ -232,9 +232,10 @@ def insert_member(
     name,
     phone=None,
     vip=False,
-    member_level="一般會員",
+    member_level="normal",
     line_user_id=None,
-    face_image=None
+    face_image=None,
+    registration_source="line"
 ):
     conn = None
     cursor = None
@@ -244,28 +245,30 @@ def insert_member(
         cursor = conn.cursor()
 
         sql = """
-        INSERT INTO members (
-            name,
-            phone,
-            vip,
-            member_level,
-            line_user_id,
-            face_image
-        )
-        VALUES (%s, %s, %s, %s, %s, %s)
-        """
+INSERT INTO members (
+    name,
+    phone,
+    vip,
+    member_level,
+    line_user_id,
+    face_image,
+    registration_source
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s)
+"""
 
         cursor.execute(
-            sql,
-            (
-                name,
-                phone,
-                vip,
-                member_level,
-                line_user_id,
-                face_image
-            )
-        )
+    sql,
+    (
+        name,
+        phone,
+        vip,
+        member_level,
+        line_user_id,
+        face_image,
+        registration_source
+    )
+)
 
         conn.commit()
         return cursor.lastrowid

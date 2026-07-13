@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS members (
     total_amount INT DEFAULT 0,
     favorite_product VARCHAR(100),
     face_image VARCHAR(255),
+    registration_source VARCHAR(20) DEFAULT 'line',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -75,7 +76,7 @@ CREATE TABLE IF NOT EXISTS purchase_records (
 CREATE TABLE IF NOT EXISTS face_images (
     face_id INT AUTO_INCREMENT PRIMARY KEY,
     member_id INT NOT NULL,
-    image_path VARCHAR(255),
+   image_path VARCHAR(255) NOT NULL,
     encoding_data LONGTEXT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
