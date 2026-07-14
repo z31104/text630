@@ -1,4 +1,5 @@
 import os
+import uuid
 from flask import Blueprint, request, abort, jsonify
 
 from linebot import LineBotApi, WebhookHandler
@@ -8,8 +9,15 @@ from linebot.models import (
     TemplateSendMessage, ButtonsTemplate, URIAction,
 )
 
-from database.db import get_connection
+from database.db import get_connection, insert_member
 from linebot_service.notify import push_message
+from services.face_service import (
+    validate_member_face_image,
+    register_member_face,
+    MEMBER_IMAGE_DIR,
+)
+
+ALLOWED_FACE_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
 line_bp = Blueprint("line", __name__)
 
@@ -160,17 +168,80 @@ if STAFF_LINE_ENABLED:
         )
 
 
+def _fetch_member_by_line_user_id(line_user_id):
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT member_id, name, phone, vip, member_level, visit_count, "
+            "line_user_id, total_amount, favorite_product, face_image, created_at, updated_at "
+            "FROM members WHERE line_user_id = %s",
+            (line_user_id,)
+        )
+        return cursor.fetchone()
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+def _fetch_member_by_id(member_id):
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT member_id, name, phone, vip, member_level, visit_count, "
+            "line_user_id, total_amount, favorite_product, face_image, created_at, updated_at "
+            "FROM members WHERE member_id = %s",
+            (member_id,)
+        )
+        return cursor.fetchone()
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+def _delete_member(member_id):
+    """人臉建檔失敗時，把已建立的會員資料整筆撤銷，避免留下沒有照片的殘缺會員。"""
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM face_images WHERE member_id = %s", (member_id,))
+        cursor.execute("DELETE FROM members WHERE member_id = %s", (member_id,))
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"撤銷會員（member_id={member_id}）失敗：", e)
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
 @line_bp.route("/line/register", methods=["POST"])
 def register_from_line():
     """
     LINE 會員註冊 API（LINE 組自己的端點，只用 database.db 既有的 get_connection）。
     line_user_id 是使用者透過 LIFF 登入後，由前端 register.js 呼叫 liff.getProfile() 取得的。
-    """
-    data = request.get_json(silent=True) or {}
 
-    name = (data.get("name") or "").strip()
-    phone = (data.get("phone") or "").strip() or None
-    line_user_id = (data.get("line_user_id") or "").strip() or None
+    第三週改版：改收 multipart/form-data，新會員必須附上 face_image 照片才能完成人臉建檔，
+    照片只要沒偵測到人臉、偵測到多張臉、或建檔失敗，整筆註冊都會撤銷（不留殘缺會員資料）。
+    """
+    name = (request.form.get("name") or "").strip()
+    phone = (request.form.get("phone") or "").strip() or None
+    line_user_id = (request.form.get("line_user_id") or "").strip() or None
+    face_image_file = request.files.get("face_image")
 
     if not name:
         return jsonify({"error": "請輸入姓名"}), 400
@@ -178,58 +249,65 @@ def register_from_line():
     if not line_user_id:
         return jsonify({"error": "缺少 LINE 使用者資訊，請從 LINE 官方帳號的註冊連結進入此頁面"}), 400
 
-    conn = None
-    cursor = None
+    try:
+        member = _fetch_member_by_line_user_id(line_user_id)
+    except Exception as e:
+        print("會員查詢失敗：", e)
+        return jsonify({"error": "註冊失敗，請稍後再試", "detail": str(e)}), 500
+
+    if member is not None:
+        return jsonify({
+            "message": "您已經是會員囉，這是您目前的會員資料",
+            "is_new": False,
+            "member": member,
+        })
+
+    if not face_image_file or not face_image_file.filename:
+        return jsonify({"error": "請上傳您的照片以完成人臉建檔"}), 400
+
+    ext = os.path.splitext(face_image_file.filename)[1].lower()
+    if ext not in ALLOWED_FACE_IMAGE_EXTENSIONS:
+        return jsonify({"error": "照片格式不支援，請上傳 jpg 或 png 檔"}), 400
+
+    os.makedirs(MEMBER_IMAGE_DIR, exist_ok=True)
+    saved_filename = f"line_{uuid.uuid4().hex}{ext}"
+    image_path = os.path.join(MEMBER_IMAGE_DIR, saved_filename)
+    face_image_file.save(image_path)
+
+    face_check = validate_member_face_image(image_path)
+    if not face_check.get("success"):
+        os.remove(image_path)
+        return jsonify({"error": face_check.get("message", "照片驗證失敗")}), 400
 
     try:
-        conn = get_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        cursor.execute(
-            "SELECT member_id, name, phone, vip, member_level, visit_count, "
-            "line_user_id, total_amount, favorite_product, face_image, created_at, updated_at "
-            "FROM members WHERE line_user_id = %s",
-            (line_user_id,)
+        member_id = insert_member(
+            name=name,
+            phone=phone,
+            member_level="normal",
+            line_user_id=line_user_id,
+            face_image=saved_filename,
+            registration_source="line",
         )
-        member = cursor.fetchone()
-        is_new = member is None
-
-        if is_new:
-            cursor.execute(
-                "INSERT INTO members (name, phone, vip, member_level, visit_count, line_user_id, total_amount) "
-                "VALUES (%s, %s, FALSE, '一般會員', 0, %s, 0)",
-                (name, phone, line_user_id)
-            )
-            conn.commit()
-
-            cursor.execute(
-                "SELECT member_id, name, phone, vip, member_level, visit_count, "
-                "line_user_id, total_amount, favorite_product, face_image, created_at, updated_at "
-                "FROM members WHERE member_id = %s",
-                (cursor.lastrowid,)
-            )
-            member = cursor.fetchone()
-
     except Exception as e:
-        if conn:
-            conn.rollback()
+        os.remove(image_path)
         print("會員註冊失敗：", e)
         return jsonify({"error": "註冊失敗，請稍後再試", "detail": str(e)}), 500
 
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+    face_result = register_member_face(member_id, image_path)
+    if not face_result.get("success"):
+        _delete_member(member_id)
+        os.remove(image_path)
+        return jsonify({"error": face_result.get("message", "人臉建檔失敗")}), 500
 
-    if is_new:
-        push_message(
-            line_user_id,
-            f"{name} 您好，歡迎加入會員！記得下次到店讓我們認出您 😊"
-        )
+    member = _fetch_member_by_id(member_id)
+
+    push_message(
+        line_user_id,
+        f"{name} 您好，歡迎加入會員！記得下次到店讓我們認出您 😊"
+    )
 
     return jsonify({
-        "message": "註冊成功" if is_new else "您已經是會員囉，這是您目前的會員資料",
-        "is_new": is_new,
+        "message": "註冊成功",
+        "is_new": True,
         "member": member,
     })
