@@ -12,7 +12,7 @@ RECOGNITION_STATUS_RECOGNIZED = "recognized"
 RECOGNITION_STATUS_UNKNOWN = "unknown"
 
 # 到店狀態
-VISIT_STATUS_VISITING = "visiting"
+VISIT_STATUS_ARRIVED = "arrived"
 VISIT_STATUS_ENDED = "visit_end"
 
 # VIP 通知狀態
@@ -115,7 +115,7 @@ def insert_recognition_log(
     camera_id=None,
     member_level=None,
     recognition_status=RECOGNITION_STATUS_RECOGNIZED,
-visit_status=VISIT_STATUS_VISITING,
+    visit_status=VISIT_STATUS_ARRIVED,
     visit_time=None,
     leave_time=None,
     stay_minutes=0,
@@ -271,6 +271,76 @@ def insert_vip_notification(
 
         if conn and conn.is_connected():
             conn.close()
+
+
+def update_vip_notification_status(
+    notification_id,
+    status,
+    sent_at=None
+):
+    """
+    更新 VIP 通知結果。
+
+    status:
+    - pending：尚未發送
+    - sent：發送成功
+    - failed：發送失敗
+    """
+
+    conn = None
+    cursor = None
+
+    try:
+        if notification_id is None:
+            raise ValueError("notification_id 不可為空")
+
+        if status not in (
+            NOTIFICATION_STATUS_PENDING,
+            NOTIFICATION_STATUS_SENT,
+            NOTIFICATION_STATUS_FAILED
+        ):
+            raise ValueError(
+                f"不支援的 VIP 通知狀態：{status}"
+            )
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        sql = """
+        UPDATE vip_notifications
+        SET
+            status = %s,
+            sent_at = %s
+        WHERE notification_id = %s
+        """
+
+        cursor.execute(
+            sql,
+            (
+                status,
+                sent_at,
+                notification_id
+            )
+        )
+
+        conn.commit()
+
+        return cursor.rowcount
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+
+        print("更新 vip_notifications 狀態失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
+
 
 def update_recognition_last_seen(log_id, last_seen_at):
     conn = None

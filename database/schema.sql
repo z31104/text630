@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS vip_notifications (
     line_user_id VARCHAR(100),
     message TEXT,
     status VARCHAR(20) DEFAULT 'pending',
-    sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    sent_at DATETIME DEFAULT NULL,
 
     UNIQUE KEY uq_vip_notifications_log_id (log_id),
 
