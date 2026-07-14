@@ -1,3 +1,4 @@
+import json
 import os
 import uuid
 from flask import Blueprint, request, abort, jsonify
@@ -9,15 +10,16 @@ from linebot.models import (
     TemplateSendMessage, ButtonsTemplate, URIAction,
 )
 
-from database.db import get_connection, insert_member
+from database.db import get_connection, register_member_with_face
 from linebot_service.notify import push_message
 from services.face_service import (
     validate_member_face_image,
-    register_member_face,
+    reload_member_faces,
     MEMBER_IMAGE_DIR,
 )
 
 ALLOWED_FACE_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+ALLOWED_FACE_IMAGE_MIME_TYPES = {"image/jpeg", "image/png"}
 
 line_bp = Blueprint("line", __name__)
 
@@ -208,20 +210,42 @@ def _fetch_member_by_id(member_id):
             conn.close()
 
 
-def _delete_member(member_id):
-    """人臉建檔失敗時，把已建立的會員資料整筆撤銷，避免留下沒有照片的殘缺會員。"""
+def _fetch_member_by_phone(phone):
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT member_id FROM members WHERE phone = %s",
+            (phone,)
+        )
+        return cursor.fetchone()
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+def _insert_member_preferences(member_id, preferences):
+    """將註冊時勾選的喜好項目寫入既有的 member_preferences 表（db 組建立）。"""
     conn = None
     cursor = None
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM face_images WHERE member_id = %s", (member_id,))
-        cursor.execute("DELETE FROM members WHERE member_id = %s", (member_id,))
+        for value in preferences:
+            cursor.execute(
+                "INSERT INTO member_preferences (member_id, preference_value, source) "
+                "VALUES (%s, %s, %s)",
+                (member_id, value, "line")
+            )
         conn.commit()
     except Exception as e:
         if conn:
             conn.rollback()
-        print(f"撤銷會員（member_id={member_id}）失敗：", e)
+        print(f"會員喜好寫入失敗（member_id={member_id}）：", e)
     finally:
         if cursor:
             cursor.close()
@@ -237,37 +261,62 @@ def register_from_line():
 
     第三週改版：改收 multipart/form-data，新會員必須附上 face_image 照片才能完成人臉建檔，
     照片只要沒偵測到人臉、偵測到多張臉、或建檔失敗，整筆註冊都會撤銷（不留殘缺會員資料）。
+
+    回傳格式統一為 {"success": bool, "message": str, ...}，方便前端直接顯示 message。
+    註：birthday 欄位目前 members 表尚無對應欄位（需 db 組加欄位後才能儲存），
+    這裡先不處理；preferences 會寫入既有的 member_preferences 表。
     """
     name = (request.form.get("name") or "").strip()
     phone = (request.form.get("phone") or "").strip() or None
     line_user_id = (request.form.get("line_user_id") or "").strip() or None
     face_image_file = request.files.get("face_image")
 
+    try:
+        preferences = json.loads(request.form.get("preferences", "[]"))
+        if not isinstance(preferences, list):
+            preferences = []
+    except (TypeError, ValueError):
+        preferences = []
+
     if not name:
-        return jsonify({"error": "請輸入姓名"}), 400
+        return jsonify({"success": False, "message": "請輸入姓名"}), 400
 
     if not line_user_id:
-        return jsonify({"error": "缺少 LINE 使用者資訊，請從 LINE 官方帳號的註冊連結進入此頁面"}), 400
+        return jsonify({"success": False, "message": "缺少 LINE 使用者資訊，請從 LINE 官方帳號的註冊連結進入此頁面"}), 400
 
     try:
         member = _fetch_member_by_line_user_id(line_user_id)
     except Exception as e:
         print("會員查詢失敗：", e)
-        return jsonify({"error": "註冊失敗，請稍後再試", "detail": str(e)}), 500
+        return jsonify({"success": False, "message": "註冊失敗，請稍後再試"}), 500
 
     if member is not None:
         return jsonify({
+            "success": True,
             "message": "您已經是會員囉，這是您目前的會員資料",
             "is_new": False,
             "member": member,
         })
 
+    if phone:
+        try:
+            phone_owner = _fetch_member_by_phone(phone)
+        except Exception as e:
+            print("手機號碼查詢失敗：", e)
+            return jsonify({"success": False, "message": "註冊失敗，請稍後再試"}), 500
+
+        if phone_owner is not None:
+            return jsonify({"success": False, "message": "此手機號碼已經註冊過會員"}), 409
+
     if not face_image_file or not face_image_file.filename:
-        return jsonify({"error": "請上傳您的照片以完成人臉建檔"}), 400
+        return jsonify({"success": False, "message": "請上傳您的照片以完成人臉建檔"}), 400
 
     ext = os.path.splitext(face_image_file.filename)[1].lower()
     if ext not in ALLOWED_FACE_IMAGE_EXTENSIONS:
-        return jsonify({"error": "照片格式不支援，請上傳 jpg 或 png 檔"}), 400
+        return jsonify({"success": False, "message": "照片格式不支援，請上傳 jpg 或 png 檔"}), 400
+
+    if face_image_file.mimetype not in ALLOWED_FACE_IMAGE_MIME_TYPES:
+        return jsonify({"success": False, "message": "照片格式不支援，請上傳 jpg 或 png 檔"}), 400
 
     os.makedirs(MEMBER_IMAGE_DIR, exist_ok=True)
     saved_filename = f"line_{uuid.uuid4().hex}{ext}"
@@ -277,27 +326,29 @@ def register_from_line():
     face_check = validate_member_face_image(image_path)
     if not face_check.get("success"):
         os.remove(image_path)
-        return jsonify({"error": face_check.get("message", "照片驗證失敗")}), 400
+        return jsonify({"success": False, "message": face_check.get("message", "照片驗證失敗")}), 400
 
     try:
-        member_id = insert_member(
+        register_result = register_member_with_face(
             name=name,
             phone=phone,
             member_level="normal",
             line_user_id=line_user_id,
             face_image=saved_filename,
             registration_source="line",
+            image_path=image_path,
+            encoding_data=face_check.get("encoding"),
         )
     except Exception as e:
         os.remove(image_path)
-        print("會員註冊失敗：", e)
-        return jsonify({"error": "註冊失敗，請稍後再試", "detail": str(e)}), 500
+        print("會員與人臉註冊失敗：", e)
+        return jsonify({"success": False, "message": "註冊失敗，請稍後再試"}), 500
 
-    face_result = register_member_face(member_id, image_path)
-    if not face_result.get("success"):
-        _delete_member(member_id)
-        os.remove(image_path)
-        return jsonify({"error": face_result.get("message", "人臉建檔失敗")}), 500
+    member_id = register_result["member_id"]
+    reload_member_faces()
+
+    if preferences:
+        _insert_member_preferences(member_id, preferences)
 
     member = _fetch_member_by_id(member_id)
 
@@ -307,7 +358,8 @@ def register_from_line():
     )
 
     return jsonify({
-        "message": "註冊成功",
+        "success": True,
+        "message": "會員註冊成功",
         "is_new": True,
         "member": member,
     })

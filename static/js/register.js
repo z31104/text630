@@ -13,10 +13,6 @@ const faceImageInput = document.getElementById("face_image");
 const facePreview = document.getElementById("facePreview");
 
 let registerSuccess = false;
-const faceImageInput = document.getElementById("face_image");
-const facePreview = document.getElementById("facePreview");
-
-let registerSuccess = false;
 
 function showRegisterResult(message, type) {
     registerResult.textContent = message;
@@ -126,8 +122,8 @@ registerForm.addEventListener("submit", function (event) {
             });
         })
         .then(function (result) {
-            if (!result.ok) {
-                showRegisterResult(result.data.error || "註冊失敗，請稍後再試", "error");
+            if (!result.ok || !result.data.success) {
+                showRegisterResult(result.data.message || "註冊失敗，請稍後再試", "error");
                 return;
             }
 
