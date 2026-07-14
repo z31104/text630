@@ -166,7 +166,10 @@ def update_member_visit(result, current_time):
         print("==========================================")
 
         try:
-            send_line_notify(result)
+            send_line_notify(
+                result=result,
+                log_id=log_id
+            )
         except Exception as e:
             print("LINE notify error:", e)
 

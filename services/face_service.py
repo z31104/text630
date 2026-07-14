@@ -36,6 +36,16 @@ except Exception as e:
 
 try:
     from database.db import (
+        insert_vip_notification as db_insert_vip_notification,
+        update_vip_notification_status as db_update_vip_notification_status
+    )
+except Exception as e:
+    db_insert_vip_notification = None
+    db_update_vip_notification_status = None
+    print(f"警告：無法載入 VIP 通知資料庫函式：{e}")
+
+try:
+    from database.db import (
         update_recognition_last_seen as db_update_recognition_last_seen,
         close_recognition_visit as db_close_recognition_visit
     )
@@ -388,11 +398,12 @@ def load_member_faces():
                     "member_level": row.get("member_level"),
                     "visit_count": row.get("visit_count", 0),
                     "line_user_id": row.get("line_user_id"),
+                    "registration_source": row.get("registration_source"),
                     "total_amount": row.get("total_amount", 0),
                     "favorite_product": row.get("favorite_product"),
                     "face_image": row.get("image_path"),
-                    "created_at": row.get("created_at"),
-                    "updated_at": row.get("updated_at"),
+                    "created_at": row.get("member_created_at"),
+                    "updated_at": row.get("member_updated_at"),
                     "encoding": np.array(
                         encoding_data,
                         dtype=float
@@ -866,52 +877,102 @@ def close_recognition_visit(
         return False
 
 
-def send_line_notify(result):
+def send_line_notify(result, log_id=None):
     """
     發送 LINE VIP 到店通知。
 
-    觸發條件：
-    - 必須是 VIP
-    - 必須有 member_id
-    - 必須成功載入 LINE Bot 組提供的 notify_vip_recognition()
-
-    注意：
-    - LINE 推播失敗時，不讓攝影機串流中斷
+    正確流程：
+    1. 確認為 VIP
+    2. 確認有 member_id 與 log_id
+    3. 先新增 vip_notifications pending 紀錄
+    4. 同一個 log_id 已存在時，直接略過推播
+    5. 新增成功後才呼叫 LINE
+    6. 根據結果更新 sent / failed
     """
 
-    # 只推播 VIP，不是 VIP 就不處理
-    if result.get("member_level") != "vip" and result.get("vip") is not True:
+    # 只推播 VIP
+    if (
+        result.get("member_level") != "vip"
+        and result.get("vip") is not True
+    ):
         return None
 
-    # 沒有會員 ID，代表不是正式會員資料，不推播
-    if result.get("member_id") is None:
+    member_id = result.get("member_id")
+    line_user_id = result.get("line_user_id")
+    name = result.get("name", "VIP 會員")
+
+    if member_id is None:
+        print("LINE 推播略過：member_id 不可為空")
         return None
 
-    # LINE Bot 組功能尚未接上時，不讓攝影機程式當掉
+    if log_id is None:
+        print("LINE 推播略過：log_id 不可為空")
+        return None
+
+    if db_insert_vip_notification is None:
+        print("LINE 推播略過：VIP 通知資料庫函式未成功匯入")
+        return None
+
     if notify_vip_recognition is None:
         print("LINE 推播略過：notify_vip_recognition 尚未成功匯入")
         return None
 
+    message = f"VIP會員 {name} 到店了！"
+
     try:
-        # 呼叫 LINE Bot 組的推播函式，取得回傳結果
+        # 先建立 pending 紀錄。
+        # 若同一個 log_id 已存在，DB 函式會回傳 None。
+        notification_id = db_insert_vip_notification(
+            member_id=member_id,
+            log_id=log_id,
+            line_user_id=line_user_id,
+            message=message,
+            status="pending"
+        )
+
+        if notification_id is None:
+            print("========== VIP Notification Skipped ==========")
+            print(f"log_id: {log_id}")
+            print("原因：同一次到店通知已存在，不重複推播")
+            print("==============================================")
+            return "duplicate"
+
+        # 只有成功取得 notification_id 才真正發送 LINE
         status = notify_vip_recognition(result)
 
+        sent_at = None
+
+        if status == "sent":
+            notification_status = "sent"
+            sent_at = datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+        else:
+            notification_status = "failed"
+
+        if db_update_vip_notification_status is not None:
+            db_update_vip_notification_status(
+                notification_id=notification_id,
+                status=notification_status,
+                sent_at=sent_at
+            )
+
         print("========== LINE Notification ==========")
-        print(f"VIP 會員到店：{result.get('name')}")
-        print(f"member_id: {result.get('member_id')}")
-        print(f"line_user_id: {result.get('line_user_id')}")
-        print(f"LINE notify status: {status}")
+        print(f"notification_id: {notification_id}")
+        print(f"log_id: {log_id}")
+        print(f"VIP 會員到店：{name}")
+        print(f"member_id: {member_id}")
+        print(f"LINE notify status: {notification_status}")
         print("=======================================")
 
-        return status
+        return notification_status
 
     except Exception as e:
         print("========== LINE Notification Failed ==========")
-        print(f"VIP 會員到店：{result.get('name')}")
-        print(f"member_id: {result.get('member_id')}")
-        print(f"line_user_id: {result.get('line_user_id')}")
+        print(f"log_id: {log_id}")
+        print(f"VIP 會員到店：{name}")
+        print(f"member_id: {member_id}")
         print(f"LINE notify error: {e}")
         print("==============================================")
 
-        # 推播失敗時回傳 failed，但不要讓 camera 串流當掉
         return "failed"
