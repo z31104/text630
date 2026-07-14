@@ -133,6 +133,9 @@ def normalize_member_data(member_data):
     )
 
     return {
+        "subject_type": "member",
+        "visitor_id": None,
+        "visitor_code": None,
         "member_id": member_id,
         "name": member_data.get("name", "guest"),
         "phone": member_data.get("phone"),
@@ -160,10 +163,13 @@ def build_result(member_data=None, confidence=0, recognition_status="guest"):
     """
 
     member_data = normalize_member_data(member_data)
-
+    
     if member_data is None:
         member_data = {
+            "subject_type": "unknown",
             "member_id": None,
+            "visitor_id": None,
+            "visitor_code": None,
             "name": "Guest",
             "phone": None,
             "vip": False,
@@ -176,15 +182,21 @@ def build_result(member_data=None, confidence=0, recognition_status="guest"):
             "registration_source": None,
             "created_at": None,
             "updated_at": None
-        }
+    }
 
     result = {
         **member_data,
         "confidence": confidence,
         "recognition_status": recognition_status,
-        "member_level_text": get_member_level_text(member_data["member_level"])
-    }
-
+        "member_level_text": get_member_level_text(
+            member_data.get("member_level", "guest")
+    )
+}
+    # 統一辨識主體欄位，避免不同流程缺少 ke
+    result.setdefault("subject_type", "unknown")
+    result.setdefault("member_id", None)
+    result.setdefault("visitor_id", None)
+    result.setdefault("visitor_code", None)
 
     return result
 
