@@ -52,6 +52,7 @@ last_result = {
     "member_level": "guest",
     "visit_count": 0,
     "line_user_id": None,
+    "registration_source": None,
     "total_amount": 0,
     "favorite_product": None,
     "face_image": None,
@@ -137,7 +138,7 @@ def update_member_visit(result, current_time):
             visit_time=visit_time,
             leave_time=None,
             stay_minutes=0,
-            visit_status="visit_start",
+            visit_status="arrived",
             camera_id=CAMERA_ID
         )
 
@@ -298,6 +299,7 @@ def generate_frames():
                     "member_level": "guest",
                     "visit_count": 0,
                     "line_user_id": None,
+                    "registration_source": None,
                     "total_amount": 0,
                     "favorite_product": None,
                     "face_image": None,
@@ -368,7 +370,7 @@ def generate_frames():
                         visit_time=now_text(),
                         leave_time=None,
                         stay_minutes=None,
-                        visit_status="Guest_detected",
+                        visit_status="arrived",
                         camera_id=CAMERA_ID
                     )
 

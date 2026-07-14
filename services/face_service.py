@@ -82,10 +82,10 @@ def get_member_level(vip=False, member_id=None, member_level=None):
     """
 
     if member_id is None:
-        return "Guest"
+        return "guest"
 
 
-    if member_level in ("Guest", "normal", "vip"):
+    if member_level in ("guest", "normal", "vip"):
         return member_level
 
     if vip:
@@ -98,7 +98,7 @@ def get_member_level_text(member_level):
     """將 member_level 轉成中文顯示文字。"""
 
     level_map = {
-        "Guest": "陌生客",
+        "guest": "陌生客",
         "normal": "一般會員",
         "vip": "VIP 會員"
     }
@@ -130,6 +130,7 @@ def normalize_member_data(member_data):
         "member_level": member_level,
         "visit_count": member_data.get("visit_count", 0),
         "line_user_id": member_data.get("line_user_id"),
+        "registration_source": member_data.get("registration_source"),
         "total_amount": member_data.get("total_amount", 0),
         "favorite_product": member_data.get("favorite_product"),
         "face_image": member_data.get("face_image"),
@@ -156,12 +157,13 @@ def build_result(member_data=None, confidence=0, recognition_status="guest"):
             "name": "Guest",
             "phone": None,
             "vip": False,
-            "member_level": "Guest",
+            "member_level": "guest",
             "visit_count": 0,
             "line_user_id": None,
             "total_amount": 0,
             "favorite_product": None,
             "face_image": None,
+            "registration_source": None,
             "created_at": None,
             "updated_at": None
         }
@@ -687,7 +689,7 @@ def draw_face_boxes(frame, faces, result=None):
 # recognition_logs 欄位統一處理
 # -----------------------------
 
-def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes=None, visit_status="recognition", camera_id=DEFAULT_CAMERA_ID):
+def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes=None, visit_status=None, camera_id=DEFAULT_CAMERA_ID):
     """
     將 AI 辨識結果整理成 recognition_logs 資料表格式。
 
@@ -699,7 +701,7 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     return {
-        # visit_id 由資料庫 AUTO_INCREMENT 產生，Python 不需要給
+        # log_id 由資料庫 AUTO_INCREMENT 產生
         "member_id": result.get("member_id"),
         "name": result.get("name"),
         "vip": result.get("vip", False),
@@ -709,6 +711,7 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
         "member_level": result.get("member_level", "guest"),
         "recognition_status": result.get("recognition_status", "guest"),
         "visit_status": visit_status,
+        "recognized_at": now,
         "visit_time": visit_time,
         "leave_time": leave_time,
         "stay_minutes": stay_minutes,
@@ -716,7 +719,7 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
     }
 
 
-def log_recognition_result(result, visit_time=None, leave_time=None, stay_minutes=None, visit_status="recognition", camera_id=DEFAULT_CAMERA_ID):
+def log_recognition_result(result, visit_time=None, leave_time=None, stay_minutes=None, visit_status=None, camera_id=DEFAULT_CAMERA_ID):
     """
     將 AI 辨識結果印在終端機，並整理成 recognition_logs INSERT 格式。
     """
