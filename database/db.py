@@ -56,6 +56,7 @@ def get_all_members():
             total_amount,
             favorite_product,
             face_image,
+            registration_source,
             created_at,
             updated_at
         FROM members
@@ -86,6 +87,7 @@ def get_member_by_id(member_id):
             total_amount,
             favorite_product,
             face_image,
+            registration_source,
             created_at,
             updated_at
         FROM members
@@ -329,7 +331,7 @@ def close_recognition_visit(
         sql = """
         UPDATE recognition_logs
         SET
-            visit_status = 'visit_end',
+            visit_status = %s,
             last_seen_at = %s,
             leave_time = %s,
             stay_seconds = %s,
@@ -626,11 +628,19 @@ def get_all_member_faces():
             fi.member_id,
             fi.image_path,
             fi.encoding_data,
-            fi.created_at,
+            fi.created_at AS face_created_at,
             m.name,
+            m.phone,
             m.vip,
             m.member_level,
-            m.line_user_id
+            m.visit_count,
+            m.line_user_id,
+            m.total_amount,
+            m.favorite_product,
+            m.face_image,
+            m.registration_source,
+            m.created_at AS member_created_at,
+            m.updated_at AS member_updated_at
         FROM face_images fi
         JOIN members m
             ON fi.member_id = m.member_id
