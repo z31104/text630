@@ -9,6 +9,14 @@ const registerButton = document.getElementById("registerButton");
 const registerResult = document.getElementById("registerResult");
 const lineUserIdInput = document.getElementById("line_user_id");
 const lineHint = document.getElementById("lineHint");
+const faceImageInput = document.getElementById("face_image");
+const facePreview = document.getElementById("facePreview");
+
+let registerSuccess = false;
+const faceImageInput = document.getElementById("face_image");
+const facePreview = document.getElementById("facePreview");
+
+let registerSuccess = false;
 
 function showRegisterResult(message, type) {
     registerResult.textContent = message;
@@ -37,12 +45,30 @@ if (typeof liff === "undefined") {
         });
 }
 
+faceImageInput.addEventListener("change", function () {
+    const file = faceImageInput.files[0];
+
+    if (!file) {
+        facePreview.hidden = true;
+        facePreview.src = "";
+        return;
+    }
+
+    facePreview.src = URL.createObjectURL(file);
+    facePreview.hidden = false;
+});
+
 registerForm.addEventListener("submit", function (event) {
     event.preventDefault();
+
+    if (registerSuccess) {
+        return;
+    }
 
     const name = document.getElementById("name").value.trim();
     const phone = document.getElementById("phone").value.trim();
     const lineUserId = lineUserIdInput.value.trim();
+    const faceImageFile = faceImageInput.files[0];
     const birthday = document.getElementById("birthday").value;
     const preferences = Array.from(
         document.querySelectorAll('input[name="preference"]:checked')
@@ -60,19 +86,39 @@ registerForm.addEventListener("submit", function (event) {
         return;
     }
 
+    if (!faceImageFile) {
+        showRegisterResult("請上傳或拍攝會員人臉照片", "error");
+        return;
+    }
+
+    const allowedTypes = ["image/jpeg", "image/png"];
+
+    if (!allowedTypes.includes(faceImageFile.type)) {
+        showRegisterResult("照片格式只支援 JPG 或 PNG", "error");
+        return;
+    }
+
+    const maxSize = 8 * 1024 * 1024;
+
+    if (faceImageFile.size > maxSize) {
+        showRegisterResult("照片不可超過 8 MB", "error");
+        return;
+    }
     registerButton.disabled = true;
     registerButton.textContent = "註冊中...";
 
+    const formData = new FormData();
+
+    formData.append("name", name);
+    formData.append("phone", phone);
+    formData.append("line_user_id", lineUserId);
+    formData.append("birthday", birthday);
+    formData.append("preferences", JSON.stringify(preferences));
+    formData.append("face_image", faceImageFile);
+
     fetch("/line/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            name: name,
-            phone: phone,
-            line_user_id: lineUserId,
-            birthday: birthday,
-            preferences: preferences
-        })
+        body: formData
     })
         .then(function (response) {
             return response.json().then(function (data) {
@@ -86,6 +132,8 @@ registerForm.addEventListener("submit", function (event) {
             }
 
             const member = result.data.member;
+            registerSuccess = true;
+
             showRegisterResult(
                 `${result.data.message}！會員編號：${member.member_id}，姓名：${member.name}`,
                 "success"
@@ -95,6 +143,9 @@ registerForm.addEventListener("submit", function (event) {
                 input.disabled = true;
             });
 
+            registerButton.disabled = true;
+            registerButton.textContent = "已完成註冊";
+
             spinButton.disabled = false;
             lotteryResult.textContent = "註冊完成！可以開始抽獎囉";
         })
@@ -102,8 +153,10 @@ registerForm.addEventListener("submit", function (event) {
             showRegisterResult("網路異常，註冊失敗，請稍後再試", "error");
         })
         .finally(function () {
-            registerButton.disabled = false;
-            registerButton.textContent = "完成註冊";
+            if (!registerSuccess) {
+                registerButton.disabled = false;
+                registerButton.textContent = "完成註冊";
+            }
         });
 });
 

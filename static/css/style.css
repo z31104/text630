@@ -934,6 +934,20 @@ body {
     border-color: #2563eb;
 }
 
+.face-preview {
+    width: 160px;
+    height: 160px;
+    margin-top: 12px;
+    object-fit: cover;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    display: block;
+}
+
+.face-preview[hidden] {
+    display: none;
+}
+
 .form-group .pref-options {
     display: flex;
     flex-wrap: wrap;

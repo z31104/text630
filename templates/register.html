@@ -65,7 +65,7 @@
                     正在確認您的 LINE 身分...
                 </p>
 
-                <form class="register-form" id="registerForm">
+                <form class="register-form" id="registerForm" enctype="multipart/form-data">
                     <div class="form-group">
                         <label for="name">姓名</label>
                         <input type="text" id="name" placeholder="請輸入姓名" required>
@@ -80,7 +80,16 @@
                         <label for="line_user_id">LINE User ID</label>
                         <input type="text" id="line_user_id" placeholder="由 LINE 自動帶入" readonly>
                     </div>
-
+                    <div class="form-group">
+                        <label for="face_image">會員人臉照片</label>
+                    
+                        <input type="file" id="face_image" name="face_image" accept="image/jpeg,image/png" capture="user" required>
+                        <img id="facePreview" class="face-preview" alt="會員照片預覽" hidden>
+                    
+                        <p class="form-hint">
+                            請上傳或拍攝一張清楚的單人正面照片，格式限 JPG 或 PNG，檔案不可超過 8 MB。
+                        </p>
+                    </div>
                     <div class="form-group">
                         <label for="birthday">生日</label>
                         <input type="date" id="birthday">
