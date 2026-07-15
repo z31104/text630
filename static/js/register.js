@@ -10,6 +10,7 @@ const lineUserIdInputNew = document.getElementById("line_user_id");
 const lineHintNew = document.getElementById("lineHint");
 const faceImageInputNew = document.getElementById("face_image");
 const facePreviewNew = document.getElementById("facePreview");
+const clearFaceImageButtonNew = document.getElementById("clearFaceImage");
 
 let registerSuccessNew = false;
 
@@ -40,6 +41,10 @@ function setLineUserIdFromQueryNew() {
 function initLiffProfileNew() {
     const hasQueryLineUserId = setLineUserIdFromQueryNew();
 
+    if (hasQueryLineUserId) {
+        return;
+    }
+
     if (typeof liff === "undefined") {
         if (!hasQueryLineUserId) {
             setLineHintNew("目前無法載入 LINE LIFF，請從 LINE 註冊連結開啟此頁。");
@@ -50,7 +55,7 @@ function initLiffProfileNew() {
     liff.init({ liffId: LIFF_ID })
         .then(function () {
             if (!liff.isLoggedIn()) {
-                liff.login();
+                liff.login({ redirectUri: window.location.href });
                 return null;
             }
 
@@ -88,12 +93,27 @@ if (registerFormNew) {
         if (!file) {
             facePreviewNew.hidden = true;
             facePreviewNew.src = "";
+            if (clearFaceImageButtonNew) {
+                clearFaceImageButtonNew.hidden = true;
+            }
             return;
         }
 
         facePreviewNew.src = URL.createObjectURL(file);
         facePreviewNew.hidden = false;
+        if (clearFaceImageButtonNew) {
+            clearFaceImageButtonNew.hidden = false;
+        }
     });
+
+    if (clearFaceImageButtonNew) {
+        clearFaceImageButtonNew.addEventListener("click", function () {
+            faceImageInputNew.value = "";
+            facePreviewNew.hidden = true;
+            facePreviewNew.src = "";
+            clearFaceImageButtonNew.hidden = true;
+        });
+    }
 
     registerFormNew.addEventListener("submit", function (event) {
         event.preventDefault();

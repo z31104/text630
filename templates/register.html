@@ -63,15 +63,13 @@
                         <input type="tel" id="phone" name="phone" placeholder="請輸入手機號碼">
                     </div>
 
-                    <div class="form-group">
-                        <label for="line_user_id">LINE User ID</label>
-                        <input type="text" id="line_user_id" name="line_user_id" placeholder="由 LINE 自動帶入" readonly>
-                    </div>
+                    <input type="hidden" id="line_user_id" name="line_user_id">
 
                     <div class="form-group">
                         <label for="face_image">會員臉部照片</label>
                         <input type="file" id="face_image" name="face_image" accept="image/jpeg,image/png" capture="user" required>
                         <img id="facePreview" class="face-preview" alt="臉部照片預覽" hidden>
+                        <button type="button" class="clear-file-btn" id="clearFaceImage" hidden>移除照片</button>
                         <p class="form-hint">
                             請上傳清楚正臉照片，支援 JPG 或 PNG，檔案大小上限 8 MB。
                         </p>
