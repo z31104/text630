@@ -85,7 +85,6 @@ def get_member_by_id(member_id):
             phone,
             birthday,
             vip,
-            birthday,
             member_level,
             visit_count,
             line_user_id,
