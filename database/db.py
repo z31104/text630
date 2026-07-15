@@ -15,7 +15,7 @@ RECOGNITION_STATUS_FAILED = "failed"
 # 到店狀態
 VISIT_STATUS_ARRIVED = "arrived"
 VISIT_STATUS_STAYING = "staying"
-VISIT_STATUS_LEFT = "left"
+VISIT_STATUS_VISIT_END = "visit_end"
 
 # VIP 通知狀態
 NOTIFICATION_STATUS_PENDING = "pending"
@@ -83,6 +83,7 @@ def get_member_by_id(member_id):
             member_id,
             name,
             phone,
+            birthday,
             vip,
             birthday,
             member_level,
@@ -133,14 +134,14 @@ def insert_recognition_log(
     try:
         # 如果沒有 member_id，視為 Guest
         if member_id is None:
-                if name is None:
+            if name is None:
                    name = "Guest"
 
-        vip = False
-        member_level = "guest"
+            vip = False
+            member_level = "guest"
 
-        if recognition_status == RECOGNITION_STATUS_RECOGNIZED:
-            recognition_status = RECOGNITION_STATUS_GUEST
+            if recognition_status == RECOGNITION_STATUS_RECOGNIZED:
+                recognition_status = RECOGNITION_STATUS_GUEST
         
         # 1. 檢查 recognition_status 是否合法
         valid_recognition_statuses = {
@@ -153,7 +154,7 @@ def insert_recognition_log(
         valid_visit_statuses = {
             VISIT_STATUS_ARRIVED,
             VISIT_STATUS_STAYING,
-            VISIT_STATUS_LEFT
+            VISIT_STATUS_VISIT_END,
         }
 
         if recognition_status not in valid_recognition_statuses:
@@ -214,7 +215,9 @@ def insert_recognition_log(
             recognition_status,
             visit_status,
             visit_time,
+            last_seen_at,
             leave_time,
+            stay_seconds,
             stay_minutes,
             recognized_at,
             created_at,
@@ -473,7 +476,7 @@ def close_recognition_visit(
             sql,
             (
                 RECOGNITION_STATUS_RECOGNIZED,
-                VISIT_STATUS_LEFT,
+                VISIT_STATUS_VISIT_END,
                 last_seen_at,
                 leave_time,
                 stay_seconds,
@@ -524,8 +527,8 @@ def insert_member(
 INSERT INTO members (
     name,
     phone,
-    vip,
     birthday,
+    vip,
     member_level,
     visit_count,
     line_user_id,
@@ -542,6 +545,7 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     (
         name,
         phone,
+        birthday,
         vip,
         member_level,
         visit_count,
