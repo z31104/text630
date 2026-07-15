@@ -849,7 +849,7 @@ def close_recognition_visit(
 ):
     """
     會員超過離店等待時間後，
-    更新原本的 recognition_logs 紀錄為 visit_end。
+    更新原本的 recognition_logs 紀錄為 visit_status="left"。
     """
 
     if log_id is None:

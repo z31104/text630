@@ -219,8 +219,9 @@ def close_timeout_visits(current_time):
     """
     檢查超過 LEAVE_TIMEOUT 未再次辨識到的對象。
 
-    離店時不新增 visit_end，
-    而是更新第一次到店建立的同一筆 recognition_logs。
+    離店時不新增另一筆紀錄，
+    而是將第一次到店建立的同一筆 recognition_logs
+    更新為 visit_status="left"。
     """
 
     leaving_subject_keys = []
@@ -414,8 +415,8 @@ def generate_frames():
 
                     last_guest_log_time = current_time
 
-            # 檢查已經超過離店等待時間的會員
-            # 並建立 visit_end 紀錄
+            # 檢查已經超過離店等待時間的對象
+            # 並將原本紀錄更新為 visit_status="left"
             close_timeout_visits(current_time)
 
             # 只有畫面有人臉時才畫框與辨識文字
