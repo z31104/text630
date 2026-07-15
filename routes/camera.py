@@ -176,7 +176,17 @@ def update_member_visit(result, current_time):
             print(f"visit_time: {visit_time}")
             print("==========================================")
 
-            # 你原本的 VIP 通知程式保留在這裡
+            # 只有第一次建立到店紀錄時，執行 VIP 通知
+            notification_status = send_line_notify(
+               result,
+               log_id=log_id
+            )
+
+            if notification_status is not None:
+                print("========== VIP Notify Result ==========")
+                print(f"log_id: {log_id}")
+                print(f"notification_status: {notification_status}")
+                print("=======================================")
 
         # 持續看到同一位會員
         else:
