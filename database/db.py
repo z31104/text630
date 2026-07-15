@@ -9,11 +9,13 @@ load_dotenv()
 
 # 辨識狀態
 RECOGNITION_STATUS_RECOGNIZED = "recognized"
-RECOGNITION_STATUS_UNKNOWN = "unknown"
+RECOGNITION_STATUS_GUEST = "guest"
+RECOGNITION_STATUS_FAILED = "failed"
 
 # 到店狀態
 VISIT_STATUS_ARRIVED = "arrived"
-VISIT_STATUS_ENDED = "visit_end"
+VISIT_STATUS_STAYING = "staying"
+VISIT_STATUS_LEFT = "left"
 
 # VIP 通知狀態
 NOTIFICATION_STATUS_PENDING = "pending"
@@ -49,6 +51,7 @@ def get_all_members():
             member_id,
             name,
             phone,
+            birthday,       
             vip,
             member_level,
             visit_count,
@@ -81,6 +84,7 @@ def get_member_by_id(member_id):
             name,
             phone,
             vip,
+            birthday,
             member_level,
             visit_count,
             line_user_id,
@@ -117,7 +121,9 @@ def insert_recognition_log(
     recognition_status=RECOGNITION_STATUS_RECOGNIZED,
     visit_status=VISIT_STATUS_ARRIVED,
     visit_time=None,
+    last_seen_at=None,
     leave_time=None,
+    stay_seconds=0,
     stay_minutes=0,
     created_at=None
 ):
@@ -125,6 +131,52 @@ def insert_recognition_log(
     cursor = None
 
     try:
+        # 如果沒有 member_id，視為 Guest
+        if member_id is None:
+                if name is None:
+                   name = "Guest"
+
+        vip = False
+        member_level = "guest"
+
+        if recognition_status == RECOGNITION_STATUS_RECOGNIZED:
+            recognition_status = RECOGNITION_STATUS_GUEST
+        
+        # 1. 檢查 recognition_status 是否合法
+        valid_recognition_statuses = {
+            RECOGNITION_STATUS_RECOGNIZED,
+            RECOGNITION_STATUS_GUEST,
+            RECOGNITION_STATUS_FAILED
+        }
+
+        # 2. 檢查 visit_status 是否合法
+        valid_visit_statuses = {
+            VISIT_STATUS_ARRIVED,
+            VISIT_STATUS_STAYING,
+            VISIT_STATUS_LEFT
+        }
+
+        if recognition_status not in valid_recognition_statuses:
+            raise ValueError(
+                f"不支援的 recognition_status：{recognition_status}"
+            )
+
+        if visit_status not in valid_visit_statuses:
+            raise ValueError(
+                f"不支援的 visit_status：{visit_status}"
+            )
+
+        # 3. 沒有傳時間時，自動補現在時間
+        if recognized_at is None:
+            recognized_at = datetime.now()
+
+        if created_at is None:
+            created_at = datetime.now()
+
+        if visit_time is None:
+            visit_time = recognized_at
+
+        # 4. 檢查通過後，才連線資料庫
         conn = get_connection()
         cursor = conn.cursor()
 
@@ -140,13 +192,15 @@ def insert_recognition_log(
             recognition_status,
             visit_status,
             visit_time,
+            last_seen_at,
             leave_time,
+            stay_seconds,
             stay_minutes,
             recognized_at,
             created_at,
             camera_location
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         data = (
@@ -198,10 +252,12 @@ def save_recognition_log(data):
 
         camera_id=data.get("camera_id"),
         member_level=data.get("member_level"),
-        recognition_status=data.get("recognition_status"),
-        visit_status=data.get("visit_status"),
+        recognition_status=(data.get("recognition_status") or RECOGNITION_STATUS_RECOGNIZED),
+        visit_status=(  data.get("visit_status") or VISIT_STATUS_ARRIVED),
         visit_time=data.get("visit_time"),
+        last_seen_at=data.get("last_seen_at"),
         leave_time=data.get("leave_time"),
+        stay_seconds=data.get("stay_seconds", 0),
         stay_minutes=data.get("stay_minutes", 0),
         created_at=data.get("created_at")
     )
@@ -354,7 +410,8 @@ def update_recognition_last_seen(log_id, last_seen_at):
         UPDATE recognition_logs
         SET
             last_seen_at = %s,
-            recognition_status = 'recognized'
+            recognition_status = %s,
+            visit_status = %s
         WHERE log_id = %s
         """
 
@@ -362,6 +419,8 @@ def update_recognition_last_seen(log_id, last_seen_at):
             sql,
             (
                 last_seen_at,
+                RECOGNITION_STATUS_RECOGNIZED,
+                VISIT_STATUS_STAYING,
                 log_id
             )
         )
@@ -401,6 +460,7 @@ def close_recognition_visit(
         sql = """
         UPDATE recognition_logs
         SET
+            recognition_status = %s,
             visit_status = %s,
             last_seen_at = %s,
             leave_time = %s,
@@ -412,7 +472,8 @@ def close_recognition_visit(
         cursor.execute(
             sql,
             (
-                VISIT_STATUS_ENDED,
+                RECOGNITION_STATUS_RECOGNIZED,
+                VISIT_STATUS_LEFT,
                 last_seen_at,
                 leave_time,
                 stay_seconds,
@@ -442,9 +503,13 @@ def close_recognition_visit(
 def insert_member(
     name,
     phone=None,
+    birthday=None,
     vip=False,
     member_level="normal",
+    visit_count=0,
     line_user_id=None,
+    total_amount=0,
+    favorite_product=None,
     face_image=None,
     registration_source="line"
 ):
@@ -460,12 +525,16 @@ INSERT INTO members (
     name,
     phone,
     vip,
+    birthday,
     member_level,
+    visit_count,
     line_user_id,
+    total_amount,
+    favorite_product,
     face_image,
     registration_source
 )
-VALUES (%s, %s, %s, %s, %s, %s, %s)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 """
 
         cursor.execute(
@@ -475,7 +544,10 @@ VALUES (%s, %s, %s, %s, %s, %s, %s)
         phone,
         vip,
         member_level,
+        visit_count,
         line_user_id,
+        total_amount,
+        favorite_product,
         face_image,
         registration_source
     )
@@ -567,6 +639,7 @@ def insert_face_image(member_id, image_path, encoding_data):
 def register_member_with_face(
     name,
     phone=None,
+    birthday=None,
     vip=False,
     member_level="normal",
     line_user_id=None,
@@ -615,13 +688,14 @@ def register_member_with_face(
         INSERT INTO members (
             name,
             phone,
+            birthday,
             vip,
             member_level,
             line_user_id,
             face_image,
             registration_source
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         cursor.execute(
@@ -629,6 +703,7 @@ def register_member_with_face(
             (
                 name,
                 phone,
+                birthday,  
                 vip,
                 member_level,
                 line_user_id,

@@ -10,7 +10,7 @@ def member():
     cursor = conn.cursor(dictionary=True)
 
     cursor.execute("""
-        SELECT member_id, name, phone, vip, member_level,
+        SELECT member_id, name, phone, birthday, vip, member_level,
                visit_count, line_user_id, total_amount,
                favorite_product, face_image, created_at, updated_at
         FROM members
@@ -29,6 +29,7 @@ def member():
             <th>會員編號</th>
             <th>姓名</th>
             <th>電話</th>
+            <th>生日</th>
             <th>VIP</th>
             <th>會員等級</th>
             <th>來店次數</th>
@@ -48,6 +49,7 @@ def member():
             <td>{m["member_id"]}</td>
             <td>{m["name"]}</td>
             <td>{m["phone"] or ""}</td>
+            <td>{m["birthday"] or ""}</td>
             <td>{"是" if m["vip"] else "否"}</td>
             <td>{m["member_level"] or ""}</td>
             <td>{m["visit_count"]}</td>
@@ -91,39 +93,7 @@ def add_recognition_log():
             "detail": str(e)
         }), 500
 
-    sql = """
-    INSERT INTO recognition_logs
-    (member_id, name, vip, line_user_id, confidence, recognized_at, camera_location)
-    VALUES (%s, %s, %s, %s, %s, %s, %s)
-    """
-
-    values = (
-        member_id,
-        name,
-        vip,
-        line_user_id,
-        confidence,
-        recognized_at,
-        camera_location
-    )
-
-    cursor.execute(sql, values)
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-
-    return jsonify({
-        "message": "辨識紀錄新增成功",
-        "member_id": member_id,
-        "name": name,
-        "vip": vip,
-        "line_user_id": line_user_id,
-        "confidence": confidence,
-        "recognized_at": recognized_at,
-        "camera_location": camera_location
-    })
-
+   
 
 @member_bp.route("/member/add", methods=["GET", "POST"])
 def add_member_page():
@@ -133,14 +103,15 @@ def add_member_page():
 
         sql = """
         INSERT INTO members
-        (name, phone, vip, member_level, visit_count, line_user_id,
+        (name, phone,birthday, vip, member_level, visit_count, line_user_id,
          total_amount, favorite_product, face_image)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         data = (
             request.form.get("name"),
             request.form.get("phone"),
+            request.form.get("birthday") or None,
             request.form.get("vip") == "1",
             request.form.get("member_level") or "一般會員",
             int(request.form.get("visit_count") or 0),
@@ -164,6 +135,7 @@ def add_member_page():
     <form method="POST">
         <p>姓名：<input type="text" name="name"></p>
         <p>電話：<input type="text" name="phone"></p>
+        <p>生日：<input type="date" name="birthday"></p>
         <p>LINE User ID：<input type="text" name="line_user_id"></p>
         <p>會員等級：<input type="text" name="member_level" value="一般會員"></p>
         <p>來店次數：<input type="number" name="visit_count" value="0"></p>
@@ -207,7 +179,7 @@ def edit_member(member_id):
     cursor = conn.cursor(dictionary=True)
 
     cursor.execute("""
-        SELECT member_id, name, phone, vip, member_level,
+        SELECT member_id, name, phone, birthday, vip, member_level,
                visit_count, line_user_id, total_amount,
                favorite_product, face_image
         FROM members
@@ -226,6 +198,7 @@ def edit_member(member_id):
         UPDATE members
         SET name = %s,
             phone = %s,
+            birthday = %s,
             vip = %s,
             member_level = %s,
             visit_count = %s,
@@ -239,6 +212,7 @@ def edit_member(member_id):
         data = (
             request.form.get("name"),
             request.form.get("phone"),
+            request.form.get("birthday") or None,
             request.form.get("vip") == "1",
             request.form.get("member_level") or "一般會員",
             int(request.form.get("visit_count") or 0),
@@ -270,6 +244,7 @@ def edit_member(member_id):
         <p>會員編號：{target_member['member_id']}</p>
         <p>姓名：<input type="text" name="name" value="{target_member['name'] or ''}"></p>
         <p>電話：<input type="text" name="phone" value="{target_member['phone'] or ''}"></p>
+        <p>生日：<input type="date" name="birthday" value="{target_member['birthday'] or ''}">
         <p>LINE User ID：<input type="text" name="line_user_id" value="{target_member['line_user_id'] or ''}"></p>
         <p>會員等級：<input type="text" name="member_level" value="{target_member['member_level'] or ''}"></p>
         <p>來店次數：<input type="number" name="visit_count" value="{target_member['visit_count'] or 0}"></p>

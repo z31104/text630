@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS members (
     member_id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
     phone VARCHAR(20),
+    birthday DATE NULL,
     vip BOOLEAN DEFAULT FALSE,
     member_level VARCHAR(20) DEFAULT 'normal',
     visit_count INT DEFAULT 0,
@@ -113,11 +114,17 @@ CREATE TABLE IF NOT EXISTS vip_notifications (
     message TEXT,
     status VARCHAR(20) DEFAULT 'pending',
     sent_at DATETIME DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
     UNIQUE KEY uq_vip_notifications_log_id (log_id),
 
-    FOREIGN KEY (member_id) REFERENCES members(member_id),
-    FOREIGN KEY (log_id) REFERENCES recognition_logs(log_id)
+    FOREIGN KEY (member_id)
+    REFERENCES members(member_id)
+    ON DELETE CASCADE,
+
+    FOREIGN KEY (log_id)
+    REFERENCES recognition_logs(log_id)
+    ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS coupons (
