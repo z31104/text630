@@ -3,106 +3,187 @@
 {% block title %}Dashboard｜智慧會員系統{% endblock %}
 
 {% block content %}
+<!--
+Dashboard 預計串接 API JSON 格式：
+{
+  "summary": {
+    "today_visits": 20,
+    "vip_visits": 5,
+    "member_visits": 12,
+    "guest_visits": 3,
+    "current_in_store": 4,
+    "average_stay_minutes": 18
+  },
+  "recent_recognitions": [
+    {
+      "log_id": 101,
+      "member_id": 3,
+      "camera_id": 1,
+      "name": "王小明",
+      "vip": true,
+      "member_level": "vip",
+      "member_level_text": "VIP 會員",
+      "line_user_id": "U123456789",
+      "recognition_status": "recognized",
+      "visit_status": "staying",
+      "recognized_at": "2026-07-15 13:20:00",
+      "visit_time": "2026-07-15 13:20:00",
+      "leave_time": null,
+      "stay_minutes": 18,
+      "camera_location": "入口攝影機",
+      "confidence": 0.92,
+      "face_image": "001.jpg"
+    }
+  ],
+  "vip_notifications": [
+    {
+      "notification_id": 8,
+      "member_id": 3,
+      "log_id": 101,
+      "line_user_id": "U123456789",
+      "message": "VIP 會員王小明已到店",
+      "status": "success",
+      "sent_at": "2026-07-15 13:21:00"
+    }
+  ]
+}
+-->
 
 <section class="dashboard-header">
     <h1>管理後台 Dashboard</h1>
-    <p>即時查看會員到店狀態、VIP 通知與辨識紀錄。</p>
+    <p>追蹤今日到店、會員辨識、VIP 通知與店內即時狀態。Active visit 尚未完成的欄位先以測試資料預留。</p>
 </section>
 
 <section class="dashboard-stats">
     <div class="dashboard-card">
         <p>今日到店人數</p>
-        <h2>28</h2>
-        <span>今日累計進店顧客</span>
+        <h2>20</h2>
+        <span>today_visits</span>
     </div>
 
     <div class="dashboard-card highlight">
-        <p>VIP 到店</p>
-        <h2>3</h2>
-        <span>需主動接待</span>
-    </div>
-
-    <div class="dashboard-card">
-        <p>新會員</p>
+        <p>VIP 到店人數</p>
         <h2>5</h2>
-        <span>今日新增會員</span>
+        <span>vip_visits</span>
     </div>
 
     <div class="dashboard-card">
-        <p>陌生熟客</p>
-        <h2>8</h2>
-        <span>尚未加入會員</span>
+        <p>一般會員人數</p>
+        <h2>12</h2>
+        <span>member_visits</span>
+    </div>
+
+    <div class="dashboard-card">
+        <p>Guest 人數</p>
+        <h2>3</h2>
+        <span>guest_visits</span>
+    </div>
+
+    <div class="dashboard-card is-placeholder">
+        <p>目前店內人數</p>
+        <h2>4</h2>
+        <span>current_in_store，待 active visit 串接</span>
+    </div>
+
+    <div class="dashboard-card is-placeholder">
+        <p>平均停留時間</p>
+        <h2>18 分</h2>
+        <span>average_stay_minutes，待 active visit 串接</span>
     </div>
 </section>
 
-<section class="dashboard-main">
-    <div class="vip-alert-card">
-        <h2>VIP 到店提醒</h2>
-
-        <div class="vip-alert">
-            <h3>VIP 王小明 已到店</h3>
-            <p>請主動接待，並確認是否需要專人服務。</p>
-        </div>
-
-        <div class="vip-alert">
-            <h3>VIP 陳美玲 已到店</h3>
-            <p>系統已建立到店紀錄。</p>
-        </div>
-    </div>
-
+<section class="dashboard-main dashboard-main-wide">
     <div class="recognition-log-card">
         <div class="table-header">
             <h2>最近辨識紀錄</h2>
-            <span>假資料展示</span>
+            <span>recent_recognitions</span>
         </div>
 
         <table class="dashboard-table">
             <thead>
                 <tr>
                     <th>時間</th>
+                    <th>會員 ID</th>
                     <th>姓名</th>
-                    <th>身分</th>
-                    <th>line_user_id</th>
-                    <th>到店次數</th>
-                    <th>狀態</th>
+                    <th>會員等級</th>
+                    <th>VIP</th>
+                    <th>辨識狀態</th>
+                    <th>到店狀態</th>
+                    <th>停留分鐘</th>
+                    <th>信心分數</th>
                 </tr>
             </thead>
-
             <tbody>
                 <tr>
-                    <td>14:20</td>
-                    <td>王小明</td>
-                    <td><span class="badge vip">VIP</span></td>
-                    <td>U123456789</td>
-                    <td>12</td>
-                    <td><span class="status active">已通知</span></td>
-                </tr>
-
-                <tr>
-                    <td>13:55</td>
-                    <td>Guest001</td>
-                    <td><span class="badge normal">陌生熟客</span></td>
-                    <td>null</td>
+                    <td>13:20</td>
                     <td>3</td>
-                    <td><span class="status inactive">未加入會員</span></td>
+                    <td>王小明</td>
+                    <td><span class="badge vip">VIP 會員</span></td>
+                    <td>true</td>
+                    <td><span class="status active">recognized</span></td>
+                    <td><span class="status staying">staying</span></td>
+                    <td>18</td>
+                    <td>0.92</td>
                 </tr>
-
                 <tr>
-                    <td>13:30</td>
-                    <td>李小華</td>
+                    <td>12:55</td>
+                    <td>7</td>
+                    <td>陳怡君</td>
                     <td><span class="badge member">一般會員</span></td>
-                    <td>U987654321</td>
-                    <td>5</td>
-                    <td><span class="status active">已記錄</span></td>
+                    <td>false</td>
+                    <td><span class="status active">recognized</span></td>
+                    <td><span class="status inactive">left</span></td>
+                    <td>9</td>
+                    <td>0.88</td>
                 </tr>
-
                 <tr>
-                    <td>12:45</td>
-                    <td>Guest002</td>
-                    <td><span class="badge normal">陌生顧客</span></td>
-                    <td>null</td>
-                    <td>1</td>
-                    <td><span class="status pending">已建立資料</span></td>
+                    <td>12:40</td>
+                    <td>-</td>
+                    <td>Guest</td>
+                    <td><span class="badge normal">Guest</span></td>
+                    <td>false</td>
+                    <td><span class="status pending">guest</span></td>
+                    <td><span class="status staying">staying</span></td>
+                    <td>2</td>
+                    <td>0.41</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="vip-alert-card">
+        <div class="table-header">
+            <h2>VIP 通知紀錄</h2>
+            <span>vip_notifications</span>
+        </div>
+
+        <table class="dashboard-table">
+            <thead>
+                <tr>
+                    <th>通知時間</th>
+                    <th>會員 ID</th>
+                    <th>Log ID</th>
+                    <th>店員 LINE User ID</th>
+                    <th>推播內容</th>
+                    <th>推播狀態</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>13:21</td>
+                    <td>3</td>
+                    <td>101</td>
+                    <td>U123456789</td>
+                    <td>VIP 會員王小明已到店</td>
+                    <td><span class="status active">success</span></td>
+                </tr>
+                <tr>
+                    <td>11:08</td>
+                    <td>9</td>
+                    <td>96</td>
+                    <td>U987654321</td>
+                    <td>VIP 會員林佳蓉已到店</td>
+                    <td><span class="status pending">pending</span></td>
                 </tr>
             </tbody>
         </table>

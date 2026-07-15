@@ -3,108 +3,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>會員註冊｜智慧會員系統</title>
+    <title>LINE 會員註冊｜智慧會員系統</title>
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 
 <body class="customer-page">
-
     <main class="customer-register-container">
-
         <section class="customer-register-hero promo-hero">
             <div class="promo-decoration promo-light-left"></div>
             <div class="promo-decoration promo-light-right"></div>
 
             <p class="promo-tag">Welcome Gift</p>
-
-            <h1>歡迎加入會員</h1>
-
+            <h1>加入智慧會員</h1>
             <p class="promo-subtitle">
-                立即註冊會員，領取專屬優惠券，並參加一次輪盤抽獎活動。
+                完成 LINE 會員註冊並上傳臉部照片，讓門市能快速辨識會員身分、提供 VIP 通知與個人化服務。
             </p>
 
             <div class="promo-coupon-row">
                 <div class="promo-coupon">
-                <span>首購禮</span>
-                <strong>$100</strong>
-                <p>首次購物現折</p>
+                    <span>迎新禮</span>
+                    <strong>$100</strong>
+                    <p>註冊完成即可領取</p>
+                </div>
+                <div class="promo-coupon">
+                    <span>生日禮</span>
+                    <strong>$200</strong>
+                    <p>生日月份專屬優惠</p>
+                </div>
+                <div class="promo-coupon">
+                    <span>VIP 禮遇</span>
+                    <strong>5%</strong>
+                    <p>依會員等級享折扣</p>
+                </div>
             </div>
 
-        <div class="promo-coupon">
-            <span>開卡禮</span>
-            <strong>$100</strong>
-            <p>完成會員資料</p>
-        </div>
-
-        <div class="promo-coupon">
-            <span>生日禮</span>
-            <strong>$200</strong>
-            <p>生日當月贈送</p>
-        </div>
-
-        <div class="promo-coupon">
-            <span>分享禮</span>
-            <strong>$100</strong>
-            <p>邀請好友加入</p>
-        </div>
-    </div>
-
-    <div class="promo-bottom-badge">
-        每筆訂單再享 <strong>5%</strong> 購物金回饋
-    </div>
-</section>
+            <div class="promo-bottom-badge">
+                註冊資料僅用於會員辨識與服務通知
+            </div>
+        </section>
 
         <section class="customer-register-layout">
-
             <div class="register-card">
-                <h2>會員註冊</h2>
+                <h2>會員註冊表單</h2>
 
                 <p class="form-hint" id="lineHint">
-                    正在確認您的 LINE 身分...
+                    正在取得 LINE 使用者資料...
                 </p>
 
-                <form class="register-form" id="registerForm" enctype="multipart/form-data">
+                <form class="register-form" id="registerForm" action="/line/register" method="post" enctype="multipart/form-data">
                     <div class="form-group">
                         <label for="name">姓名</label>
-                        <input type="text" id="name" placeholder="請輸入姓名" required>
+                        <input type="text" id="name" name="name" placeholder="請輸入姓名" required>
                     </div>
 
                     <div class="form-group">
                         <label for="phone">手機號碼</label>
-                        <input type="text" id="phone" placeholder="請輸入手機號碼">
+                        <input type="tel" id="phone" name="phone" placeholder="請輸入手機號碼">
                     </div>
 
                     <div class="form-group">
                         <label for="line_user_id">LINE User ID</label>
-                        <input type="text" id="line_user_id" placeholder="由 LINE 自動帶入" readonly>
-                    </div>
-                    <div class="form-group">
-                        <label for="face_image">會員人臉照片</label>
-                    
-                        <input type="file" id="face_image" name="face_image" accept="image/jpeg,image/png" capture="user" required>
-                        <img id="facePreview" class="face-preview" alt="會員照片預覽" hidden>
-                    
-                        <p class="form-hint">
-                            請上傳或拍攝一張清楚的單人正面照片，格式限 JPG 或 PNG，檔案不可超過 8 MB。
-                        </p>
-                    </div>
-                    <div class="form-group">
-                        <label for="birthday">生日</label>
-                        <input type="date" id="birthday">
+                        <input type="text" id="line_user_id" name="line_user_id" placeholder="由 LINE 自動帶入" readonly>
                     </div>
 
                     <div class="form-group">
-                        <label>喜好項目（可複選）</label>
-                        <div class="pref-options">
-                            <label class="pref-option"><input type="checkbox" name="preference" value="客廳"> 客廳</label>
-                            <label class="pref-option"><input type="checkbox" name="preference" value="臥室"> 臥室</label>
-                            <label class="pref-option"><input type="checkbox" name="preference" value="廚房"> 廚房</label>
-                            <label class="pref-option"><input type="checkbox" name="preference" value="辦公類"> 辦公類</label>
-                            <label class="pref-option"><input type="checkbox" name="preference" value="美食餐廳"> 美食餐廳</label>
-                            <label class="pref-option"><input type="checkbox" name="preference" value="新品通知"> 新品通知</label>
-                        </div>
+                        <label for="face_image">會員臉部照片</label>
+                        <input type="file" id="face_image" name="face_image" accept="image/jpeg,image/png" capture="user" required>
+                        <img id="facePreview" class="face-preview" alt="臉部照片預覽" hidden>
+                        <p class="form-hint">
+                            請上傳清楚正臉照片，支援 JPG 或 PNG，檔案大小上限 8 MB。
+                        </p>
                     </div>
 
                     <button type="submit" class="primary-btn" id="registerButton">完成註冊</button>
@@ -114,53 +84,48 @@
             </div>
 
             <div class="customer-benefits">
-
                 <div class="benefit-card">
-                    <p class="benefit-label">新會員優惠</p>
-                    <h2>折 50 元優惠券</h2>
-                    <p>註冊成功後即可獲得首次消費折抵優惠。</p>
+                    <p class="benefit-label">新會員禮</p>
+                    <h2>註冊完成即可抽獎</h2>
+                    <p>完成會員資料與照片上傳後，可參加一次迎新抽獎，做為註冊成功的前端提示流程。</p>
 
                     <div class="coupon-ticket">
                         <span>NEW MEMBER</span>
-                        <strong>折 50 元</strong>
+                        <strong>$50 起</strong>
                     </div>
                 </div>
 
                 <div class="benefit-card">
-                    <p class="benefit-label">會員限定活動</p>
-                    <h2>輪盤抽獎</h2>
-                    <p>完成註冊後，可參加一次抽獎活動。</p>
+                    <p class="benefit-label">註冊完成後開放</p>
+                    <h2>迎新幸運轉盤</h2>
+                    <p>註冊成功後按鈕才會啟用，避免使用者在送出前誤觸。</p>
 
-                    
                     <div class="lottery-area">
-    <div class="wheel-wrapper">
-        <div class="wheel-pointer"></div>
+                        <div class="wheel-wrapper">
+                            <div class="wheel-pointer"></div>
+                            <div class="spin-wheel" id="spinWheel">
+                                <span class="wheel-item item-1">$50</span>
+                                <span class="wheel-item item-2">9 折</span>
+                                <span class="wheel-item item-3">$200</span>
+                                <span class="wheel-item item-4">小禮品</span>
+                                <span class="wheel-item item-5">免運</span>
+                                <span class="wheel-item item-6">再抽一次</span>
+                            </div>
+                        </div>
 
-        <div class="spin-wheel" id="spinWheel">
-            <span class="wheel-item item-1">現折 50 元</span>
-            <span class="wheel-item item-2">9 折券</span>
-            <span class="wheel-item item-3">200元<br>購物券</span>
-            <span class="wheel-item item-4">神秘小禮</span>
-            <span class="wheel-item item-5">贈品<br>三選一</span>
-            <span class="wheel-item item-6">再接再厲</span>
-        </div>
-    </div>
+                        <button type="button" class="secondary-btn" id="spinButton" disabled>
+                            開始抽獎
+                        </button>
 
-    <button type="button" class="secondary-btn" id="spinButton" disabled>
-        開始抽獎
-    </button>
-
-    <p class="lottery-result" id="lotteryResult">
-        完成註冊後可獲得一次抽獎機會
-    </p>
-</div>
+                        <p class="lottery-result" id="lotteryResult">
+                            完成註冊後即可抽一次迎新獎勵。
+                        </p>
+                    </div>
                 </div>
-
             </div>
-
         </section>
-
     </main>
+
     <script src="{{ url_for('static', filename='js/register.js') }}"></script>
 </body>
 </html>

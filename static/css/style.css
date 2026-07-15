@@ -1370,3 +1370,58 @@ body {
     transform: translate(-50%, -50%) rotate(330deg) translateY(-78px) rotate(calc(-330deg - var(--wheel-text-fix, 0deg)));
 }
 }
+
+/* Frontend dashboard/register fixes */
+.dashboard-stats {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.dashboard-card.is-placeholder {
+    border: 1px dashed #94a3b8;
+    background-color: #f8fafc;
+}
+
+.dashboard-main.dashboard-main-wide {
+    grid-template-columns: 1fr;
+}
+
+.recognition-log-card,
+.vip-alert-card {
+    overflow-x: auto;
+}
+
+.status.active {
+    background-color: #dcfce7;
+    color: #166534;
+}
+
+.status.inactive {
+    background-color: #f1f5f9;
+    color: #475569;
+}
+
+.status.pending {
+    color: #155e75;
+}
+
+.status.staying {
+    background-color: #e0f2fe;
+    color: #075985;
+}
+
+.register-result {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-weight: 700;
+}
+
+.register-result.success {
+    background-color: #dcfce7;
+    color: #166534;
+}
+
+.register-result.error {
+    background-color: #fee2e2;
+    color: #991b1b;
+}

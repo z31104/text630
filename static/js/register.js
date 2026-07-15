@@ -1,202 +1,226 @@
 const LIFF_ID = "2010668858-gsTCqv7v";
 
-const spinWheel = document.getElementById("spinWheel");
-const spinButton = document.getElementById("spinButton");
-const lotteryResult = document.getElementById("lotteryResult");
+const spinWheelNew = document.getElementById("spinWheel");
+const spinButtonNew = document.getElementById("spinButton");
+const lotteryResultNew = document.getElementById("lotteryResult");
+const registerFormNew = document.getElementById("registerForm");
+const registerButtonNew = document.getElementById("registerButton");
+const registerResultNew = document.getElementById("registerResult");
+const lineUserIdInputNew = document.getElementById("line_user_id");
+const lineHintNew = document.getElementById("lineHint");
+const faceImageInputNew = document.getElementById("face_image");
+const facePreviewNew = document.getElementById("facePreview");
 
-const registerForm = document.getElementById("registerForm");
-const registerButton = document.getElementById("registerButton");
-const registerResult = document.getElementById("registerResult");
-const lineUserIdInput = document.getElementById("line_user_id");
-const lineHint = document.getElementById("lineHint");
-const faceImageInput = document.getElementById("face_image");
-const facePreview = document.getElementById("facePreview");
+let registerSuccessNew = false;
 
-let registerSuccess = false;
-
-function showRegisterResult(message, type) {
-    registerResult.textContent = message;
-    registerResult.hidden = false;
-    registerResult.className = "register-result " + type;
+function showRegisterResultNew(message, type) {
+    registerResultNew.textContent = message;
+    registerResultNew.hidden = false;
+    registerResultNew.className = "register-result " + type;
+}
+function setLineHintNew(message) {
+    if (lineHintNew) {
+        lineHintNew.textContent = message;
+    }
 }
 
-if (typeof liff === "undefined") {
-    console.error("LIFF SDK 沒有載入成功");
-    lineHint.textContent = "無法載入 LINE 服務，請確認網路連線，或改由 LINE 官方帳號的註冊連結重新進入本頁面";
-} else {
+function setLineUserIdFromQueryNew() {
+    const params = new URLSearchParams(window.location.search);
+    const queryLineUserId = params.get("line_user_id");
+
+    if (queryLineUserId) {
+        lineUserIdInputNew.value = queryLineUserId;
+        setLineHintNew("已從連結帶入 LINE User ID，可以完成註冊。");
+        return true;
+    }
+
+    return false;
+}
+
+function initLiffProfileNew() {
+    const hasQueryLineUserId = setLineUserIdFromQueryNew();
+
+    if (typeof liff === "undefined") {
+        if (!hasQueryLineUserId) {
+            setLineHintNew("目前無法載入 LINE LIFF，請從 LINE 註冊連結開啟此頁。");
+        }
+        return;
+    }
+
     liff.init({ liffId: LIFF_ID })
         .then(function () {
             if (!liff.isLoggedIn()) {
                 liff.login();
+                return null;
+            }
+
+            return liff.getProfile();
+        })
+        .then(function (profile) {
+            if (!profile) {
                 return;
             }
-            return liff.getProfile().then(function (profile) {
-                lineUserIdInput.value = profile.userId;
-                lineHint.textContent = "已透過 LINE 自動帶入您的身分，請填寫以下資料完成註冊";
-            });
+
+            lineUserIdInputNew.value = profile.userId;
+            setLineHintNew("已取得 LINE User ID，請填寫資料並完成註冊。");
         })
         .catch(function (err) {
-            console.error("LIFF 初始化失敗：", err);
-            lineHint.textContent = "無法取得 LINE 身分，請由 LINE 官方帳號的註冊連結重新進入本頁面";
+            console.error("LIFF 初始化失敗", err);
+            if (!lineUserIdInputNew.value.trim()) {
+                setLineHintNew("無法取得 LINE 使用者資料，請重新從 LINE 註冊連結開啟。");
+            }
         });
 }
 
-faceImageInput.addEventListener("change", function () {
-    const file = faceImageInput.files[0];
-
-    if (!file) {
-        facePreview.hidden = true;
-        facePreview.src = "";
-        return;
+function resetRegisterButtonNew() {
+    if (!registerSuccessNew) {
+        registerButtonNew.disabled = false;
+        registerButtonNew.textContent = "完成註冊";
     }
+}
 
-    facePreview.src = URL.createObjectURL(file);
-    facePreview.hidden = false;
-});
+if (registerFormNew) {
+    initLiffProfileNew();
 
-registerForm.addEventListener("submit", function (event) {
-    event.preventDefault();
+    faceImageInputNew.addEventListener("change", function () {
+        const file = faceImageInputNew.files[0];
 
-    if (registerSuccess) {
-        return;
-    }
+        if (!file) {
+            facePreviewNew.hidden = true;
+            facePreviewNew.src = "";
+            return;
+        }
 
-    const name = document.getElementById("name").value.trim();
-    const phone = document.getElementById("phone").value.trim();
-    const lineUserId = lineUserIdInput.value.trim();
-    const faceImageFile = faceImageInput.files[0];
-    const birthday = document.getElementById("birthday").value;
-    const preferences = Array.from(
-        document.querySelectorAll('input[name="preference"]:checked')
-    ).map(function (checkbox) {
-        return checkbox.value;
+        facePreviewNew.src = URL.createObjectURL(file);
+        facePreviewNew.hidden = false;
     });
 
-    if (!name) {
-        showRegisterResult("請輸入姓名", "error");
-        return;
-    }
+    registerFormNew.addEventListener("submit", function (event) {
+        event.preventDefault();
 
-    if (!lineUserId) {
-        showRegisterResult("找不到 LINE 使用者資訊，請由 LINE 官方帳號的註冊連結重新進入本頁面", "error");
-        return;
-    }
+        if (registerSuccessNew) {
+            return;
+        }
 
-    if (!faceImageFile) {
-        showRegisterResult("請上傳或拍攝會員人臉照片", "error");
-        return;
-    }
+        const name = document.getElementById("name").value.trim();
+        const phone = document.getElementById("phone").value.trim();
+        const lineUserId = lineUserIdInputNew.value.trim();
+        const faceImageFile = faceImageInputNew.files[0];
 
-    const allowedTypes = ["image/jpeg", "image/png"];
+        if (!name) {
+            showRegisterResultNew("請輸入姓名。", "error");
+            return;
+        }
 
-    if (!allowedTypes.includes(faceImageFile.type)) {
-        showRegisterResult("照片格式只支援 JPG 或 PNG", "error");
-        return;
-    }
+        if (!lineUserId) {
+            showRegisterResultNew("尚未取得 LINE User ID，請從 LINE 註冊連結重新開啟。", "error");
+            return;
+        }
 
-    const maxSize = 8 * 1024 * 1024;
+        if (!faceImageFile) {
+            showRegisterResultNew("請上傳會員臉部照片。", "error");
+            return;
+        }
 
-    if (faceImageFile.size > maxSize) {
-        showRegisterResult("照片不可超過 8 MB", "error");
-        return;
-    }
-    registerButton.disabled = true;
-    registerButton.textContent = "註冊中...";
+        const allowedTypes = ["image/jpeg", "image/png"];
+        if (!allowedTypes.includes(faceImageFile.type)) {
+            showRegisterResultNew("照片格式需為 JPG 或 PNG。", "error");
+            return;
+        }
 
-    const formData = new FormData();
+        const maxSize = 8 * 1024 * 1024;
+        if (faceImageFile.size > maxSize) {
+            showRegisterResultNew("照片大小不可超過 8 MB。", "error");
+            return;
+        }
 
-    formData.append("name", name);
-    formData.append("phone", phone);
-    formData.append("line_user_id", lineUserId);
-    formData.append("birthday", birthday);
-    formData.append("preferences", JSON.stringify(preferences));
-    formData.append("face_image", faceImageFile);
+        registerButtonNew.disabled = true;
+        registerButtonNew.textContent = "註冊中...";
 
-    fetch("/line/register", {
-        method: "POST",
-        body: formData
-    })
-        .then(function (response) {
-            return response.json().then(function (data) {
-                return { ok: response.ok, data: data };
-            });
+        const formData = new FormData();
+        formData.append("name", name);
+        formData.append("phone", phone);
+        formData.append("line_user_id", lineUserId);
+        formData.append("face_image", faceImageFile);
+
+        fetch("/line/register", {
+            method: "POST",
+            body: formData
         })
-        .then(function (result) {
-            if (!result.ok || !result.data.success) {
-                showRegisterResult(result.data.message || "註冊失敗，請稍後再試", "error");
-                return;
-            }
+            .then(function (response) {
+                return response.json()
+                    .catch(function () {
+                        return { success: false, message: "伺服器回應格式錯誤。" };
+                    })
+                    .then(function (data) {
+                        return { ok: response.ok, data: data };
+                    });
+            })
+            .then(function (result) {
+                if (!result.ok || !result.data.success) {
+                    showRegisterResultNew(result.data.message || "註冊失敗，請稍後再試。", "error");
+                    return;
+                }
 
-            const member = result.data.member;
-            registerSuccess = true;
+                const member = result.data.member || {};
+                registerSuccessNew = true;
 
-            showRegisterResult(
-                `${result.data.message}！會員編號：${member.member_id}，姓名：${member.name}`,
-                "success"
-            );
+                showRegisterResultNew(
+                    `${result.data.message || "註冊成功"}${member.member_id ? "，會員編號：" + member.member_id : ""}`,
+                    "success"
+                );
 
-            registerForm.querySelectorAll("input").forEach(function (input) {
-                input.disabled = true;
-            });
+                registerFormNew.querySelectorAll("input").forEach(function (input) {
+                    input.disabled = true;
+                });
 
-            registerButton.disabled = true;
-            registerButton.textContent = "已完成註冊";
+                registerButtonNew.disabled = true;
+                registerButtonNew.textContent = "已完成註冊";
 
-            spinButton.disabled = false;
-            lotteryResult.textContent = "註冊完成！可以開始抽獎囉";
-        })
-        .catch(function () {
-            showRegisterResult("網路異常，註冊失敗，請稍後再試", "error");
-        })
-        .finally(function () {
-            if (!registerSuccess) {
-                registerButton.disabled = false;
-                registerButton.textContent = "完成註冊";
-            }
-        });
-});
+                if (spinButtonNew && lotteryResultNew) {
+                    spinButtonNew.disabled = false;
+                    lotteryResultNew.textContent = "註冊完成，可以抽一次迎新獎勵。";
+                }
+            })
+            .catch(function (err) {
+                console.error("註冊送出失敗", err);
+                showRegisterResultNew("網路或伺服器發生錯誤，請稍後再試。", "error");
+            })
+            .finally(resetRegisterButtonNew);
+    });
+}
 
-const prizes = [
-    "現折 50 元",
-    "9 折券",
-    "200元購物劵",
-    "神秘小禮",
-    "贈品三選一",
-    "再接再厲"
-];
+const prizesNew = ["$50 折價券", "9 折優惠", "$200 折價券", "小禮品", "免運券", "再抽一次"];
+let isSpinningNew = false;
+let currentRotationNew = 0;
 
-let isSpinning = false;
-let currentRotation = 0;
+if (spinButtonNew && spinWheelNew && lotteryResultNew) {
+    spinButtonNew.addEventListener("click", function () {
+        if (isSpinningNew) {
+            return;
+        }
 
-spinButton.addEventListener("click", function () {
-    if (isSpinning) {
-        return;
-    }
+        isSpinningNew = true;
+        spinButtonNew.disabled = true;
+        lotteryResultNew.textContent = "抽獎中...";
 
-    isSpinning = true;
-    spinButton.disabled = true;
-    lotteryResult.textContent = "抽獎中，請稍候...";
+        spinWheelNew.style.setProperty("--wheel-text-fix", "0deg");
 
-    spinWheel.style.setProperty("--wheel-text-fix", "0deg");
+        const prizeIndex = Math.floor(Math.random() * prizesNew.length);
+        const segmentDegree = 360 / prizesNew.length;
+        const prizeCenterDegree = prizeIndex * segmentDegree + segmentDegree / 2;
+        const targetDegree = 360 - prizeCenterDegree;
+        const extraSpins = 5 * 360;
+        const finalRotation = currentRotationNew + extraSpins + targetDegree;
 
-    const prizeIndex = Math.floor(Math.random() * prizes.length);
-    const segmentDegree = 360 / prizes.length;
+        spinWheelNew.style.transform = `rotate(${finalRotation}deg)`;
+        currentRotationNew = finalRotation;
 
-    const prizeCenterDegree = prizeIndex * segmentDegree + segmentDegree / 2;
-    const targetDegree = 360 - prizeCenterDegree;
-
-    const extraSpins = 5 * 360;
-    const finalRotation = currentRotation + extraSpins + targetDegree;
-
-    spinWheel.style.transform = `rotate(${finalRotation}deg)`;
-
-    currentRotation = finalRotation;
-
-    setTimeout(function () {
-        spinWheel.style.setProperty("--wheel-text-fix", `${finalRotation}deg`);
-
-        lotteryResult.textContent = `恭喜獲得：${prizes[prizeIndex]}`;
-        spinButton.disabled = false;
-        isSpinning = false;
-    }, 4200);
-});
+        setTimeout(function () {
+            spinWheelNew.style.setProperty("--wheel-text-fix", `${finalRotation}deg`);
+            lotteryResultNew.textContent = `抽獎結果：${prizesNew[prizeIndex]}`;
+            spinButtonNew.disabled = false;
+            isSpinningNew = false;
+        }, 4200);
+    });
+}
