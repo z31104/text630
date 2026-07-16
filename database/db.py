@@ -17,6 +17,18 @@ VISIT_STATUS_ARRIVED = "arrived"
 VISIT_STATUS_STAYING = "staying"
 VISIT_STATUS_LEFT = "left"
 
+
+
+
+def get_member_level_text(member_level):
+    level_text_map = {
+        "vip": "VIP 會員",
+        "normal": "一般會員",
+        "guest": "陌生客"
+    }
+
+    return level_text_map.get(member_level, "未知")
+
 # VIP 通知狀態
 NOTIFICATION_STATUS_PENDING = "pending"
 NOTIFICATION_STATUS_SENT = "sent"
@@ -67,11 +79,15 @@ def get_all_members():
 
     members = cursor.fetchall()
 
+    for member in members:
+        member["member_level_text"] = get_member_level_text(
+            member.get("member_level")
+        )
+
     cursor.close()
     conn.close()
 
     return members
-
 
 def get_member_by_id(member_id):
     conn = get_connection()
@@ -134,7 +150,7 @@ def insert_recognition_log(
         # 如果沒有 member_id，視為 Guest
         if member_id is None:
             if name is None:
-                   name = "Guest"
+                name = "Guest"
 
             vip = False
             member_level = "guest"
@@ -330,7 +346,6 @@ def insert_vip_notification(
         if conn and conn.is_connected():
             conn.close()
 
-
 def update_vip_notification_status(
     notification_id,
     status,
@@ -399,6 +414,94 @@ def update_vip_notification_status(
         if conn and conn.is_connected():
             conn.close()
 
+def get_active_visit(
+    subject_type,
+    subject_id,
+    camera_id=None
+):
+    """
+    查詢指定對象目前尚未結束的到店紀錄。
+
+    目前 recognition_logs 已有 member_id，
+    所以先正式支援 member。
+
+    visitor 需要等 recognition_logs 加入 visitor_id 後，
+    再補上 visitor 查詢。
+    """
+
+    conn = None
+    cursor = None
+
+    try:
+        if subject_type not in ("member", "visitor"):
+            return None
+
+        if subject_id is None:
+            return None
+
+        # 目前 recognition_logs 還沒有 visitor_id
+        if subject_type == "visitor":
+            return None
+
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+        SELECT
+            log_id,
+            member_id,
+            camera_id,
+            name,
+            vip,
+            line_user_id,
+            confidence,
+            member_level,
+            recognition_status,
+            visit_status,
+            recognized_at,
+            visit_time,
+            last_seen_at,
+            leave_time,
+            stay_seconds,
+            stay_minutes,
+            camera_location,
+            created_at
+        FROM recognition_logs
+        WHERE member_id = %s
+          AND leave_time IS NULL
+          AND visit_status IN (%s, %s)
+        """
+
+        params = [
+            subject_id,
+            VISIT_STATUS_ARRIVED,
+            VISIT_STATUS_STAYING
+        ]
+
+        if camera_id:
+            sql += """
+              AND camera_id = %s
+            """
+            params.append(camera_id)
+
+        sql += """
+        ORDER BY visit_time DESC, log_id DESC
+        LIMIT 1
+        """
+
+        cursor.execute(sql, tuple(params))
+        return cursor.fetchone()
+
+    except Exception as e:
+        print("查詢 active visit 失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
 
 def update_recognition_last_seen(log_id, last_seen_at):
     conn = None
