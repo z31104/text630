@@ -511,6 +511,98 @@ def update_vip_notification_status(
         if conn and conn.is_connected():
             conn.close()
 
+def insert_recognition_log(
+    member_id=None,
+    name=None,
+    vip=False,
+    line_user_id=None,
+    confidence=0,
+    recognized_at=None,
+    camera_location=None,
+    camera_id=None,
+    member_level=None,
+    recognition_status=RECOGNITION_STATUS_RECOGNIZED,
+    visit_status=VISIT_STATUS_ARRIVED,
+    visit_time=None,
+    last_seen_at=None,
+    leave_time=None,
+    stay_seconds=0,
+    stay_minutes=0,
+    created_at=None
+):
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        sql = """
+        INSERT INTO recognition_logs (
+            member_id,
+            camera_id,
+            name,
+            vip,
+            line_user_id,
+            confidence,
+            member_level,
+            recognition_status,
+            visit_status,
+            recognized_at,
+            visit_time,
+            last_seen_at,
+            leave_time,
+            stay_seconds,
+            stay_minutes,
+            camera_location,
+            created_at
+        )
+        VALUES (
+            %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s,
+            %s, %s
+        )
+        """
+
+        data = (
+            member_id,
+            camera_id,
+            name,
+            vip,
+            line_user_id,
+            confidence,
+            member_level,
+            recognition_status,
+            visit_status,
+            recognized_at,
+            visit_time,
+            last_seen_at,
+            leave_time,
+            stay_seconds,
+            stay_minutes,
+            camera_location,
+            created_at
+        )
+
+        cursor.execute(sql, data)
+        conn.commit()
+
+        return cursor.lastrowid
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+
+        print("新增 recognition_logs 失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 def update_recognition_last_seen(log_id, last_seen_at):
     conn = None
