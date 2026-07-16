@@ -15,7 +15,7 @@ RECOGNITION_STATUS_FAILED = "failed"
 # 到店狀態
 VISIT_STATUS_ARRIVED = "arrived"
 VISIT_STATUS_STAYING = "staying"
-VISIT_STATUS_VISIT_END = "visit_end"
+VISIT_STATUS_LEFT = "left"
 
 # VIP 通知狀態
 NOTIFICATION_STATUS_PENDING = "pending"
@@ -153,7 +153,7 @@ def insert_recognition_log(
         valid_visit_statuses = {
             VISIT_STATUS_ARRIVED,
             VISIT_STATUS_STAYING,
-            VISIT_STATUS_VISIT_END,
+            VISIT_STATUS_LEFT,
         }
 
         if recognition_status not in valid_recognition_statuses:
@@ -475,7 +475,7 @@ def close_recognition_visit(
             sql,
             (
                 RECOGNITION_STATUS_RECOGNIZED,
-                VISIT_STATUS_VISIT_END,
+                VISIT_STATUS_LEFT,
                 last_seen_at,
                 leave_time,
                 stay_seconds,
