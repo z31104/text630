@@ -510,6 +510,103 @@ def reload_member_faces():
     return known_members
 
 
+def check_duplicate_face(encoding, tolerance=0.6):
+    """
+    檢查新註冊人臉是否已存在於會員人臉快取。
+
+    回傳格式：
+    {
+        "is_duplicate": bool,
+        "member_id": int | None,
+        "name": str | None,
+        "distance": float | None
+    }
+    """
+
+    if face_recognition is None:
+        return {
+            "is_duplicate": False,
+            "member_id": None,
+            "name": None,
+            "distance": None
+        }
+
+    if encoding is None:
+        return {
+            "is_duplicate": False,
+            "member_id": None,
+            "name": None,
+            "distance": None
+        }
+
+    try:
+        encoding = np.array(
+            encoding,
+            dtype=float
+        )
+    except (TypeError, ValueError):
+        return {
+            "is_duplicate": False,
+            "member_id": None,
+            "name": None,
+            "distance": None
+        }
+
+    if encoding.shape != (128,):
+        return {
+            "is_duplicate": False,
+            "member_id": None,
+            "name": None,
+            "distance": None
+        }
+
+    closest_member = None
+    closest_distance = None
+
+    for member in known_members:
+        known_encoding = member.get("encoding")
+
+        if known_encoding is None:
+            continue
+
+        distance = float(
+            face_recognition.face_distance(
+                [known_encoding],
+                encoding
+            )[0]
+        )
+
+        if (
+            closest_distance is None
+            or distance < closest_distance
+        ):
+            closest_distance = distance
+            closest_member = member
+
+    if (
+        closest_member is not None
+        and closest_distance is not None
+        and closest_distance < tolerance
+    ):
+        return {
+            "is_duplicate": True,
+            "member_id": closest_member.get("member_id"),
+            "name": closest_member.get("name"),
+            "distance": round(closest_distance, 4)
+        }
+
+    return {
+        "is_duplicate": False,
+        "member_id": None,
+        "name": None,
+        "distance": (
+            round(closest_distance, 4)
+            if closest_distance is not None
+            else None
+        )
+    }
+
+
 face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
