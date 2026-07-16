@@ -75,6 +75,7 @@ def member():
 def add_recognition_log():
     data = request.get_json(silent=True)
 
+
     if not data:
         return jsonify({"error": "請傳入 JSON 格式資料"}), 400
 
@@ -98,6 +99,9 @@ def add_recognition_log():
 @member_bp.route("/member/add", methods=["GET", "POST"])
 def add_member_page():
     if request.method == "POST":
+        vip = request.form.get("vip") == "1"
+        member_level = "vip" if vip else "normal"   
+        
         conn = get_connection()
         cursor = conn.cursor()
 
@@ -112,8 +116,8 @@ def add_member_page():
             request.form.get("name"),
             request.form.get("phone"),
             request.form.get("birthday") or None,
-            request.form.get("vip") == "1",
-            request.form.get("member_level") or "一般會員",
+            vip,
+            member_level,
             int(request.form.get("visit_count") or 0),
             request.form.get("line_user_id"),
             int(request.form.get("total_amount") or 0),
@@ -137,7 +141,6 @@ def add_member_page():
         <p>電話：<input type="text" name="phone"></p>
         <p>生日：<input type="date" name="birthday"></p>
         <p>LINE User ID：<input type="text" name="line_user_id"></p>
-        <p>會員等級：<input type="text" name="member_level" value="一般會員"></p>
         <p>來店次數：<input type="number" name="visit_count" value="0"></p>
         <p>累積消費：<input type="number" name="total_amount" value="0"></p>
         <p>偏好商品：<input type="text" name="favorite_product"></p>
@@ -194,7 +197,10 @@ def edit_member(member_id):
         return "找不到會員"
 
     if request.method == "POST":
-        sql = """
+         vip = request.form.get("vip") == "1"
+         member_level = "vip" if vip else "normal"
+       
+         sql = """
         UPDATE members
         SET name = %s,
             phone = %s,
@@ -209,12 +215,12 @@ def edit_member(member_id):
         WHERE member_id = %s
         """
 
-        data = (
+         data = (
             request.form.get("name"),
             request.form.get("phone"),
             request.form.get("birthday") or None,
-            request.form.get("vip") == "1",
-            request.form.get("member_level") or "一般會員",
+            vip,
+            member_level,
             int(request.form.get("visit_count") or 0),
             request.form.get("line_user_id"),
             int(request.form.get("total_amount") or 0),
@@ -223,13 +229,13 @@ def edit_member(member_id):
             member_id
         )
 
-        cursor.execute(sql, data)
-        conn.commit()
+         cursor.execute(sql, data)
+         conn.commit()
 
-        cursor.close()
-        conn.close()
+         cursor.close()
+         conn.close()
 
-        return redirect("/member")
+         return redirect("/member")
 
     cursor.close()
     conn.close()
@@ -244,9 +250,8 @@ def edit_member(member_id):
         <p>會員編號：{target_member['member_id']}</p>
         <p>姓名：<input type="text" name="name" value="{target_member['name'] or ''}"></p>
         <p>電話：<input type="text" name="phone" value="{target_member['phone'] or ''}"></p>
-        <p>生日：<input type="date" name="birthday" value="{target_member['birthday'] or ''}">
+        <p>生日：<input type="date" name="birthday" value="{target_member['birthday'] or ''}"></p>
         <p>LINE User ID：<input type="text" name="line_user_id" value="{target_member['line_user_id'] or ''}"></p>
-        <p>會員等級：<input type="text" name="member_level" value="{target_member['member_level'] or ''}"></p>
         <p>來店次數：<input type="number" name="visit_count" value="{target_member['visit_count'] or 0}"></p>
         <p>累積消費：<input type="number" name="total_amount" value="{target_member['total_amount'] or 0}"></p>
         <p>偏好商品：<input type="text" name="favorite_product" value="{target_member['favorite_product'] or ''}"></p>

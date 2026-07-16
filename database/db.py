@@ -117,6 +117,11 @@ def get_member_by_id(member_id):
     )
 
     member = cursor.fetchone()
+    if member:
+    
+        member["member_level_text"] = get_member_level_text(
+            member.get("member_level")
+    )
 
     cursor.close()
     conn.close()
@@ -644,6 +649,9 @@ def insert_member(
     cursor = None
 
     try:
+        vip = bool(vip)
+        member_level = "vip" if vip else "normal"
+
         conn = get_connection()
         cursor = conn.cursor()
 
@@ -787,8 +795,11 @@ def register_member_with_face(
             raise ValueError("image_path 不可為空")
 
         if encoding_data is None:
-            raise ValueError("encoding_data 不可為空")
+         raise ValueError("encoding_data 不可為空")
 
+        vip = bool(vip)
+        member_level = "vip" if vip else "normal"
+              
         # NumPy array 轉成 Python list
         if hasattr(encoding_data, "tolist"):
             encoding_data = encoding_data.tolist()
@@ -938,6 +949,11 @@ def get_all_member_faces():
                     continue
 
                 row["encoding_data"] = encoding
+
+                row["member_level_text"] = get_member_level_text(
+                    row.get("member_level")
+                )
+
                 valid_rows.append(row)
 
             except (TypeError, json.JSONDecodeError):
