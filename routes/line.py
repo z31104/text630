@@ -14,6 +14,7 @@ from database.db import get_connection, register_member_with_face
 from linebot_service.notify import push_message
 from services.face_service import (
     validate_member_face_image,
+    check_duplicate_face,
     reload_member_faces,
     MEMBER_IMAGE_DIR,
 )
@@ -327,6 +328,15 @@ def register_from_line():
     if not face_check.get("success"):
         os.remove(image_path)
         return jsonify({"success": False, "message": face_check.get("message", "照片驗證失敗")}), 400
+
+    duplicate_result = check_duplicate_face(face_check.get("encoding"))
+    if duplicate_result.get("is_duplicate"):
+        os.remove(image_path)
+        return jsonify({
+            "success": False,
+            "message": "此人臉已經註冊過會員，請勿重複註冊",
+            "duplicate_member_id": duplicate_result.get("member_id"),
+        }), 409
 
     try:
         register_result = register_member_with_face(
