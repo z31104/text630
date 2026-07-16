@@ -572,6 +572,8 @@ def close_recognition_visit(
             stay_seconds = %s,
             stay_minutes = %s
         WHERE log_id = %s
+        AND leave_time IS NULL
+        AND visit_status IN (%s, %s)
         """
 
         cursor.execute(
@@ -583,12 +585,32 @@ def close_recognition_visit(
                 leave_time,
                 stay_seconds,
                 stay_minutes,
-                log_id
+                log_id,
+                VISIT_STATUS_ARRIVED,
+                VISIT_STATUS_STAYING,
             )
         )
 
+        closed_count = cursor.rowcount
+        
+        if closed_count == 1:
+            cursor.execute(
+                """
+                UPDATE members
+                SET visit_count = COALESCE(visit_count, 0) + 1
+                WHERE member_id = (
+                SELECT member_id
+                FROM recognition_logs
+                WHERE log_id = %s
+                )
+                AND member_id IS NOT NULL
+                """,
+                (log_id,)
+            )
+            
         conn.commit()
-        return cursor.rowcount
+        return closed_count
+
 
     except Exception as e:
         if conn:
