@@ -63,6 +63,23 @@
                         <input type="tel" id="phone" name="phone" placeholder="請輸入手機號碼">
                     </div>
 
+                    <div class="form-group">
+                        <label for="birthday">生日</label>
+                        <input type="date" id="birthday" name="birthday">
+                    </div>
+
+                    <div class="form-group">
+                        <label>偏好商品（可複選）</label>
+                        <div class="pref-options">
+                            <label class="pref-option"><input type="checkbox" name="preference" value="咖啡"> 咖啡</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="甜點"> 甜點</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="飲品"> 飲品</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="服飾"> 服飾</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="保養品"> 保養品</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="新品通知"> 新品通知</label>
+                        </div>
+                    </div>
+
                     <input type="hidden" id="line_user_id" name="line_user_id">
 
                     <div class="form-group">
@@ -118,12 +135,25 @@
                         <p class="lottery-result" id="lotteryResult">
                             完成註冊後即可抽一次迎新獎勵。
                         </p>
+
+                        <div class="lottery-prize-card" id="lotteryPrizeCard" hidden>
+                            <p class="lottery-prize-label">中獎獎項</p>
+                            <h3 id="lotteryPrizeName">尚未抽獎</h3>
+                            <div class="lottery-qr-wrap">
+                                <div class="lottery-qr-code" id="lotteryQrCode" aria-label="中獎兌換 QR Code"></div>
+                                <p class="lottery-qr-note">請出示此 QR Code 供門市兌換</p>
+                            </div>
+                            <p class="lottery-prize-detail" id="lotteryPrizeDetail"></p>
+                        </div>
+
+                        <div class="lottery-confetti" id="lotteryConfetti" aria-hidden="true"></div>
                     </div>
                 </div>
             </div>
         </section>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script src="{{ url_for('static', filename='js/register.js') }}"></script>
 </body>
 </html>

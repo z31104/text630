@@ -11,8 +11,15 @@ const lineHintNew = document.getElementById("lineHint");
 const faceImageInputNew = document.getElementById("face_image");
 const facePreviewNew = document.getElementById("facePreview");
 const clearFaceImageButtonNew = document.getElementById("clearFaceImage");
+const birthdayInputNew = document.getElementById("birthday");
+const lotteryPrizeCardNew = document.getElementById("lotteryPrizeCard");
+const lotteryPrizeNameNew = document.getElementById("lotteryPrizeName");
+const lotteryPrizeDetailNew = document.getElementById("lotteryPrizeDetail");
+const lotteryQrCodeNew = document.getElementById("lotteryQrCode");
+const lotteryConfettiNew = document.getElementById("lotteryConfetti");
 
 let registerSuccessNew = false;
+let registeredMemberNew = null;
 
 function showRegisterResultNew(message, type) {
     registerResultNew.textContent = message;
@@ -84,6 +91,98 @@ function resetRegisterButtonNew() {
     }
 }
 
+function getSelectedPreferencesNew() {
+    return Array.from(
+        document.querySelectorAll('input[name="preference"]:checked')
+    ).map(function (checkbox) {
+        return checkbox.value;
+    });
+}
+
+function buildPrizePayloadNew(prize) {
+    const memberId = registeredMemberNew && (
+        registeredMemberNew.member_id ||
+        registeredMemberNew.id ||
+        registeredMemberNew.memberId
+    );
+
+    return JSON.stringify({
+        type: "welcome_lottery_prize",
+        prize_id: prize.id,
+        prize_name: prize.name,
+        member_id: memberId || null,
+        line_user_id: lineUserIdInputNew ? lineUserIdInputNew.value.trim() || null : null,
+        timestamp: new Date().toISOString()
+    });
+}
+
+function renderPrizeQrCodeNew(payload) {
+    if (!lotteryQrCodeNew) {
+        return;
+    }
+
+    lotteryQrCodeNew.innerHTML = "";
+
+    if (typeof QRCode !== "undefined") {
+        new QRCode(lotteryQrCodeNew, {
+            text: payload,
+            width: 132,
+            height: 132,
+            colorDark: "#1f2937",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.M
+        });
+        return;
+    }
+
+    const fallbackImage = document.createElement("img");
+    fallbackImage.src = "https://api.qrserver.com/v1/create-qr-code/?size=132x132&data=" + encodeURIComponent(payload);
+    fallbackImage.alt = "中獎兌換 QR Code";
+    lotteryQrCodeNew.appendChild(fallbackImage);
+}
+
+function showPrizeResultNew(prize) {
+    const payload = buildPrizePayloadNew(prize);
+
+    if (lotteryPrizeNameNew) {
+        lotteryPrizeNameNew.textContent = prize.name;
+    }
+
+    if (lotteryPrizeDetailNew) {
+        lotteryPrizeDetailNew.textContent = "兌換資料已包含獎項、會員資訊與產生時間。";
+    }
+
+    renderPrizeQrCodeNew(payload);
+
+    if (lotteryPrizeCardNew) {
+        lotteryPrizeCardNew.hidden = false;
+    }
+}
+
+function launchLotteryConfettiNew() {
+    if (!lotteryConfettiNew) {
+        return;
+    }
+
+    lotteryConfettiNew.innerHTML = "";
+    lotteryConfettiNew.classList.add("is-active");
+
+    for (let i = 0; i < 34; i += 1) {
+        const piece = document.createElement("span");
+        piece.style.setProperty("--confetti-left", Math.random() * 100 + "%");
+        piece.style.setProperty("--confetti-delay", Math.random() * 0.4 + "s");
+        piece.style.setProperty("--confetti-drift", (Math.random() * 120 - 60) + "px");
+        piece.style.setProperty("--confetti-rotate", (Math.random() * 420 + 120) + "deg");
+        piece.style.setProperty("--confetti-color", ["#facc15", "#2563eb", "#22c55e", "#ef4444", "#f97316"][i % 5]);
+        lotteryConfettiNew.appendChild(piece);
+    }
+
+    window.setTimeout(function () {
+        lotteryConfettiNew.classList.remove("is-active");
+        lotteryConfettiNew.innerHTML = "";
+    }, 2800);
+}
+
 if (registerFormNew) {
     initLiffProfileNew();
 
@@ -126,6 +225,8 @@ if (registerFormNew) {
         const phone = document.getElementById("phone").value.trim();
         const lineUserId = lineUserIdInputNew.value.trim();
         const faceImageFile = faceImageInputNew.files[0];
+        const birthday = birthdayInputNew ? birthdayInputNew.value : "";
+        const preferences = getSelectedPreferencesNew();
 
         if (!name) {
             showRegisterResultNew("請輸入姓名。", "error");
@@ -161,6 +262,8 @@ if (registerFormNew) {
         formData.append("name", name);
         formData.append("phone", phone);
         formData.append("line_user_id", lineUserId);
+        formData.append("birthday", birthday);
+        formData.append("preferences", JSON.stringify(preferences));
         formData.append("face_image", faceImageFile);
 
         fetch("/line/register", {
@@ -183,6 +286,7 @@ if (registerFormNew) {
                 }
 
                 const member = result.data.member || {};
+                registeredMemberNew = member;
                 registerSuccessNew = true;
 
                 showRegisterResultNew(
@@ -210,7 +314,14 @@ if (registerFormNew) {
     });
 }
 
-const prizesNew = ["$50 折價券", "9 折優惠", "$200 折價券", "小禮品", "免運券", "再抽一次"];
+const prizesNew = [
+    { id: "WELCOME_50", name: "$50 折價券" },
+    { id: "WELCOME_10_OFF", name: "9 折優惠" },
+    { id: "WELCOME_200", name: "$200 折價券" },
+    { id: "WELCOME_GIFT", name: "小禮品" },
+    { id: "WELCOME_FREE_SHIP", name: "免運券" },
+    { id: "WELCOME_RETRY", name: "再抽一次" }
+];
 let isSpinningNew = false;
 let currentRotationNew = 0;
 
@@ -238,7 +349,9 @@ if (spinButtonNew && spinWheelNew && lotteryResultNew) {
 
         setTimeout(function () {
             spinWheelNew.style.setProperty("--wheel-text-fix", `${finalRotation}deg`);
-            lotteryResultNew.textContent = `抽獎結果：${prizesNew[prizeIndex]}`;
+            lotteryResultNew.textContent = `抽獎結果：${prizesNew[prizeIndex].name}`;
+            showPrizeResultNew(prizesNew[prizeIndex]);
+            launchLotteryConfettiNew();
             spinButtonNew.disabled = false;
             isSpinningNew = false;
         }, 4200);
