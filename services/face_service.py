@@ -8,6 +8,7 @@ from datetime import datetime
 
 import cv2
 import numpy as np
+from PIL import Image, ImageOps
 
 try:
     import face_recognition
@@ -248,11 +249,83 @@ def validate_member_face_image(image_path):
             "message": "找不到會員照片",
             "encoding": None
         }
-
+    
     try:
-        image = face_recognition.load_image_file(image_path)
-        face_locations = face_recognition.face_locations(image)
+        print("=" * 50)
+        print("開始驗證會員照片")
+        print("image_path:", image_path)
+        print("file_size:", os.path.getsize(image_path), "bytes")
+        
+        with Image.open(image_path) as pil_image:
+            # 依手機照片的 EXIF Orientation 自動轉正
+            pil_image = ImageOps.exif_transpose(pil_image)
+            
+            # 統一轉成 RGB，避免灰階、RGBA 等格式造成問題
+            pil_image = pil_image.convert("RGB")
+            
+            # 轉成 face_recognition 可使用的 NumPy 陣列
+            image = np.array(pil_image)
+
+        cv2.imwrite(
+            "debug_upload.jpg",
+            cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        )
+        
+        print("已輸出 debug_upload.jpg")
+        
+        print("原始 image shape:", image.shape)
+        
+        height, width = image.shape[:2]
+        
+        # 大型手機照片先等比例縮小，避免偵測太慢
+        max_width = 1200
+        
+        if width > max_width:
+            scale = max_width / width
+            resized_width = int(width * scale)
+            resized_height = int(height * scale)
+            
+            image_for_detection = cv2.resize(
+                image,
+                (resized_width, resized_height)
+            )
+            
+        else:
+            scale = 1.0
+            image_for_detection = image
+        
+        print("偵測用 image shape:", image_for_detection.shape)
+        print("縮放比例:", scale)
+        
+        face_locations_small = face_recognition.face_locations(
+            image_for_detection,
+            number_of_times_to_upsample=2,
+            model="hog"
+        )
+        
+        # 把縮小圖片上的座標換算回原圖
+        face_locations = []
+        
+        for top, right, bottom, left in face_locations_small:
+            original_top = max(0, int(round(top / scale)))
+            original_right = min(width, int(round(right / scale)))
+            original_bottom = min(height, int(round(bottom / scale)))
+            original_left = max(0, int(round(left / scale)))
+            
+            face_locations.append((
+                original_top,
+                original_right,
+                original_bottom,
+                original_left
+            ))
+        
+        print("face_locations:", face_locations)
+        print("偵測到人臉數量:", len(face_locations))
+        print("=" * 50)
+        
     except Exception as e:
+        print("照片驗證發生錯誤:", e)
+        
         return {
             "success": False,
             "message": f"照片讀取失敗：{e}",
@@ -290,7 +363,6 @@ def validate_member_face_image(image_path):
         "message": "人臉照片驗證成功",
         "encoding": encodings[0]
     }
-
 
 def register_member_face(member_id, image_path):
     """
@@ -630,8 +702,8 @@ def detect_face(frame):
     detected_faces = face_cascade.detectMultiScale(
         gray,
         scaleFactor=1.15,
-        minNeighbors=7,
-        minSize=(90, 90),
+        minNeighbors=5,
+        minSize=(80, 80),
         maxSize=(450, 450)
     )
 
@@ -690,7 +762,6 @@ def recognize_face(frame, faces):
         )
 
     # 有偵測到臉，但沒有任何會員人臉資料可供比對
-    # 這種情況視為 guest
     if len(known_members) == 0:
         return build_result(
             confidence=0,
@@ -702,13 +773,17 @@ def recognize_face(frame, faces):
         cv2.COLOR_BGR2RGB
     )
 
-    # MVP 階段先只處理第一張臉
-    x, y, w, h = faces[0]
+    # 優先辨識畫面中面積最大、通常最靠近鏡頭的人臉
+    x, y, w, h = max(
+        faces,
+        key=lambda face: face[2] * face[3]
+    )
+
     face_location = (
-        y,
-        x + w,
-        y + h,
-        x
+        y,          # top
+        x + w,      # right
+        y + h,      # bottom
+        x           # left
     )
 
     try:
@@ -733,32 +808,50 @@ def recognize_face(frame, faces):
 
     current_encoding = encodings[0]
 
+    # 整理所有可用的會員 encoding
+    known_encodings = []
+    valid_members = []
+
     for member in known_members:
-        if "encoding" not in member:
+        known_encoding = member.get("encoding")
+
+        if known_encoding is None:
             continue
 
-        distance = face_recognition.face_distance(
-            [member["encoding"]],
-            current_encoding
-        )[0]
+        known_encodings.append(known_encoding)
+        valid_members.append(member)
 
-        confidence = float(
-            round(1 - distance, 2)
+    # known_members 雖然有資料，但沒有任何有效 encoding
+    if len(known_encodings) == 0:
+        return build_result(
+            confidence=0,
+            recognition_status="guest"
         )
 
-        if distance < 0.6:
-            member_data = (
-                get_member_by_id(member["member_id"])
-                or member
-            )
+    # 一次計算目前人臉與所有會員的距離
+    distances = face_recognition.face_distance(
+        known_encodings,
+        current_encoding
+    )
 
-            return build_result(
-                member_data=member_data,
-                confidence=confidence,
-                recognition_status="recognized"
-            )
+    # 找出距離最小，也就是最相似的會員
+    best_index = int(np.argmin(distances))
+    best_distance = float(distances[best_index])
+    best_member = valid_members[best_index]
 
-    # 有偵測到人臉，但沒有比對到任何會員
+    confidence = float(
+        round(1 - best_distance, 2)
+    )
+
+    # 距離小於 0.6 才視為正式會員
+    if best_distance < 0.6:
+        return build_result(
+            member_data=best_member,
+            confidence=confidence,
+            recognition_status="recognized"
+        )
+
+    # 有偵測到人臉，但與所有會員距離都超過門檻
     return build_result(
         confidence=0,
         recognition_status="guest"
