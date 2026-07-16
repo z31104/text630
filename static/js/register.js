@@ -126,6 +126,12 @@ if (registerFormNew) {
         const phone = document.getElementById("phone").value.trim();
         const lineUserId = lineUserIdInputNew.value.trim();
         const faceImageFile = faceImageInputNew.files[0];
+        const birthday = document.getElementById("birthday").value;
+        const preferences = Array.from(
+            document.querySelectorAll('input[name="preference"]:checked')
+        ).map(function (checkbox) {
+            return checkbox.value;
+        });
 
         if (!name) {
             showRegisterResultNew("請輸入姓名。", "error");
@@ -161,6 +167,8 @@ if (registerFormNew) {
         formData.append("name", name);
         formData.append("phone", phone);
         formData.append("line_user_id", lineUserId);
+        formData.append("birthday", birthday);
+        formData.append("preferences", JSON.stringify(preferences));
         formData.append("face_image", faceImageFile);
 
         fetch("/line/register", {
