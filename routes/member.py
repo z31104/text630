@@ -12,7 +12,8 @@ def member():
     cursor.execute("""
         SELECT member_id, name, phone, birthday, vip, member_level,
                visit_count, line_user_id, total_amount,
-               favorite_product, face_image, created_at, updated_at
+               favorite_product, face_image, registration_source,
+                    created_at , updated_at
         FROM members
     """)
     db_members = cursor.fetchall()
@@ -37,14 +38,22 @@ def member():
             <th>累積消費</th>
             <th>偏好商品</th>
             <th>人臉圖片</th>
+            <th>註冊來源</th>
             <th>操作</th>
         </tr>
     """
 
     for m in db_members:
         member_id = m["member_id"]
+        
+        member_level_text = {
+            "vip": "VIP 會員",
+            "normal": "一般會員",
+            "guest": "陌生客"
+        }.get(m["member_level"], "未知")
 
         html += f"""
+
         <tr>
             <td>{m["member_id"]}</td>
             <td>{m["name"]}</td>
@@ -57,6 +66,7 @@ def member():
             <td>{m["total_amount"]}</td>
             <td>{m["favorite_product"] or ""}</td>
             <td>{m["face_image"] or ""}</td>
+            <td>{m["registration_source"] or ""}</td>
             <td>
                 <a href="/member/edit/{member_id}">修改</a>
                 <a href="/member/delete/{member_id}">刪除</a>
@@ -107,9 +117,20 @@ def add_member_page():
 
         sql = """
         INSERT INTO members
-        (name, phone,birthday, vip, member_level, visit_count, line_user_id,
-         total_amount, favorite_product, face_image)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        (
+        name, 
+        phone,
+        birthday,
+        vip,
+        member_level,
+        visit_count,
+        line_user_id,
+        total_amount,
+        favorite_product,
+        face_image,
+        registration_source
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         data = (
@@ -122,7 +143,8 @@ def add_member_page():
             request.form.get("line_user_id"),
             int(request.form.get("total_amount") or 0),
             request.form.get("favorite_product"),
-            request.form.get("face_image")
+            request.form.get("face_image"),
+            "backend"
         )
 
         cursor.execute(sql, data)
@@ -184,7 +206,7 @@ def edit_member(member_id):
     cursor.execute("""
         SELECT member_id, name, phone, birthday, vip, member_level,
                visit_count, line_user_id, total_amount,
-               favorite_product, face_image
+               favorite_product, face_image, registration_source
         FROM members
         WHERE member_id = %s
     """, (member_id,))

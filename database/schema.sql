@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS purchase_records (
 CREATE TABLE IF NOT EXISTS face_images (
     face_id INT AUTO_INCREMENT PRIMARY KEY,
     member_id INT NOT NULL,
-   image_path VARCHAR(255) NOT NULL,
+    image_path VARCHAR(255) NOT NULL,
     encoding_data LONGTEXT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
@@ -90,9 +90,9 @@ CREATE TABLE IF NOT EXISTS recognition_logs (
     line_user_id VARCHAR(100),
 
     confidence FLOAT DEFAULT 0,
-    member_level VARCHAR(20),
-    recognition_status VARCHAR(30),
-    visit_status VARCHAR(30),
+    member_level VARCHAR(20) DEFAULT 'guest',
+    recognition_status VARCHAR(30) DEFAULT 'guest',
+    visit_status VARCHAR(30) DEFAULT 'arrived',
 
     recognized_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     visit_time DATETIME,
