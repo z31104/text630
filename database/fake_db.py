@@ -11,6 +11,8 @@ members = [
         "total_amount": 5800,
         "favorite_product": "拿鐵",
         "face_image": "001.jpg",
+        "birthday": "1996-08-21",
+        "registration_source": "import",
         "created_at": "2026-07-09 10:00:00",
         "updated_at": "2026-07-09 10:00:00"
     },
@@ -23,6 +25,8 @@ members = [
         "visit_count": 3,
         "line_user_id": "U987654321",
         "total_amount": 900,
+        "birthday": "1998-05-10",
+        "registration_source": "import",
         "favorite_product": "美式咖啡",
         "face_image": "002.jpg",
         "created_at": "2026-07-09 10:00:00",
@@ -39,6 +43,8 @@ members = [
         "total_amount": 12000,
         "favorite_product": "焦糖瑪奇朵",
         "face_image": "003.jpg",
+        "birthday": "1992-12-25",
+        "registration_source": "import",
         "created_at": "2026-07-09 10:00:00",
         "updated_at": "2026-07-09 10:00:00"
     }

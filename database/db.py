@@ -805,7 +805,7 @@ def register_member_with_face(
             raise ValueError("image_path 不可為空")
 
         if encoding_data is None:
-         raise ValueError("encoding_data 不可為空")
+            raise ValueError("encoding_data 不可為空")
 
         vip = bool(vip)
         member_level = "vip" if vip else "normal"
@@ -925,6 +925,7 @@ def get_all_member_faces():
             fi.created_at AS face_created_at,
             m.name,
             m.phone,
+            m.birthday,
             m.vip,
             m.member_level,
             m.visit_count,

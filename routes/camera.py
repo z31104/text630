@@ -20,14 +20,20 @@ except Exception:
 from services.face_service import (
     detect_face,
     recognize_face,
+    register_new_visitor,
     draw_face_boxes,
     log_recognition_result,
     update_recognition_last_seen,
     close_recognition_visit,
     send_line_notify
 )
-
 camera_bp = Blueprint("camera", __name__)
+
+# 同一時間只允許一個攝影機串流持有實體鏡頭。
+# 瀏覽器重新整理時，會先釋放舊串流使用的鏡頭，
+# 再交給新的 /camera/video_feed 使用。
+camera_instance = None
+camera_instance_lock = threading.Lock()
 
 # =============================
 # 攝影機設定
@@ -80,6 +86,12 @@ active_visits_lock = threading.Lock()
 # 訪客上一次產生 recognition log 的時間
 last_guest_log_time = 0
 
+# Guest 必須連續辨識幾次才正式確認
+guest_confirm_count = 0
+
+# 連續 2 次辨識為 Guest 才正式顯示與記錄
+GUEST_CONFIRM_REQUIRED = 2
+
 # 設定參數
 RECOGNITION_INTERVAL = 2       # 每 2 秒做一次人臉比對
 LAST_SEEN_UPDATE_INTERVAL = 15 # 每 15 秒更新一次資料庫
@@ -100,39 +112,124 @@ def open_camera(camera_index=CAMERA_INDEX):
     """
     開啟攝影機。
 
-    Windows 建議使用 cv2.CAP_DSHOW，外接 USB 攝影機會比較快開啟，
-    也比較不容易出現 MSMF can\'t grab frame 的問題。
-
-    攝影機 index 由 Windows / DirectShow 決定，
-    不保證 0 是內建鏡頭、1 是外接鏡頭。
+    Windows 建議使用 cv2.CAP_DSHOW，
+    外接 USB 攝影機通常能更快開啟，
+    也較不容易出現 MSMF 無法讀取畫面的問題。
     """
 
-    print(f"嘗試開啟攝影機，camera_index={camera_index}")
+    print(
+        f"嘗試開啟攝影機，"
+        f"camera_index={camera_index}"
+    )
 
-    cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
-    cap.set(cv2.CAP_PROP_FPS, CAMERA_FPS)
+    # 必須先建立 cap，後面才能使用 cap.set()
+    cap = cv2.VideoCapture(
+        camera_index,
+        cv2.CAP_DSHOW
+    )
 
+    # 設定攝影機畫面大小與 FPS
+    cap.set(
+        cv2.CAP_PROP_FRAME_WIDTH,
+        CAMERA_WIDTH
+    )
+    cap.set(
+        cv2.CAP_PROP_FRAME_HEIGHT,
+        CAMERA_HEIGHT
+    )
+    cap.set(
+        cv2.CAP_PROP_FPS,
+        CAMERA_FPS
+    )
+
+    # 盡量只保留最新畫面，降低畫面延遲
+    cap.set(
+        cv2.CAP_PROP_BUFFERSIZE,
+        1
+    )
+
+    # 確認攝影機是否成功開啟
     if not cap.isOpened():
-        print(f"無法開啟攝影機，camera_index={camera_index}")
+        print(
+            f"無法開啟攝影機，"
+            f"camera_index={camera_index}"
+        )
         cap.release()
         return None
 
     # 讓攝影機完成自動曝光與白平衡
     for _ in range(10):
-        success, _ = cap.read()
-        
-        if not success:
+        success, frame = cap.read()
+
+        if not success or frame is None:
             print(
-                f"攝影機暖機失敗，camera_index={camera_index}"
+                f"攝影機暖機失敗，"
+                f"camera_index={camera_index}"
             )
             cap.release()
             return None
+
         time.sleep(0.03)
 
-    print(f"已開啟攝影機，camera_index={camera_index}")
+    print(
+        f"已開啟攝影機，"
+        f"camera_index={camera_index}"
+    )
+
     return cap
+
+def acquire_camera():
+    """
+    取得攝影機。
+
+    若瀏覽器重新整理或重新開啟串流，
+    先釋放上一個串流持有的攝影機，
+    避免同一支實體鏡頭被重複開啟後出現黑畫面。
+    """
+
+    global camera_instance
+
+    with camera_instance_lock:
+        if camera_instance is not None:
+            try:
+                camera_instance.release()
+                print("已釋放上一個攝影機串流")
+            except Exception as e:
+                print(f"釋放上一個攝影機串流失敗：{e}")
+
+            camera_instance = None
+
+            # 讓 Windows 有一點時間釋放攝影機裝置
+            time.sleep(0.3)
+
+        camera_instance = open_camera(CAMERA_INDEX)
+
+        return camera_instance
+
+
+def release_camera(cap):
+    """
+    安全釋放指定攝影機。
+
+    只有目前使用中的 cap 才會清除全域 camera_instance，
+    避免舊串流結束時誤清除新串流。
+    """
+
+    global camera_instance
+
+    if cap is None:
+        return
+
+    with camera_instance_lock:
+        try:
+            cap.release()
+        except Exception as e:
+            print(f"攝影機釋放失敗：{e}")
+
+        if camera_instance is cap:
+            camera_instance = None
+
+    print("攝影機已釋放")
 
 
 def update_member_visit(result, current_time):
@@ -207,8 +304,9 @@ def generate_frames():
     global last_recognition_time
     global last_result
     global last_guest_log_time
+    global guest_confirm_count
 
-    cap = open_camera(CAMERA_INDEX)
+    cap = acquire_camera()
 
     if cap is None:
         print("攝影機串流停止：無法取得攝影機")
@@ -227,38 +325,121 @@ def generate_frames():
             faces = detect_face(frame)
             current_time = time.time()
             has_face = len(faces) > 0
-
-            # 畫面沒有偵測到人臉
-            # 清除上一筆會員或 guest 的顯示資料
+        
+            
+            # 畫面沒有人臉
             if not has_face:
-                last_result = {
-                    "subject_type": "none",
-                    "member_id": None,
-                    "visitor_id": None,
-                    "visitor_code": None,
-                    "name": "No Face",
-                    "phone": None,
-                    "vip": False,
-                    "member_level": "guest",
-                    "visit_count": 0,
-                    "line_user_id": None,
-                    "registration_source": None,
-                    "total_amount": 0,
-                    "favorite_product": None,
-                    "face_image": None,
-                    "confidence": 0,
-                    "recognition_status": "no_face",
-                    "member_level_text": "No Face"
-                }
+                 guest_confirm_count = 0
 
+                 last_result = {
+                      "subject_type": "none",
+                      "member_id": None,
+                      "visitor_id": None,
+                      "visitor_code": None,
+                      "name": "No Face",
+                      "phone": None,
+                      "vip": False,
+                      "member_level": "guest",
+                      "visit_count": 0,
+                      "line_user_id": None,
+                      "registration_source": None,
+                      "total_amount": 0,
+                      "favorite_product": None,
+                      "face_image": None,
+                      "confidence": 0,
+                      "recognition_status": "no_face",
+                      "member_level_text": "No Face"
+                }
+            
             # 畫面有偵測到人臉，而且超過辨識間隔
             # 才執行會員人臉比對
             elif (
                 current_time - last_recognition_time
                 >= RECOGNITION_INTERVAL
             ):
-                last_result = recognize_face(frame, faces)
+                recognition_result = recognize_face(frame, faces)
                 last_recognition_time = current_time
+                
+                recognition_status = recognition_result.get(
+                    "recognition_status"
+                )
+                
+                # 成功辨識會員，立即顯示並清除 Guest 累積次數
+                if recognition_status == "recognized":
+                    guest_confirm_count = 0
+                    last_result = recognition_result
+                    
+                # 第一次辨識為 Guest 時先顯示 Detecting
+                elif recognition_status == "guest":
+                    guest_confirm_count += 1
+                    
+                    # 同一張未知人臉連續確認達標後，
+                    # # 才正式建立固定 visitor。
+                    if (
+                        guest_confirm_count
+                        >= GUEST_CONFIRM_REQUIRED
+                    ):
+                        print(
+                            "未知人臉連續確認完成，"
+                            "開始建立固定散客"
+                        )
+                        
+                        visitor_result = register_new_visitor(
+                            frame,
+                            faces
+                        )
+                        
+                        if (
+                            visitor_result.get("subject_type")
+                            == "visitor"
+                            and visitor_result.get("visitor_id")
+                            is not None
+                        ):
+                            last_result = visitor_result
+                            
+                            print(
+                                "固定散客建立成功："
+                                f"visitor_id="
+                                f"{visitor_result.get('visitor_id')}"
+                                )
+                            
+                        else:
+                            last_result = visitor_result
+                            
+                            print(
+                                "固定散客建立失敗，"
+                                "本次不寫入到店紀錄"
+                            )
+                        
+                        # 不論成功或失敗，結束本輪確認，
+                        # 避免下一次立即重複建檔。
+                        guest_confirm_count = 0
+                    
+                    else:
+                        last_result = {
+                            "subject_type": "unknown",
+                            "member_id": None,
+                            "visitor_id": None,
+                            "visitor_code": None,
+                            "name": "Detecting",
+                            "phone": None,
+                            "vip": False,
+                            "member_level": "guest",
+                            "visit_count": 0,
+                            "line_user_id": None,
+                            "registration_source": None,
+                            "total_amount": 0,
+                            "favorite_product": None,
+                            "face_image": None,
+                            "confidence": 0,
+                            "recognition_status": "detecting",
+                            "member_level_text": "Detecting"
+                        }
+                # failed 或其他狀態直接保留
+                else:
+                    guest_confirm_count = 0
+                    last_result = recognition_result
+
 
             current_member_id = last_result.get("member_id")
             current_subject_type = last_result.get("subject_type")
@@ -286,46 +467,30 @@ def generate_frames():
             # 4. 辨識狀態為 recognized
             if (
                 has_face
+                and current_subject_type == "member"
                 and current_member_id is not None
                 and current_confidence >= MIN_CONFIDENCE
                 and current_recognition_status == "recognized"
             ):
-                # 第一次看到會員時建立 visit_start
-                # 持續看到會員時更新最後出現時間
                 update_member_visit(
                     last_result,
                     current_time
                 )
-
-        
-
+            
+            
             # ----------------------------------------
-            # Guest 紀錄
+            # 固定散客到店紀錄
             # ----------------------------------------
-            # 必須是：
-            # 1. 畫面確實有人臉
-            # 2. 沒有辨識到正式會員
-            # 3. recognize_face 已確認狀態為 guest
             elif (
                 has_face
-                and current_member_id is None
-                and current_recognition_status == "guest"
+                and current_subject_type == "visitor"
+                and current_visitor_id is not None
+                and current_recognition_status == "recognized"
             ):
-                # 避免同一位 Guest 每一幀都重複寫入
-                if (
-                    current_time - last_guest_log_time
-                    >= GUEST_LOG_INTERVAL
-                ):
-                    log_recognition_result(
-                        last_result,
-                        visit_time=now_text(),
-                        leave_time=None,
-                        stay_minutes=None,
-                        visit_status="arrived",
-                        camera_id=CAMERA_ID
-                    )
-
-                    last_guest_log_time = current_time
+                update_member_visit(
+                    last_result,
+                    current_time
+                )
 
             # 檢查已經超過離店等待時間的對象
             # 並將原本紀錄更新為 visit_status="left"
@@ -365,9 +530,7 @@ def generate_frames():
         print(f"攝影機串流發生錯誤：{e}")
 
     finally:
-        if cap is not None:
-            cap.release()
-            print("攝影機已釋放")
+        release_camera(cap)
 
 
 @camera_bp.route("/camera")
