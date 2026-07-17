@@ -56,10 +56,14 @@ except Exception as e:
     print(f"警告：無法載入 recognition_logs 更新函式：{e}")
 
 try:
-    from database.db import get_all_member_faces
+    from database.db import (
+        get_all_member_faces,
+        get_all_visitor_faces
+    )
 except Exception as e:
     get_all_member_faces = None
-    print(f"警告：無法載入會員人臉資料函式：{e}")
+    get_all_visitor_faces = None
+    print(f"警告：無法載入會員或散客人臉資料函式：{e}")
 
 try:
     from database.db import insert_face_image
@@ -77,6 +81,13 @@ except Exception as e:
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MEMBER_IMAGE_DIR = os.path.join(BASE_DIR, "member_images")
 DEFAULT_CAMERA_ID = "camera_1"
+
+# 人臉距離越小代表越相似
+# 正式會員維持原本 0.6
+MEMBER_MATCH_TOLERANCE = 0.6
+
+# 散客使用稍嚴格門檻，降低兩位陌生人被當成同一 visitor 的風險
+VISITOR_MATCH_TOLERANCE = 0.55
 
 
 # -----------------------------
@@ -153,20 +164,76 @@ def normalize_member_data(member_data):
     }
 
 
-def build_result(member_data=None, confidence=0, recognition_status="guest"):
+def normalize_visitor_data(visitor_data):
+    """
+    將 visitors 與 visitor_faces 查詢結果，
+    整理成 AI 辨識流程統一使用的散客格式。
+    """
+
+    if visitor_data is None:
+        return None
+
+    visitor_id = visitor_data.get("visitor_id")
+    visitor_code = visitor_data.get("visitor_code")
+
+    if visitor_id is None:
+        return None
+
+    return {
+        "subject_type": "visitor",
+        "member_id": None,
+        "visitor_id": visitor_id,
+        "visitor_code": visitor_code,
+        "name": (
+            visitor_data.get("display_name")
+            or visitor_code
+            or f"Visitor {visitor_id}"
+        ),
+        "phone": None,
+        "vip": False,
+        "member_level": "guest",
+        "visit_count": visitor_data.get("visit_count", 0),
+        "line_user_id": None,
+        "registration_source": None,
+        "total_amount": 0,
+        "favorite_product": None,
+        "face_image": visitor_data.get("image_path"),
+        "first_seen_at": visitor_data.get("first_seen_at"),
+        "last_seen_at": visitor_data.get("last_seen_at"),
+        "created_at": (
+            visitor_data.get("visitor_created_at")
+            or visitor_data.get("created_at")
+        ),
+        "updated_at": (
+            visitor_data.get("visitor_updated_at")
+            or visitor_data.get("updated_at")
+        )
+    }
+
+
+def build_result(member_data=None,visitor_data=None,confidence=0,recognition_status="guest"):
     """
     建立統一辨識結果格式。
 
-    欄位盡量對齊 members 資料表：
-    member_id, name, phone, vip, member_level, visit_count,
-    line_user_id, total_amount, favorite_product, face_image,
-    created_at, updated_at
+    支援三種辨識主體：
+    1. member：正式會員
+    2. visitor：已建檔固定散客
+    3. unknown：尚未建立固定身分的陌生人
     """
 
-    member_data = normalize_member_data(member_data)
-    
-    if member_data is None:
-        member_data = {
+    normalized_data = None
+
+    # 正式會員
+    if member_data is not None:
+        normalized_data = normalize_member_data(member_data)
+
+    # 已建檔散客
+    elif visitor_data is not None:
+        normalized_data = normalize_visitor_data(visitor_data)
+
+    # 尚未辨識出固定身分
+    if normalized_data is None:
+        normalized_data = {
             "subject_type": "unknown",
             "member_id": None,
             "visitor_id": None,
@@ -177,23 +244,24 @@ def build_result(member_data=None, confidence=0, recognition_status="guest"):
             "member_level": "guest",
             "visit_count": 0,
             "line_user_id": None,
+            "registration_source": None,
             "total_amount": 0,
             "favorite_product": None,
             "face_image": None,
-            "registration_source": None,
             "created_at": None,
             "updated_at": None
-    }
+        }
 
     result = {
-        **member_data,
+        **normalized_data,
         "confidence": confidence,
         "recognition_status": recognition_status,
         "member_level_text": get_member_level_text(
-            member_data.get("member_level", "guest")
-    )
-}
-    # 統一辨識主體欄位，避免不同流程缺少 ke
+            normalized_data.get("member_level", "guest")
+        )
+    }
+
+    # 避免不同流程漏掉辨識主體欄位
     result.setdefault("subject_type", "unknown")
     result.setdefault("member_id", None)
     result.setdefault("visitor_id", None)
@@ -561,7 +629,81 @@ def load_member_faces():
     return members
 
 
+
+def load_visitor_faces():
+    """
+    從正式資料庫載入既有散客的人臉 encoding。
+
+    Flask 啟動時會執行此函式，
+    因此即使程式重新啟動，
+    仍能從 visitor_faces 重新取得散客人臉資料。
+    """
+
+    if face_recognition is None:
+        print("尚未安裝 face_recognition，略過散客人臉資料載入")
+        return []
+
+    if get_all_visitor_faces is None:
+        print("散客人臉資料函式尚未載入")
+        return []
+
+    visitors = []
+
+    try:
+        rows = get_all_visitor_faces()
+
+        for row in rows:
+            encoding_data = row.get("encoding_data")
+
+            if not isinstance(encoding_data, list):
+                print(
+                    f"略過無效散客 encoding："
+                    f"visitor_id={row.get('visitor_id')}"
+                )
+                continue
+
+            if len(encoding_data) != 128:
+                print(
+                    f"略過非 128 維散客 encoding："
+                    f"visitor_id={row.get('visitor_id')}，"
+                    f"目前維度={len(encoding_data)}"
+                )
+                continue
+
+            visitor_data = normalize_visitor_data(row)
+
+            if visitor_data is None:
+                continue
+
+            visitor_data["encoding"] = np.array(
+                encoding_data,
+                dtype=float
+            )
+
+            visitors.append(visitor_data)
+
+            print(
+                f"已從資料庫載入散客人臉："
+                f"visitor_id={visitor_data.get('visitor_id')}，"
+                f"visitor_code={visitor_data.get('visitor_code')}"
+            )
+
+        print(
+            f"正式資料庫散客人臉載入完成，"
+            f"共 {len(visitors)} 筆"
+        )
+
+        return visitors
+
+    except Exception as e:
+        print(f"正式資料庫散客人臉資料載入失敗：{e}")
+        return []
+
+
+
 known_members = load_member_faces()
+known_visitors = load_visitor_faces()
+
 
 def reload_member_faces():
     """
@@ -580,6 +722,27 @@ def reload_member_faces():
     )
 
     return known_members
+
+
+def reload_visitor_faces():
+    """
+    重新載入散客人臉資料。
+
+    新散客建立並寫入 visitor_faces 後呼叫，
+    不需要重新啟動 Flask，
+    就能立刻把新散客加入辨識名單。
+    """
+
+    global known_visitors
+
+    known_visitors = load_visitor_faces()
+
+    print(
+        f"散客人臉資料已重新載入，"
+        f"共 {len(known_visitors)} 筆"
+    )
+
+    return known_visitors
 
 
 def check_duplicate_face(encoding, tolerance=0.6):
@@ -740,12 +903,12 @@ def detect_face(frame):
 
 def recognize_face(frame, faces):
     """
-    辨識會員。
+    人臉辨識流程：
 
-    回傳欄位名稱已統一為：
-    member_id, name, phone, vip, member_level, visit_count,
-    line_user_id, total_amount, favorite_product, face_image,
-    confidence, recognition_status
+    1. 取得目前畫面人臉 encoding
+    2. 優先比對正式會員 known_members
+    3. 會員未命中後，再比對既有散客 known_visitors
+    4. 兩者都未命中時回傳 unknown guest
     """
 
     if face_recognition is None:
@@ -761,19 +924,12 @@ def recognize_face(frame, faces):
             recognition_status="no_face"
         )
 
-    # 有偵測到臉，但沒有任何會員人臉資料可供比對
-    if len(known_members) == 0:
-        return build_result(
-            confidence=0,
-            recognition_status="guest"
-        )
-
     rgb_frame = cv2.cvtColor(
         frame,
         cv2.COLOR_BGR2RGB
     )
 
-    # 優先辨識畫面中面積最大、通常最靠近鏡頭的人臉
+    # 優先辨識畫面中面積最大的人臉
     x, y, w, h = max(
         faces,
         key=lambda face: face[2] * face[3]
@@ -808,8 +964,11 @@ def recognize_face(frame, faces):
 
     current_encoding = encodings[0]
 
-    # 整理所有可用的會員 encoding
-    known_encodings = []
+    # ==================================================
+    # 第一層：優先比對正式會員
+    # ==================================================
+
+    member_encodings = []
     valid_members = []
 
     for member in known_members:
@@ -818,45 +977,104 @@ def recognize_face(frame, faces):
         if known_encoding is None:
             continue
 
-        known_encodings.append(known_encoding)
+        member_encodings.append(known_encoding)
         valid_members.append(member)
 
-    # known_members 雖然有資料，但沒有任何有效 encoding
-    if len(known_encodings) == 0:
-        return build_result(
-            confidence=0,
-            recognition_status="guest"
+    if member_encodings:
+        member_distances = face_recognition.face_distance(
+            member_encodings,
+            current_encoding
         )
 
-    # 一次計算目前人臉與所有會員的距離
-    distances = face_recognition.face_distance(
-        known_encodings,
-        current_encoding
-    )
-
-    # 找出距離最小，也就是最相似的會員
-    best_index = int(np.argmin(distances))
-    best_distance = float(distances[best_index])
-    best_member = valid_members[best_index]
-
-    confidence = float(
-        round(1 - best_distance, 2)
-    )
-
-    # 距離小於 0.6 才視為正式會員
-    if best_distance < 0.6:
-        return build_result(
-            member_data=best_member,
-            confidence=confidence,
-            recognition_status="recognized"
+        member_best_index = int(
+            np.argmin(member_distances)
         )
 
-    # 有偵測到人臉，但與所有會員距離都超過門檻
+        member_best_distance = float(
+            member_distances[member_best_index]
+        )
+
+        member_best_data = valid_members[
+            member_best_index
+        ]
+
+        member_confidence = float(
+            round(1 - member_best_distance, 2)
+        )
+
+        print(
+            "會員最佳比對："
+            f"member_id={member_best_data.get('member_id')}，"
+            f"distance={round(member_best_distance, 4)}"
+        )
+
+        if member_best_distance < MEMBER_MATCH_TOLERANCE:
+            return build_result(
+                member_data=member_best_data,
+                confidence=member_confidence,
+                recognition_status="recognized"
+            )
+
+    # ==================================================
+    # 第二層：會員未命中，再比對既有散客
+    # ==================================================
+
+    visitor_encodings = []
+    valid_visitors = []
+
+    for visitor in known_visitors:
+        known_encoding = visitor.get("encoding")
+
+        if known_encoding is None:
+            continue
+
+        visitor_encodings.append(known_encoding)
+        valid_visitors.append(visitor)
+
+    if visitor_encodings:
+        visitor_distances = face_recognition.face_distance(
+            visitor_encodings,
+            current_encoding
+        )
+
+        visitor_best_index = int(
+            np.argmin(visitor_distances)
+        )
+
+        visitor_best_distance = float(
+            visitor_distances[visitor_best_index]
+        )
+
+        visitor_best_data = valid_visitors[
+            visitor_best_index
+        ]
+
+        visitor_confidence = float(
+            round(1 - visitor_best_distance, 2)
+        )
+
+        print(
+            "散客最佳比對："
+            f"visitor_id={visitor_best_data.get('visitor_id')}，"
+            f"visitor_code={visitor_best_data.get('visitor_code')}，"
+            f"distance={round(visitor_best_distance, 4)}"
+        )
+
+        if visitor_best_distance < VISITOR_MATCH_TOLERANCE:
+            return build_result(
+                visitor_data=visitor_best_data,
+                confidence=visitor_confidence,
+                recognition_status="recognized"
+            )
+
+    # ==================================================
+    # 第三層：會員與既有散客都沒有命中
+    # ==================================================
+
     return build_result(
         confidence=0,
         recognition_status="guest"
     )
-
 
 # -----------------------------
 # 畫面顯示

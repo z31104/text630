@@ -29,6 +29,12 @@ from services.face_service import (
 
 camera_bp = Blueprint("camera", __name__)
 
+# 同一時間只允許一個攝影機串流持有實體鏡頭。
+# 瀏覽器重新整理時，會先釋放舊串流使用的鏡頭，
+# 再交給新的 /camera/video_feed 使用。
+camera_instance = None
+camera_instance_lock = threading.Lock()
+
 # =============================
 # 攝影機設定
 # =============================
@@ -106,39 +112,124 @@ def open_camera(camera_index=CAMERA_INDEX):
     """
     開啟攝影機。
 
-    Windows 建議使用 cv2.CAP_DSHOW，外接 USB 攝影機會比較快開啟，
-    也比較不容易出現 MSMF can\'t grab frame 的問題。
-
-    攝影機 index 由 Windows / DirectShow 決定，
-    不保證 0 是內建鏡頭、1 是外接鏡頭。
+    Windows 建議使用 cv2.CAP_DSHOW，
+    外接 USB 攝影機通常能更快開啟，
+    也較不容易出現 MSMF 無法讀取畫面的問題。
     """
 
-    print(f"嘗試開啟攝影機，camera_index={camera_index}")
+    print(
+        f"嘗試開啟攝影機，"
+        f"camera_index={camera_index}"
+    )
 
-    cap = cv2.VideoCapture(camera_index, cv2.CAP_DSHOW)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
-    cap.set(cv2.CAP_PROP_FPS, CAMERA_FPS)
+    # 必須先建立 cap，後面才能使用 cap.set()
+    cap = cv2.VideoCapture(
+        camera_index,
+        cv2.CAP_DSHOW
+    )
 
+    # 設定攝影機畫面大小與 FPS
+    cap.set(
+        cv2.CAP_PROP_FRAME_WIDTH,
+        CAMERA_WIDTH
+    )
+    cap.set(
+        cv2.CAP_PROP_FRAME_HEIGHT,
+        CAMERA_HEIGHT
+    )
+    cap.set(
+        cv2.CAP_PROP_FPS,
+        CAMERA_FPS
+    )
+
+    # 盡量只保留最新畫面，降低畫面延遲
+    cap.set(
+        cv2.CAP_PROP_BUFFERSIZE,
+        1
+    )
+
+    # 確認攝影機是否成功開啟
     if not cap.isOpened():
-        print(f"無法開啟攝影機，camera_index={camera_index}")
+        print(
+            f"無法開啟攝影機，"
+            f"camera_index={camera_index}"
+        )
         cap.release()
         return None
 
     # 讓攝影機完成自動曝光與白平衡
     for _ in range(10):
-        success, _ = cap.read()
-        
-        if not success:
+        success, frame = cap.read()
+
+        if not success or frame is None:
             print(
-                f"攝影機暖機失敗，camera_index={camera_index}"
+                f"攝影機暖機失敗，"
+                f"camera_index={camera_index}"
             )
             cap.release()
             return None
+
         time.sleep(0.03)
 
-    print(f"已開啟攝影機，camera_index={camera_index}")
+    print(
+        f"已開啟攝影機，"
+        f"camera_index={camera_index}"
+    )
+
     return cap
+
+def acquire_camera():
+    """
+    取得攝影機。
+
+    若瀏覽器重新整理或重新開啟串流，
+    先釋放上一個串流持有的攝影機，
+    避免同一支實體鏡頭被重複開啟後出現黑畫面。
+    """
+
+    global camera_instance
+
+    with camera_instance_lock:
+        if camera_instance is not None:
+            try:
+                camera_instance.release()
+                print("已釋放上一個攝影機串流")
+            except Exception as e:
+                print(f"釋放上一個攝影機串流失敗：{e}")
+
+            camera_instance = None
+
+            # 讓 Windows 有一點時間釋放攝影機裝置
+            time.sleep(0.3)
+
+        camera_instance = open_camera(CAMERA_INDEX)
+
+        return camera_instance
+
+
+def release_camera(cap):
+    """
+    安全釋放指定攝影機。
+
+    只有目前使用中的 cap 才會清除全域 camera_instance，
+    避免舊串流結束時誤清除新串流。
+    """
+
+    global camera_instance
+
+    if cap is None:
+        return
+
+    with camera_instance_lock:
+        try:
+            cap.release()
+        except Exception as e:
+            print(f"攝影機釋放失敗：{e}")
+
+        if camera_instance is cap:
+            camera_instance = None
+
+    print("攝影機已釋放")
 
 
 def update_member_visit(result, current_time):
@@ -215,7 +306,7 @@ def generate_frames():
     global last_guest_log_time
     global guest_confirm_count
 
-    cap = open_camera(CAMERA_INDEX)
+    cap = acquire_camera()
 
     if cap is None:
         print("攝影機串流停止：無法取得攝影機")
@@ -415,9 +506,7 @@ def generate_frames():
         print(f"攝影機串流發生錯誤：{e}")
 
     finally:
-        if cap is not None:
-            cap.release()
-            print("攝影機已釋放")
+        release_camera(cap)
 
 
 @camera_bp.route("/camera")
