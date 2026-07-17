@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from dotenv import load_dotenv
 
+
 load_dotenv()
 
 
@@ -41,17 +42,26 @@ def clean_env(value):
     return value.replace('"', '').replace("'", "")
 
 
+
+
 def get_connection():
-    conn = mysql.connector.connect(
+    # Cloud Run
+    if os.getenv("INSTANCE_CONNECTION_NAME"):
+        return mysql.connector.connect(
+            user=clean_env(os.getenv("DB_USER")),
+            password=clean_env(os.getenv("DB_PASSWORD")),
+            database=clean_env(os.getenv("DB_NAME")),
+            unix_socket=f"/cloudsql/{clean_env(os.getenv('INSTANCE_CONNECTION_NAME'))}"
+        )
+
+    # 本機
+    return mysql.connector.connect(
         host=clean_env(os.getenv("DB_HOST", "localhost")),
         port=int(clean_env(os.getenv("DB_PORT", "3306"))),
         user=clean_env(os.getenv("DB_USER", "root")),
         password=clean_env(os.getenv("DB_PASSWORD", "")),
-        database=clean_env(os.getenv("DB_NAME", "smart_member_system")),
-        charset="utf8mb4",
-        collation="utf8mb4_unicode_ci"
+        database=clean_env(os.getenv("DB_NAME", "smart_member_system"))
     )
-    return conn
 
 
 def get_all_members():
