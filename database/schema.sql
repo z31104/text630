@@ -1,4 +1,4 @@
-CREATE DATABASE IF NOT EXISTS smart_member_systemproduct_categories
+CREATE DATABASE IF NOT EXISTS smart_member_system
 CHARACTER SET utf8mb4
 COLLATE utf8mb4_unicode_ci;
 
@@ -128,6 +128,23 @@ CREATE TABLE IF NOT EXISTS recognition_logs (
     stay_minutes DECIMAL(10,2) DEFAULT 0,
     camera_location VARCHAR(100),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    INDEX idx_recognition_logs_member_active (
+        member_id,
+        subject_type,
+        camera_id,
+        leave_time,
+        visit_status
+    ),
+
+    INDEX idx_recognition_logs_visitor_active (
+        visitor_id,
+        subject_type,
+        camera_id,
+        leave_time,
+        visit_status
+    ),
+
 
     FOREIGN KEY (member_id) 
     REFERENCES members(member_id)

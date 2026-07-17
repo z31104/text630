@@ -4,7 +4,29 @@ import uuid
 from flask import Blueprint, request, redirect, jsonify
 from werkzeug.utils import secure_filename
 
-from database.db import get_connection, save_recognition_log
+from database.db import (
+    get_connection,
+    save_recognition_log,
+    register_member_with_face
+)
+UPLOAD_FOLDER = os.path.join(
+    "static",
+    "member_images"
+)
+
+ALLOWED_EXTENSIONS = {
+    "jpg",
+    "jpeg",
+    "png",
+    "webp"
+}
+
+def allowed_image(filename):
+    return (
+        "." in filename
+        and filename.rsplit(".", 1)[1].lower()
+        in ALLOWED_EXTENSIONS
+    )
 
 # 請依照你專案實際資料夾位置調整
 from services.face_service import (
