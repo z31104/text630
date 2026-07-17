@@ -4,6 +4,7 @@ AI 人臉偵測與會員比對服務
 """
 
 import os
+import uuid
 from datetime import datetime
 
 import cv2
@@ -72,6 +73,14 @@ except Exception as e:
     print(f"警告：無法載入人臉資料寫入函式：{e}")
 
 try:
+    from database.db import (
+        register_visitor_with_face as db_register_visitor_with_face
+    )
+except Exception as e:
+    db_register_visitor_with_face = None
+    print(f"警告：無法載入散客人臉建檔函式：{e}")
+
+try:
     from linebot_service.notify import notify_vip_recognition
 except Exception as e:
     notify_vip_recognition = None
@@ -79,7 +88,23 @@ except Exception as e:
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MEMBER_IMAGE_DIR = os.path.join(BASE_DIR, "member_images")
+
+MEMBER_IMAGE_DIR = os.path.join(
+    BASE_DIR,
+    "member_images"
+)
+
+VISITOR_IMAGE_DIR = os.path.join(
+    BASE_DIR,
+    "visitor_images"
+)
+
+# visitor_images 不存在時自動建立
+os.makedirs(
+    VISITOR_IMAGE_DIR,
+    exist_ok=True
+)
+
 DEFAULT_CAMERA_ID = "camera_1"
 
 # 人臉距離越小代表越相似
@@ -745,6 +770,278 @@ def reload_visitor_faces():
     return known_visitors
 
 
+def generate_visitor_code():
+    """
+    產生固定散客代碼。
+
+    格式：
+    V + 年月日時分秒微秒 + 6 碼 UUID
+
+    例如：
+    V20260717143025123456A1B2C3
+    """
+
+    timestamp_text = datetime.now().strftime(
+        "%Y%m%d%H%M%S%f"
+    )
+
+    random_text = uuid.uuid4().hex[:6].upper()
+
+    return f"V{timestamp_text}{random_text}"
+
+
+def register_new_visitor(frame, faces):
+    """
+    將目前鏡頭中的未知人臉建立為固定散客。
+
+    流程：
+    1. 取畫面中最大的人臉
+    2. 產生 128 維 encoding
+    3. 裁切並保存人臉圖片
+    4. 產生 visitor_code
+    5. 同一個 transaction 寫入 visitors 與 visitor_faces
+    6. 重新載入 known_visitors
+    7. 回傳統一 visitor 辨識結果
+    """
+
+    if face_recognition is None:
+        print("建立新散客失敗：face_recognition 尚未載入")
+
+        return build_result(
+            confidence=0,
+            recognition_status="failed"
+        )
+
+    if db_register_visitor_with_face is None:
+        print("建立新散客失敗：資料庫建檔函式尚未載入")
+
+        return build_result(
+            confidence=0,
+            recognition_status="failed"
+        )
+
+    if frame is None:
+        print("建立新散客失敗：frame 不可為空")
+
+        return build_result(
+            confidence=0,
+            recognition_status="failed"
+        )
+
+    if not faces:
+        print("建立新散客失敗：目前沒有偵測到人臉")
+
+        return build_result(
+            confidence=0,
+            recognition_status="no_face"
+        )
+
+    # 選取畫面中面積最大的人臉
+    x, y, w, h = max(
+        faces,
+        key=lambda face: face[2] * face[3]
+    )
+
+    frame_height, frame_width = frame.shape[:2]
+
+    # 在人臉框四周保留一點範圍，
+    # 避免裁切得太貼近五官
+    margin_x = int(w * 0.20)
+    margin_y = int(h * 0.20)
+
+    crop_left = max(
+        x - margin_x,
+        0
+    )
+    crop_top = max(
+        y - margin_y,
+        0
+    )
+    crop_right = min(
+        x + w + margin_x,
+        frame_width
+    )
+    crop_bottom = min(
+        y + h + margin_y,
+        frame_height
+    )
+
+    face_crop = frame[
+        crop_top:crop_bottom,
+        crop_left:crop_right
+    ]
+
+    if face_crop.size == 0:
+        print("建立新散客失敗：人臉裁切結果為空")
+
+        return build_result(
+            confidence=0,
+            recognition_status="failed"
+        )
+
+    rgb_frame = cv2.cvtColor(
+        frame,
+        cv2.COLOR_BGR2RGB
+    )
+
+    face_location = (
+        y,
+        x + w,
+        y + h,
+        x
+    )
+
+    try:
+        encodings = face_recognition.face_encodings(
+            rgb_frame,
+            [face_location]
+        )
+
+    except Exception as e:
+        print(f"建立散客人臉 encoding 失敗：{e}")
+
+        return build_result(
+            confidence=0,
+            recognition_status="failed"
+        )
+
+    if len(encodings) == 0:
+        print("建立新散客失敗：無法產生人臉 encoding")
+
+        return build_result(
+            confidence=0,
+            recognition_status="failed"
+        )
+
+    current_encoding = encodings[0]
+
+    if len(current_encoding) != 128:
+        print(
+            "建立新散客失敗："
+            f"encoding 維度為 {len(current_encoding)}"
+        )
+
+        return build_result(
+            confidence=0,
+            recognition_status="failed"
+        )
+
+    visitor_code = generate_visitor_code()
+
+    image_filename = f"{visitor_code}.jpg"
+
+    image_path = os.path.join(
+        VISITOR_IMAGE_DIR,
+        image_filename
+    )
+
+    image_saved = cv2.imwrite(
+        image_path,
+        face_crop
+    )
+
+    if not image_saved:
+        print(
+            "建立新散客失敗："
+            f"照片儲存失敗，image_path={image_path}"
+        )
+
+        return build_result(
+            confidence=0,
+            recognition_status="failed"
+        )
+
+    try:
+        registration_result = db_register_visitor_with_face(
+            visitor_code=visitor_code,
+            image_path=image_path,
+            encoding_data=current_encoding,
+            display_name=visitor_code,
+            first_seen_at=datetime.now(),
+            last_seen_at=datetime.now()
+        )
+
+        visitor_id = registration_result.get(
+            "visitor_id"
+        )
+
+        visitor_face_id = registration_result.get(
+            "visitor_face_id"
+        )
+
+        if visitor_id is None:
+            raise RuntimeError(
+                "資料庫未回傳 visitor_id"
+            )
+
+        # 不需重啟 Flask，立即把新散客加入快取
+        loaded_visitors = reload_visitor_faces()
+
+        visitor_data = None
+
+        for visitor in loaded_visitors:
+            if visitor.get("visitor_id") == visitor_id:
+                visitor_data = visitor
+                break
+
+        # 正常情況應該可從 reload 後找到；
+        # 若暫時找不到，仍先建立基本回傳資料。
+        if visitor_data is None:
+            visitor_data = {
+                "subject_type": "visitor",
+                "member_id": None,
+                "visitor_id": visitor_id,
+                "visitor_code": visitor_code,
+                "display_name": visitor_code,
+                "visit_count": 0,
+                "image_path": image_path,
+                "first_seen_at": datetime.now(),
+                "last_seen_at": datetime.now()
+            }
+
+        print("========== New Visitor Created ==========")
+        print(f"visitor_id: {visitor_id}")
+        print(f"visitor_code: {visitor_code}")
+        print(f"visitor_face_id: {visitor_face_id}")
+        print(f"image_path: {image_path}")
+        print(
+            f"known_visitors count: "
+            f"{len(loaded_visitors)}"
+        )
+        print("=========================================")
+
+        return build_result(
+            visitor_data=visitor_data,
+            confidence=1.0,
+            recognition_status="recognized"
+        )
+
+    except Exception as e:
+        print("========== New Visitor Creation Failed ==========")
+        print(f"visitor_code: {visitor_code}")
+        print(f"error: {e}")
+        print("=================================================")
+
+        # DB 建檔失敗時刪除已保存的孤立照片
+        try:
+            if os.path.exists(image_path):
+                os.remove(image_path)
+                print(
+                    "已刪除未完成建檔的散客照片："
+                    f"{image_path}"
+                )
+        except Exception as delete_error:
+            print(
+                "刪除散客照片失敗："
+                f"{delete_error}"
+            )
+
+        return build_result(
+            confidence=0,
+            recognition_status="failed"
+        )
+
+
 def check_duplicate_face(encoding, tolerance=0.6):
     """
     檢查新註冊人臉是否已存在於會員人臉快取。
@@ -1090,7 +1387,16 @@ def draw_face_boxes(frame, faces, result=None):
     if result is None:
         result = recognize_face(frame, faces)
 
-    member_level = result.get("member_level", "guest")
+    subject_type = result.get(
+        "subject_type",
+        "unknown"
+    )
+    
+    member_level = result.get(
+        "member_level",
+        "guest"
+    )
+    
     recognition_status = result.get(
         "recognition_status",
         "no_face"
@@ -1101,6 +1407,20 @@ def draw_face_boxes(frame, faces, result=None):
         display_name = "Detecting..."
         member_type = "Detecting..."
         box_name = "Detecting..."
+    
+    elif (
+        subject_type == "visitor"
+        and result.get("visitor_id") is not None
+    ):
+        visitor_id = result.get("visitor_id")
+        visitor_code = result.get("visitor_code")
+        
+        display_name = f"Visitor ID: {visitor_id}"
+        member_type = "Known Visitor"
+        box_name = (
+            visitor_code
+            or f"Visitor {visitor_id}"
+        )
         
     elif member_level == "vip":
         display_name = f"Member ID: {result['member_id']}"
@@ -1144,20 +1464,42 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     return {
-        # log_id 由資料庫 AUTO_INCREMENT 產生
+        # 辨識主體
+        "subject_type": result.get(
+            "subject_type",
+            "unknown"
+        ),
         "member_id": result.get("member_id"),
+        "visitor_id": result.get("visitor_id"),
+        "visitor_code": result.get("visitor_code"),
+        
+        # 顯示與會員相關欄位
         "name": result.get("name"),
         "vip": result.get("vip", False),
         "line_user_id": result.get("line_user_id"),
+        
+        # 辨識紀錄
         "camera_id": camera_id,
         "confidence": result.get("confidence", 0),
-        "member_level": result.get("member_level", "guest"),
-        "recognition_status": result.get("recognition_status", "guest"),
+        "member_level": result.get(
+            "member_level",
+            "guest"
+        ),
+        "recognition_status": result.get(
+            "recognition_status",
+            "guest"
+        ),
         "visit_status": visit_status,
         "recognized_at": now,
         "visit_time": visit_time,
+        "last_seen_at": result.get("last_seen_at"),
         "leave_time": leave_time,
-        "stay_minutes": stay_minutes,
+        "stay_seconds": 0,
+        "stay_minutes": (
+            stay_minutes
+            if stay_minutes is not None
+            else 0
+        ),
         "created_at": now
     }
 
@@ -1177,8 +1519,26 @@ def log_recognition_result(result, visit_time=None, leave_time=None, stay_minute
     )
 
     print("========== Recognition Log ==========")
-    print(f"member_id: {recognition_log['member_id']}")
-    print(f"camera_id: {recognition_log['camera_id']}")
+    print(
+        f"subject_type: "
+        f"{recognition_log['subject_type']}"
+    )
+    print(
+        f"member_id: "
+        f"{recognition_log['member_id']}"
+    )
+    print(
+        f"visitor_id: "
+        f"{recognition_log['visitor_id']}"
+    )
+    print(
+        f"visitor_code: "
+        f"{recognition_log['visitor_code']}"
+    )
+    print(
+        f"camera_id: "
+        f"{recognition_log['camera_id']}"
+    )
     print(f"confidence: {recognition_log['confidence']}")
     print(f"member_level: {recognition_log['member_level']}")
     print(f"recognition_status: {recognition_log['recognition_status']}")

@@ -20,13 +20,13 @@ except Exception:
 from services.face_service import (
     detect_face,
     recognize_face,
+    register_new_visitor,
     draw_face_boxes,
     log_recognition_result,
     update_recognition_last_seen,
     close_recognition_visit,
     send_line_notify
 )
-
 camera_bp = Blueprint("camera", __name__)
 
 # 同一時間只允許一個攝影機串流持有實體鏡頭。
@@ -373,8 +373,48 @@ def generate_frames():
                 elif recognition_status == "guest":
                     guest_confirm_count += 1
                     
-                    if guest_confirm_count >= GUEST_CONFIRM_REQUIRED:
-                        last_result = recognition_result
+                    # 同一張未知人臉連續確認達標後，
+                    # # 才正式建立固定 visitor。
+                    if (
+                        guest_confirm_count
+                        >= GUEST_CONFIRM_REQUIRED
+                    ):
+                        print(
+                            "未知人臉連續確認完成，"
+                            "開始建立固定散客"
+                        )
+                        
+                        visitor_result = register_new_visitor(
+                            frame,
+                            faces
+                        )
+                        
+                        if (
+                            visitor_result.get("subject_type")
+                            == "visitor"
+                            and visitor_result.get("visitor_id")
+                            is not None
+                        ):
+                            last_result = visitor_result
+                            
+                            print(
+                                "固定散客建立成功："
+                                f"visitor_id="
+                                f"{visitor_result.get('visitor_id')}"
+                                )
+                            
+                        else:
+                            last_result = visitor_result
+                            
+                            print(
+                                "固定散客建立失敗，"
+                                "本次不寫入到店紀錄"
+                            )
+                        
+                        # 不論成功或失敗，結束本輪確認，
+                        # 避免下一次立即重複建檔。
+                        guest_confirm_count = 0
+                    
                     else:
                         last_result = {
                             "subject_type": "unknown",
@@ -427,46 +467,30 @@ def generate_frames():
             # 4. 辨識狀態為 recognized
             if (
                 has_face
+                and current_subject_type == "member"
                 and current_member_id is not None
                 and current_confidence >= MIN_CONFIDENCE
                 and current_recognition_status == "recognized"
             ):
-                # 第一次看到會員時建立 visit_start
-                # 持續看到會員時更新最後出現時間
                 update_member_visit(
                     last_result,
                     current_time
                 )
-
-        
-
+            
+            
             # ----------------------------------------
-            # Guest 紀錄
+            # 固定散客到店紀錄
             # ----------------------------------------
-            # 必須是：
-            # 1. 畫面確實有人臉
-            # 2. 沒有辨識到正式會員
-            # 3. recognize_face 已確認狀態為 guest
             elif (
                 has_face
-                and current_member_id is None
-                and current_recognition_status == "guest"
+                and current_subject_type == "visitor"
+                and current_visitor_id is not None
+                and current_recognition_status == "recognized"
             ):
-                # 避免同一位 Guest 每一幀都重複寫入
-                if (
-                    current_time - last_guest_log_time
-                    >= GUEST_LOG_INTERVAL
-                ):
-                    log_recognition_result(
-                        last_result,
-                        visit_time=now_text(),
-                        leave_time=None,
-                        stay_minutes=None,
-                        visit_status="arrived",
-                        camera_id=CAMERA_ID
-                    )
-
-                    last_guest_log_time = current_time
+                update_member_visit(
+                    last_result,
+                    current_time
+                )
 
             # 檢查已經超過離店等待時間的對象
             # 並將原本紀錄更新為 visit_status="left"
