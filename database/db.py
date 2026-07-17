@@ -527,7 +527,6 @@ def get_active_visit(
         if subject_id is None:
             return None
 
-
         conn = get_connection()
         cursor = conn.cursor(dictionary=True)
 
