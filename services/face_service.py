@@ -873,19 +873,31 @@ def draw_face_boxes(frame, faces, result=None):
         result = recognize_face(frame, faces)
 
     member_level = result.get("member_level", "guest")
-
-    if member_level == "vip":
+    recognition_status = result.get(
+        "recognition_status",
+        "no_face"
+    )
+    
+    # 第一次比對為 Guest 時仍在等待第二次確認
+    if recognition_status == "detecting":
+        display_name = "Detecting..."
+        member_type = "Detecting..."
+        box_name = "Detecting..."
+        
+    elif member_level == "vip":
         display_name = f"Member ID: {result['member_id']}"
         member_type = "VIP Member"
         box_name = f"VIP {result['member_id']}"
+    
     elif member_level == "normal":
         display_name = f"Member ID: {result['member_id']}"
         member_type = "Normal Member"
         box_name = f"Member {result['member_id']}"
+        
     else:
-        display_name = "guest"
-        member_type = "guest"
-        box_name = "guest"
+        display_name = "Guest"
+        member_type = "Guest"
+        box_name = "Guest"
 
     cv2.putText(frame, f"Name: {display_name}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
     cv2.putText(frame, f"Type: {member_type}", (20, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)

@@ -80,6 +80,12 @@ active_visits_lock = threading.Lock()
 # 訪客上一次產生 recognition log 的時間
 last_guest_log_time = 0
 
+# Guest 必須連續辨識幾次才正式確認
+guest_confirm_count = 0
+
+# 連續 2 次辨識為 Guest 才正式顯示與記錄
+GUEST_CONFIRM_REQUIRED = 2
+
 # 設定參數
 RECOGNITION_INTERVAL = 2       # 每 2 秒做一次人臉比對
 LAST_SEEN_UPDATE_INTERVAL = 15 # 每 15 秒更新一次資料庫
@@ -207,6 +213,7 @@ def generate_frames():
     global last_recognition_time
     global last_result
     global last_guest_log_time
+    global guest_confirm_count
 
     cap = open_camera(CAMERA_INDEX)
 
@@ -227,10 +234,12 @@ def generate_frames():
             faces = detect_face(frame)
             current_time = time.time()
             has_face = len(faces) > 0
-            
+        
             
             # 畫面沒有人臉
             if not has_face:
+                 guest_confirm_count = 0
+
                  last_result = {
                       "subject_type": "none",
                       "member_id": None,
@@ -257,8 +266,48 @@ def generate_frames():
                 current_time - last_recognition_time
                 >= RECOGNITION_INTERVAL
             ):
-                last_result = recognize_face(frame, faces)
+                recognition_result = recognize_face(frame, faces)
                 last_recognition_time = current_time
+                
+                recognition_status = recognition_result.get(
+                    "recognition_status"
+                )
+                
+                # 成功辨識會員，立即顯示並清除 Guest 累積次數
+                if recognition_status == "recognized":
+                    guest_confirm_count = 0
+                    last_result = recognition_result
+                    
+                # 第一次辨識為 Guest 時先顯示 Detecting
+                elif recognition_status == "guest":
+                    guest_confirm_count += 1
+                    
+                    if guest_confirm_count >= GUEST_CONFIRM_REQUIRED:
+                        last_result = recognition_result
+                    else:
+                        last_result = {
+                            "subject_type": "unknown",
+                            "member_id": None,
+                            "visitor_id": None,
+                            "visitor_code": None,
+                            "name": "Detecting",
+                            "phone": None,
+                            "vip": False,
+                            "member_level": "guest",
+                            "visit_count": 0,
+                            "line_user_id": None,
+                            "registration_source": None,
+                            "total_amount": 0,
+                            "favorite_product": None,
+                            "face_image": None,
+                            "confidence": 0,
+                            "recognition_status": "detecting",
+                            "member_level_text": "Detecting"
+                        }
+                # failed 或其他狀態直接保留
+                else:
+                    guest_confirm_count = 0
+                    last_result = recognition_result
 
 
             current_member_id = last_result.get("member_id")
