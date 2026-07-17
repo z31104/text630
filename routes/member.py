@@ -1,8 +1,46 @@
+import os
+import uuid
+
 from flask import Blueprint, request, redirect, jsonify
+from werkzeug.utils import secure_filename
+
 from database.db import get_connection, save_recognition_log
+
+# 請依照你專案實際資料夾位置調整
+from services.face_service import (
+    validate_member_face_image,
+    register_member_face
+)
 
 member_bp = Blueprint("member", __name__)
 
+BASE_DIR = os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))
+)
+
+MEMBER_IMAGE_DIR = os.path.join(
+    BASE_DIR,
+    "member_images"
+)
+
+os.makedirs(
+    MEMBER_IMAGE_DIR,
+    exist_ok=True
+)
+
+ALLOWED_IMAGE_EXTENSIONS = {
+    "jpg",
+    "jpeg",
+    "png"
+}
+
+def allowed_image_file(filename):
+    if "." not in filename:
+        return False
+
+    extension = filename.rsplit(".", 1)[1].lower()
+
+    return extension in ALLOWED_IMAGE_EXTENSIONS
 
 @member_bp.route("/member")
 def member():
@@ -109,74 +147,265 @@ def add_recognition_log():
 @member_bp.route("/member/add", methods=["GET", "POST"])
 def add_member_page():
     if request.method == "POST":
-        vip = request.form.get("vip") == "1"
-        member_level = "vip" if vip else "normal"   
-        
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
+        cursor = None
+        saved_image_path = None
 
-        sql = """
-        INSERT INTO members
-        (
-        name, 
-        phone,
-        birthday,
-        vip,
-        member_level,
-        visit_count,
-        line_user_id,
-        total_amount,
-        favorite_product,
-        face_image,
-        registration_source
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
+        try:
+            # 1. 接收上傳照片
+            image_file = request.files.get("face_image")
 
-        data = (
-            request.form.get("name"),
-            request.form.get("phone"),
-            request.form.get("birthday") or None,
-            vip,
-            member_level,
-            int(request.form.get("visit_count") or 0),
-            request.form.get("line_user_id"),
-            int(request.form.get("total_amount") or 0),
-            request.form.get("favorite_product"),
-            request.form.get("face_image"),
-            "backend"
-        )
+            if image_file is None or image_file.filename == "":
+                return "請選擇會員照片", 400
 
-        cursor.execute(sql, data)
-        conn.commit()
+            # 2. 檢查圖片格式
+            if not allowed_image_file(image_file.filename):
+                return "照片格式錯誤，只接受 jpg、jpeg、png", 400
 
-        cursor.close()
-        conn.close()
+            # 3. 產生不重複的照片檔名
+            original_filename = secure_filename(
+                image_file.filename
+            )
 
-        return redirect("/member")
+            extension = original_filename.rsplit(
+                ".",
+                1
+            )[1].lower()
+
+            new_filename = (
+                f"member_{uuid.uuid4().hex}.{extension}"
+            )
+
+            saved_image_path = os.path.join(
+                MEMBER_IMAGE_DIR,
+                new_filename
+            )
+
+            # 4. 把照片存到 member_images
+            image_file.save(saved_image_path)
+
+            # 5. 先驗證照片是否只有一張人臉
+            face_check_result = validate_member_face_image(
+                saved_image_path
+            )
+
+            if not face_check_result.get("success"):
+                if os.path.exists(saved_image_path):
+                    os.remove(saved_image_path)
+
+                return (
+                    face_check_result.get(
+                        "message",
+                        "會員照片驗證失敗"
+                    ),
+                    400
+                )
+
+            # 6. 取得會員欄位
+            vip = request.form.get("vip") == "1"
+            member_level = "vip" if vip else "normal"
+
+            conn = get_connection()
+            cursor = conn.cursor()
+
+            # 7. 先新增 members
+            sql = """
+            INSERT INTO members
+            (
+                name,
+                phone,
+                birthday,
+                vip,
+                member_level,
+                visit_count,
+                line_user_id,
+                total_amount,
+                favorite_product,
+                face_image,
+                registration_source
+            )
+            VALUES (
+                %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s
+            )
+            """
+
+            data = (
+                request.form.get("name"),
+                request.form.get("phone"),
+                request.form.get("birthday") or None,
+                vip,
+                member_level,
+                int(request.form.get("visit_count") or 0),
+                request.form.get("line_user_id"),
+                int(request.form.get("total_amount") or 0),
+                request.form.get("favorite_product"),
+                saved_image_path,
+                "backend"
+            )
+
+            cursor.execute(sql, data)
+
+            # 8. 取得剛新增會員的 member_id
+            member_id = cursor.lastrowid
+
+            conn.commit()
+
+            cursor.close()
+            cursor = None
+
+            conn.close()
+            conn = None
+
+            # 9. 寫入 face_images 並重新載入 AI 名單
+            face_register_result = register_member_face(
+                member_id=member_id,
+                image_path=saved_image_path
+            )
+
+            if not face_register_result.get("success"):
+                # 人臉建檔失敗時，移除剛建立的會員
+                cleanup_conn = get_connection()
+                cleanup_cursor = cleanup_conn.cursor()
+
+                cleanup_cursor.execute(
+                    """
+                    DELETE FROM members
+                    WHERE member_id = %s
+                    """,
+                    (member_id,)
+                )
+
+                cleanup_conn.commit()
+                cleanup_cursor.close()
+                cleanup_conn.close()
+
+                if os.path.exists(saved_image_path):
+                    os.remove(saved_image_path)
+
+                return (
+                    face_register_result.get(
+                        "message",
+                        "會員人臉建檔失敗"
+                    ),
+                    500
+                )
+
+            return redirect("/member")
+
+        except Exception as e:
+            if conn is not None:
+                conn.rollback()
+
+            if saved_image_path:
+                if os.path.exists(saved_image_path):
+                    os.remove(saved_image_path)
+
+            return f"新增會員失敗：{e}", 500
+
+        finally:
+            if cursor is not None:
+                cursor.close()
+
+            if conn is not None:
+                conn.close()
 
     return """
     <h1>新增會員</h1>
 
-    <form method="POST">
-        <p>姓名：<input type="text" name="name"></p>
-        <p>電話：<input type="text" name="phone"></p>
-        <p>生日：<input type="date" name="birthday"></p>
-        <p>LINE User ID：<input type="text" name="line_user_id"></p>
-        <p>來店次數：<input type="number" name="visit_count" value="0"></p>
-        <p>累積消費：<input type="number" name="total_amount" value="0"></p>
-        <p>偏好商品：<input type="text" name="favorite_product"></p>
-        <p>人臉圖片路徑：<input type="text" name="face_image"></p>
-        <p>是否 VIP：
+    <form method="POST" enctype="multipart/form-data">
+        <p>
+            姓名：
+            <input
+                type="text"
+                name="name"
+                required
+            >
+        </p>
+
+        <p>
+            電話：
+            <input
+                type="text"
+                name="phone"
+            >
+        </p>
+
+        <p>
+            生日：
+            <input
+                type="date"
+                name="birthday"
+            >
+        </p>
+
+        <p>
+            LINE User ID：
+            <input
+                type="text"
+                name="line_user_id"
+            >
+        </p>
+
+        <p>
+            來店次數：
+            <input
+                type="number"
+                name="visit_count"
+                value="0"
+            >
+        </p>
+
+        <p>
+            累積消費：
+            <input
+                type="number"
+                name="total_amount"
+                value="0"
+            >
+        </p>
+
+        <p>
+            偏好商品：
+            <input
+                type="text"
+                name="favorite_product"
+            >
+        </p>
+
+        <p>
+            會員照片：
+            <input
+                type="file"
+                name="face_image"
+                accept=".jpg,.jpeg,.png"
+                required
+            >
+        </p>
+
+        <p>
+            是否 VIP：
             <select name="vip">
-                <option value="0">一般會員</option>
-                <option value="1">VIP會員</option>
+                <option value="0">
+                    一般會員
+                </option>
+
+                <option value="1">
+                    VIP會員
+                </option>
             </select>
         </p>
-        <button type="submit">新增會員</button>
+
+        <button type="submit">
+            新增會員
+        </button>
     </form>
 
-    <p><a href="/member">回會員列表</a></p>
+    <p>
+        <a href="/member">
+            回會員列表
+        </a>
+    </p>
     """
 
 
@@ -268,7 +497,7 @@ def edit_member(member_id):
     return f"""
     <h1>修改會員</h1>
 
-    <form method="POST">
+    <form method="POST" enctype="multipart/form-data">
         <p>會員編號：{target_member['member_id']}</p>
         <p>姓名：<input type="text" name="name" value="{target_member['name'] or ''}"></p>
         <p>電話：<input type="text" name="phone" value="{target_member['phone'] or ''}"></p>

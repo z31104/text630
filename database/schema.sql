@@ -78,11 +78,37 @@ CREATE TABLE IF NOT EXISTS face_images (
         ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS visitors (
+    visitor_id INT AUTO_INCREMENT PRIMARY KEY,
+    visitor_code VARCHAR(50) NOT NULL UNIQUE,
+    display_name VARCHAR(50) DEFAULT 'Visitor',
+    visit_count INT DEFAULT 0,
+    first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at DATETIME NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS visitor_faces (
+    visitor_face_id INT AUTO_INCREMENT PRIMARY KEY,
+    visitor_id INT NOT NULL,
+    image_path VARCHAR(255) NULL,
+    encoding_data LONGTEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (visitor_id)
+        REFERENCES visitors(visitor_id)
+        ON DELETE CASCADE
+);
 
 CREATE TABLE IF NOT EXISTS recognition_logs (
     log_id INT AUTO_INCREMENT PRIMARY KEY,
 
+    subject_type VARCHAR(20) NOT NULL DEFAULT 'unknown',
     member_id INT NULL,
+    visitor_id INT NULL,
+    visitor_code VARCHAR(50) NULL,
     camera_id VARCHAR(50),
 
     name VARCHAR(50),
@@ -103,8 +129,15 @@ CREATE TABLE IF NOT EXISTS recognition_logs (
     camera_location VARCHAR(100),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE SET NULL
-);
+    FOREIGN KEY (member_id) 
+    REFERENCES members(member_id)
+     ON DELETE SET NULL,
+
+
+    FOREIGN KEY (visitor_id)
+    REFERENCES visitors(visitor_id)
+    ON DELETE SET NULL
+    );
 
 CREATE TABLE IF NOT EXISTS vip_notifications (
     notification_id INT AUTO_INCREMENT PRIMARY KEY,
