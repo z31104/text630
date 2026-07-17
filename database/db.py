@@ -1520,3 +1520,239 @@ def get_all_visitor_faces():
 
         if conn and conn.is_connected():
             conn.close()
+
+def get_dashboard_summary():
+    """
+    取得 Dashboard 上方統計卡片需要的資料。
+
+    回傳格式：
+    {
+        "total_members": 會員總數,
+        "total_visitors": 散客總數,
+        "today_recognitions": 今日辨識次數,
+        "active_visits": 目前店內人數,
+        "today_vip_notifications": 今日 VIP 通知數
+    }
+    """
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+        SELECT
+            (
+                SELECT COUNT(*)
+                FROM members
+            ) AS total_members,
+
+            (
+                SELECT COUNT(*)
+                FROM visitors
+            ) AS total_visitors,
+
+            (
+                SELECT COUNT(*)
+                FROM recognition_logs
+                WHERE DATE(recognized_at) = CURDATE()
+            ) AS today_recognitions,
+
+            (
+                SELECT COUNT(*)
+                FROM recognition_logs
+                WHERE leave_time IS NULL
+                  AND visit_status IN (%s, %s)
+            ) AS active_visits,
+
+            (
+                SELECT COUNT(*)
+                FROM vip_notifications
+                WHERE DATE(created_at) = CURDATE()
+            ) AS today_vip_notifications
+        """
+
+        cursor.execute(
+            sql,
+            (
+                VISIT_STATUS_ARRIVED,
+                VISIT_STATUS_STAYING
+            )
+        )
+
+        summary = cursor.fetchone()
+
+        if summary is None:
+            return {
+                "total_members": 0,
+                "total_visitors": 0,
+                "today_recognitions": 0,
+                "active_visits": 0,
+                "today_vip_notifications": 0
+            }
+
+        return summary
+
+    except Exception as e:
+        print("取得 Dashboard 統計資料失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()                
+        
+def get_recent_recognitions(limit=10):
+    """
+    取得最近的辨識紀錄。
+
+    limit：
+    決定最多回傳幾筆資料，預設為 10 筆。
+    """
+
+    conn = None
+    cursor = None
+
+    try:
+        limit = int(limit)
+
+        if limit <= 0:
+            limit = 10
+
+        if limit > 100:
+            limit = 100
+
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+        SELECT
+            log_id,
+            subject_type,
+            member_id,
+            visitor_id,
+            visitor_code,
+            name,
+            vip,
+            member_level,
+            confidence,
+            recognition_status,
+            visit_status,
+            camera_id,
+            camera_location,
+            visit_time,
+            recognized_at,
+            last_seen_at,
+            leave_time,
+            stay_seconds,
+            stay_minutes,
+            created_at
+        FROM recognition_logs
+        ORDER BY recognized_at DESC, log_id DESC
+        LIMIT %s
+        """
+
+        cursor.execute(sql, (limit,))
+        rows = cursor.fetchall()
+
+        for row in rows:
+            row["member_level_text"] = get_member_level_text(
+                row.get("member_level")
+            )
+
+        return rows
+
+    except (TypeError, ValueError):
+        print("取得最近辨識紀錄失敗：limit 必須是整數")
+        raise
+
+    except Exception as e:
+        print("取得最近辨識紀錄失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
+
+def get_recent_vip_notifications(limit=10):
+    """
+    取得最近的 VIP 通知紀錄。
+
+    limit：
+    決定最多回傳幾筆資料，預設為 10 筆。
+    """
+
+    conn = None
+    cursor = None
+
+    try:
+        limit = int(limit)
+
+        if limit <= 0:
+            limit = 10
+
+        if limit > 100:
+            limit = 100
+
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+        SELECT
+            vn.notification_id,
+            vn.member_id,
+            vn.log_id,
+            vn.line_user_id,
+            vn.message,
+            vn.status,
+            vn.sent_at,
+            vn.created_at,
+            m.name AS member_name,
+            m.vip,
+            m.member_level,
+            rl.confidence,
+            rl.camera_id,
+            rl.camera_location,
+            rl.recognized_at
+        FROM vip_notifications vn
+        LEFT JOIN members m
+            ON vn.member_id = m.member_id
+        LEFT JOIN recognition_logs rl
+            ON vn.log_id = rl.log_id
+        ORDER BY vn.created_at DESC,
+                 vn.notification_id DESC
+        LIMIT %s
+        """
+
+        cursor.execute(sql, (limit,))
+        rows = cursor.fetchall()
+
+        for row in rows:
+            row["member_level_text"] = get_member_level_text(
+                row.get("member_level")
+            )
+
+        return rows
+
+    except (TypeError, ValueError):
+        print("取得最近 VIP 通知失敗：limit 必須是整數")
+        raise
+
+    except Exception as e:
+        print("取得最近 VIP 通知失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
+
