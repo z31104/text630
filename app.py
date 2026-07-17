@@ -19,5 +19,13 @@ app.register_blueprint(camera_bp)
 app.register_blueprint(member_bp)
 app.register_blueprint(line_bp)
 
+import os
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 8080))
+
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False
+    )
