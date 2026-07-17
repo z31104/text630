@@ -227,30 +227,30 @@ def generate_frames():
             faces = detect_face(frame)
             current_time = time.time()
             has_face = len(faces) > 0
-
-            # 畫面沒有偵測到人臉
-            # 清除上一筆會員或 guest 的顯示資料
+            
+            
+            # 畫面沒有人臉
             if not has_face:
-                last_result = {
-                    "subject_type": "none",
-                    "member_id": None,
-                    "visitor_id": None,
-                    "visitor_code": None,
-                    "name": "No Face",
-                    "phone": None,
-                    "vip": False,
-                    "member_level": "guest",
-                    "visit_count": 0,
-                    "line_user_id": None,
-                    "registration_source": None,
-                    "total_amount": 0,
-                    "favorite_product": None,
-                    "face_image": None,
-                    "confidence": 0,
-                    "recognition_status": "no_face",
-                    "member_level_text": "No Face"
+                 last_result = {
+                      "subject_type": "none",
+                      "member_id": None,
+                      "visitor_id": None,
+                      "visitor_code": None,
+                      "name": "No Face",
+                      "phone": None,
+                      "vip": False,
+                      "member_level": "guest",
+                      "visit_count": 0,
+                      "line_user_id": None,
+                      "registration_source": None,
+                      "total_amount": 0,
+                      "favorite_product": None,
+                      "face_image": None,
+                      "confidence": 0,
+                      "recognition_status": "no_face",
+                      "member_level_text": "No Face"
                 }
-
+            
             # 畫面有偵測到人臉，而且超過辨識間隔
             # 才執行會員人臉比對
             elif (
@@ -259,6 +259,7 @@ def generate_frames():
             ):
                 last_result = recognize_face(frame, faces)
                 last_recognition_time = current_time
+
 
             current_member_id = last_result.get("member_id")
             current_subject_type = last_result.get("subject_type")
