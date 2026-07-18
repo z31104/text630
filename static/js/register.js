@@ -1,4 +1,4 @@
-const LIFF_ID = "2010668858-gsTCqv7v";
+let LIFF_ID = "";
 
 const spinWheel = document.getElementById("spinWheel");
 const spinButton = document.getElementById("spinButton");
@@ -73,7 +73,20 @@ function initLiffProfile() {
         return;
     }
 
-    liff.init({ liffId: LIFF_ID })
+    fetch("/line/config")
+        .then(function (res) {
+            return res.json();
+        })
+        .then(function (config) {
+            LIFF_ID = config.liff_id || "";
+
+            if (!LIFF_ID) {
+                setLineHint("LINE LIFF 尚未設定，請聯絡管理員設定 LIFF_ID。", "error");
+                return Promise.reject(new Error("LIFF_ID 未設定"));
+            }
+
+            return liff.init({ liffId: LIFF_ID });
+        })
         .then(function () {
             if (!liff.isLoggedIn()) {
                 liff.login({ redirectUri: window.location.href });
@@ -92,7 +105,7 @@ function initLiffProfile() {
         })
         .catch(function (error) {
             console.error("LIFF 初始化失敗", error);
-            if (!lineUserIdInput || !lineUserIdInput.value.trim()) {
+            if (LIFF_ID && (!lineUserIdInput || !lineUserIdInput.value.trim())) {
                 setLineHint("無法取得 LINE User ID，請從 LINE 官方帳號的註冊連結重新開啟。", "error");
             }
         });
