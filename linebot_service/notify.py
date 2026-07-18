@@ -13,8 +13,11 @@ else:
     line_bot_api = LineBotApi(_LINE_CHANNEL_ACCESS_TOKEN)
 
 # 店員用 LINE 官方帳號，固定推播給 STAFF_LINE_USER_ID（VIP 到店通知用）
+# 可填多組 userId，用逗號分隔（例如："U111...,U222...,U333..."），讓每個組員都能收到通知
 _STAFF_LINE_CHANNEL_ACCESS_TOKEN = os.getenv("STAFF_LINE_CHANNEL_ACCESS_TOKEN")
-STAFF_LINE_USER_ID = os.getenv("STAFF_LINE_USER_ID")
+STAFF_LINE_USER_IDS = [
+    uid.strip() for uid in os.getenv("STAFF_LINE_USER_ID", "").split(",") if uid.strip()
+]
 if not _STAFF_LINE_CHANNEL_ACCESS_TOKEN:
     staff_line_bot_api = None
     print("警告：未設定 STAFF_LINE_CHANNEL_ACCESS_TOKEN，店員 LINE 推播功能已停用")
@@ -46,10 +49,10 @@ def push_message(line_user_id, text):
 
 def push_staff_message(text):
     """
-    店員 Bot 的底層推播函式，固定推給 STAFF_LINE_USER_ID。
+    店員 Bot 的底層推播函式，推給 STAFF_LINE_USER_ID 裡設定的所有 userId。
     return: "sent" 或 "failed"
     """
-    if not STAFF_LINE_USER_ID:
+    if not STAFF_LINE_USER_IDS:
         print("推播失敗：未設定 STAFF_LINE_USER_ID")
         return "failed"
 
@@ -58,7 +61,10 @@ def push_staff_message(text):
         return "failed"
 
     try:
-        staff_line_bot_api.push_message(STAFF_LINE_USER_ID, TextSendMessage(text=text))
+        if len(STAFF_LINE_USER_IDS) == 1:
+            staff_line_bot_api.push_message(STAFF_LINE_USER_IDS[0], TextSendMessage(text=text))
+        else:
+            staff_line_bot_api.multicast(STAFF_LINE_USER_IDS, TextSendMessage(text=text))
         return "sent"
     except LineBotApiError as e:
         print(f"店員 LINE 推播失敗：{e}")

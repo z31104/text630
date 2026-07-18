@@ -41,6 +41,9 @@ else:
     handler = None
     print("警告：未設定 LINE_CHANNEL_ACCESS_TOKEN / LINE_CHANNEL_SECRET，LINE Bot 進入測試模式")
 
+# LIFF App ID，前端 register.js 用來呼叫 liff.init()
+LIFF_ID = os.getenv("LIFF_ID", "")
+
 # 店員用 LINE 官方帳號，用來接收 VIP 到店通知
 STAFF_LINE_CHANNEL_ACCESS_TOKEN = os.getenv("STAFF_LINE_CHANNEL_ACCESS_TOKEN")
 STAFF_LINE_CHANNEL_SECRET = os.getenv("STAFF_LINE_CHANNEL_SECRET")
@@ -91,6 +94,12 @@ def line_index():
     <h1>LINE Bot - 正式模式</h1>
     <p>已偵測到 LINE_CHANNEL_ACCESS_TOKEN / LINE_CHANNEL_SECRET，LINE Bot 已啟動</p>
     """
+
+
+@line_bp.route("/line/config")
+def line_config():
+    """提供前端 register.js 需要的公開設定值（目前只有 LIFF ID）。"""
+    return jsonify({"liff_id": LIFF_ID})
 
 
 @line_bp.route("/line/callback", methods=["POST"])
@@ -178,7 +187,7 @@ def _fetch_member_by_line_user_id(line_user_id):
         conn = get_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute(
-            "SELECT member_id, name, phone, vip, member_level, visit_count, "
+            "SELECT member_id, name, phone, birthday, vip, member_level, visit_count, "
             "line_user_id, total_amount, favorite_product, face_image, created_at, updated_at "
             "FROM members WHERE line_user_id = %s",
             (line_user_id,)
@@ -198,7 +207,7 @@ def _fetch_member_by_id(member_id):
         conn = get_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute(
-            "SELECT member_id, name, phone, vip, member_level, visit_count, "
+            "SELECT member_id, name, phone, birthday, vip, member_level, visit_count, "
             "line_user_id, total_amount, favorite_product, face_image, created_at, updated_at "
             "FROM members WHERE member_id = %s",
             (member_id,)
@@ -264,11 +273,11 @@ def register_from_line():
     照片只要沒偵測到人臉、偵測到多張臉、或建檔失敗，整筆註冊都會撤銷（不留殘缺會員資料）。
 
     回傳格式統一為 {"success": bool, "message": str, ...}，方便前端直接顯示 message。
-    註：birthday 欄位目前 members 表尚無對應欄位（需 db 組加欄位後才能儲存），
-    這裡先不處理；preferences 會寫入既有的 member_preferences 表。
+    preferences 會寫入既有的 member_preferences 表。
     """
     name = (request.form.get("name") or "").strip()
     phone = (request.form.get("phone") or "").strip() or None
+    birthday = (request.form.get("birthday") or "").strip() or None
     line_user_id = (request.form.get("line_user_id") or "").strip() or None
     face_image_file = request.files.get("face_image")
 
@@ -342,6 +351,7 @@ def register_from_line():
         register_result = register_member_with_face(
             name=name,
             phone=phone,
+            birthday=birthday,
             member_level="normal",
             line_user_id=line_user_id,
             face_image=saved_filename,
