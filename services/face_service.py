@@ -1154,7 +1154,10 @@ def detect_face(frame):
         print("Haar Cascade 載入失敗，無法偵測人臉")
         return []
 
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(
+        frame,
+        cv2.COLOR_BGR2GRAY
+    )
 
     # 改善光線差異
     gray = cv2.equalizeHist(gray)
@@ -1193,9 +1196,22 @@ def detect_face(frame):
         if center_y > frame_height * 0.97:
             continue
 
-        valid_faces.append((x, y, w, h))
+        valid_faces.append(
+            (x, y, w, h)
+        )
 
-    return valid_faces
+    # 目前階段只處理單人辨識：
+    # 若偵測到多個框，只保留面積最大的人臉框，
+    # 避免脖子、衣服或背景紋理造成的小型誤判框。
+    if valid_faces:
+        largest_face = max(
+            valid_faces,
+            key=lambda face: face[2] * face[3]
+        )
+
+        return [largest_face]
+
+    return []
 
 
 def recognize_face(frame, faces):
