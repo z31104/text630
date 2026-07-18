@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS members (
     vip BOOLEAN DEFAULT FALSE,
     member_level VARCHAR(20) DEFAULT 'normal',
     visit_count INT DEFAULT 0,
-    line_user_id VARCHAR(100),
+    line_user_id VARCHAR(100) UNIQUE,
     total_amount INT DEFAULT 0,
     favorite_product VARCHAR(100),
     face_image VARCHAR(255),
@@ -130,20 +130,24 @@ CREATE TABLE IF NOT EXISTS recognition_logs (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
     INDEX idx_recognition_logs_member_active (
-        member_id,
         subject_type,
+        member_id,
         camera_id,
-        leave_time,
-        visit_status
+        visit_status,
+        leave_time
     ),
 
     INDEX idx_recognition_logs_visitor_active (
-        visitor_id,
         subject_type,
+        visitor_id,
         camera_id,
-        leave_time,
-        visit_status
-    ),
+        visit_status,
+        leave_time
+),
+
+    INDEX idx_recognition_visit_time (
+        visit_time
+),
 
 
     FOREIGN KEY (member_id) 
