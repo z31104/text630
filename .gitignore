@@ -14,3 +14,8 @@ __pycache__/
 
 # VS Code
 .vscode/
+
+# 使用者上傳的真實會員照片（含人臉資料，不進版控），保留 member_images/ 內原本的假資料照片
+member_images/line_*.jpg
+member_images/line_*.jpeg
+member_images/line_*.png

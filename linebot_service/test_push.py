@@ -1,18 +1,17 @@
-import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from linebot import LineBotApi
-from linebot.models import TextSendMessage
+from notify import notify_vip_recognition
 
-line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
+# 假資料：模擬攝影機辨識到一位 VIP 會員
+fake_result = {
+    "member_id": 1,
+    "name": "測試會員",
+    "vip": True,
+    "member_level": "vip",
+    "line_user_id": "U0000000000000000000000000000000",
+    "confidence": 0.99,
+}
 
-# 把下面換成你剛剛複製的 userId
-my_user_id = "U0e1d13231946c4c52e179049463c6b49"
-
-line_bot_api.push_message(
-    my_user_id,
-    TextSendMessage(text="這是測試推播訊息！")
-)
-
-print("推播完成")
+status = notify_vip_recognition(fake_result)
+print(f"LINE notify status: {status}")
