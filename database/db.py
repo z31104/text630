@@ -1796,3 +1796,215 @@ def get_recent_vip_notifications(limit=10):
         if conn and conn.is_connected():
             conn.close()
 
+
+def get_active_lottery_prizes():
+    """
+    取得目前可以抽到的獎品。
+    """
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+        SELECT
+            prize_id,
+            prize_code,
+            prize_name,
+            prize_type,
+            prize_value,
+            probability_weight,
+            stock_quantity,
+            prize_status
+        FROM lottery_prizes
+        WHERE prize_status = 'active'
+          AND (
+                stock_quantity IS NULL
+                OR stock_quantity > 0
+              )
+        ORDER BY prize_id ASC
+        """
+
+        cursor.execute(sql)
+        return cursor.fetchall()
+
+    except Exception as e:
+        print("取得抽獎獎品失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
+
+
+def has_member_completed_lottery(member_id):
+    """
+    檢查會員是否已抽到最終獎項。
+    """
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+        SELECT
+            lottery_id,
+            member_id,
+            prize_id,
+            prize_name,
+            result,
+            is_final,
+            redeemed,
+            redeemed_at,
+            created_at
+        FROM lottery_records
+        WHERE member_id = %s
+          AND is_final = TRUE
+        ORDER BY created_at DESC, lottery_id DESC
+        LIMIT 1
+        """
+
+        cursor.execute(sql, (member_id,))
+        return cursor.fetchone()
+
+    except Exception as e:
+        print("檢查會員抽獎資格失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()            
+
+
+def insert_lottery_record(
+    member_id,
+    prize_id,
+    prize_name,
+    result=None,
+    coupon_id=None,
+    is_final=True
+):
+    """
+    儲存會員抽獎結果。
+    """
+
+    conn = None
+    cursor = None
+
+    try:
+        if member_id is None:
+            raise ValueError("member_id 不可為空")
+
+        if prize_id is None:
+            raise ValueError("prize_id 不可為空")
+
+        if not prize_name:
+            raise ValueError("prize_name 不可為空")
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        sql = """
+        INSERT INTO lottery_records (
+            member_id,
+            prize_id,
+            coupon_id,
+            prize_name,
+            result,
+            is_final,
+            redeemed,
+            redeemed_at
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, FALSE, NULL)
+        """
+
+        cursor.execute(
+            sql,
+            (
+                member_id,
+                prize_id,
+                coupon_id,
+                prize_name,
+                result,
+                bool(is_final)
+            )
+        )
+
+        conn.commit()
+        return cursor.lastrowid
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+
+        print("新增抽獎紀錄失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
+
+
+def get_member_lottery_records(member_id):
+    """
+    查詢會員的所有抽獎紀錄。
+    """
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+        SELECT
+            lr.lottery_id,
+            lr.member_id,
+            lr.prize_id,
+            lr.coupon_id,
+            lr.prize_name,
+            lr.result,
+            lr.is_final,
+            lr.redeemed,
+            lr.redeemed_at,
+            lr.created_at,
+            lp.prize_code,
+            lp.prize_type,
+            lp.prize_value
+        FROM lottery_records lr
+        JOIN lottery_prizes lp
+            ON lr.prize_id = lp.prize_id
+        WHERE lr.member_id = %s
+        ORDER BY lr.created_at DESC,
+                 lr.lottery_id DESC
+        """
+
+        cursor.execute(sql, (member_id,))
+        return cursor.fetchall()
+
+    except Exception as e:
+        print("取得會員抽獎紀錄失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()                      

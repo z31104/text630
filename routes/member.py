@@ -124,14 +124,17 @@ def _get_member_detail(member_id):
             WHERE member_id = %s
         """, (member_id,))
 
-        member = cursor.fetchone() or {}
+        member = cursor.fetchone()
+
+        if member is None:
+            return None
+
         member["display_face_image"] = _safe_member_image_url(
             member.get("face_image")
-            or member.get("photo")
-            or member.get("image")
         )
 
         return member
+
 
     except Exception as e:
         print("取得會員詳細資料失敗：", e)
@@ -187,6 +190,14 @@ def member():
         ORDER BY member_id ASC
     """)
     members = cursor.fetchall()
+
+    for member_data in members:
+        member_data["display_face_image"] = (
+            _safe_member_image_url(
+                member_data.get("face_image")
+            )
+        )
+
 
     cursor.close()
     conn.close()

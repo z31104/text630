@@ -49,3 +49,93 @@ SHOW INDEX FROM recognition_logs;
 CREATE INDEX idx_recognition_visit_time
 ON recognition_logs (visit_time);
 */
+
+
+-- =====================================================
+-- Sprint 3 抽獎功能升級
+-- =====================================================
+
+-- 1. 建立抽獎獎品設定表
+CREATE TABLE IF NOT EXISTS lottery_prizes (
+    prize_id INT AUTO_INCREMENT PRIMARY KEY,
+    prize_code VARCHAR(50) NOT NULL UNIQUE,
+    prize_name VARCHAR(100) NOT NULL,
+    prize_type VARCHAR(30) NOT NULL,
+    prize_value DECIMAL(10,2) DEFAULT 0,
+    probability_weight INT NOT NULL DEFAULT 1,
+    stock_quantity INT NULL,
+    prize_status VARCHAR(20) NOT NULL DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP
+);
+
+
+-- 2. 檢查舊 lottery_records 欄位
+SHOW COLUMNS FROM lottery_records;
+
+
+-- 3. 若舊表缺少 prize_id，才單獨執行一次
+/*
+ALTER TABLE lottery_records
+ADD COLUMN prize_id INT NULL
+AFTER member_id;
+*/
+
+
+
+-- 4. 若舊表缺少 is_final，才單獨執行一次
+/*
+ALTER TABLE lottery_records
+ADD COLUMN is_final BOOLEAN NOT NULL DEFAULT TRUE
+AFTER result;
+*/
+
+
+-- 5. 若舊表缺少 redeemed，才單獨執行一次
+/*
+ALTER TABLE lottery_records
+ADD COLUMN redeemed BOOLEAN NOT NULL DEFAULT FALSE
+AFTER is_final;
+*/
+
+
+-- 6. 若舊表缺少 redeemed_at，才單獨執行一次
+/*
+ALTER TABLE lottery_records
+ADD COLUMN redeemed_at DATETIME NULL
+AFTER redeemed;
+*/
+
+
+-- 7. 檢查 lottery_records 索引
+SHOW INDEX FROM lottery_records;
+
+
+-- 8. 若沒有會員抽獎紀錄索引，才單獨執行一次
+/*
+CREATE INDEX idx_lottery_records_member_time
+ON lottery_records (
+    member_id,
+    created_at
+);
+*/
+
+
+-- 9. 建立六筆抽獎獎品
+INSERT IGNORE INTO lottery_prizes (
+    prize_code,
+    prize_name,
+    prize_type,
+    prize_value,
+    probability_weight,
+    stock_quantity,
+    prize_status
+)
+VALUES
+    ('cash_50', '$50', 'coupon', 50, 1, NULL, 'active'),
+    ('discount_90', '9折', 'discount', 0.90, 1, NULL, 'active'),
+    ('cash_200', '$200', 'coupon', 200, 1, NULL, 'active'),
+    ('gift', '小禮品', 'gift', 0, 1, NULL, 'active'),
+    ('free_shipping', '免運', 'free_shipping', 0, 1, NULL, 'active'),
+    ('retry', '再抽一次', 'retry', 0, 1, NULL, 'active');

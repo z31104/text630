@@ -205,16 +205,122 @@ CREATE TABLE IF NOT EXISTS member_coupons (
     FOREIGN KEY (coupon_id) REFERENCES coupons(coupon_id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS lottery_prizes (
+    prize_id INT AUTO_INCREMENT PRIMARY KEY,
+
+    prize_code VARCHAR(50) NOT NULL UNIQUE,
+    prize_name VARCHAR(100) NOT NULL,
+    prize_type VARCHAR(30) NOT NULL,
+
+    prize_value DECIMAL(10,2) DEFAULT 0,
+    probability_weight INT NOT NULL DEFAULT 1,
+
+    stock_quantity INT NULL,
+    prize_status VARCHAR(20) NOT NULL DEFAULT 'active',
+
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS lottery_records (
     lottery_id INT AUTO_INCREMENT PRIMARY KEY,
-    member_id INT NULL,
+
+    member_id INT NOT NULL,
+    prize_id INT NOT NULL,
     coupon_id INT NULL,
-    prize_name VARCHAR(100),
+
+    prize_name VARCHAR(100) NOT NULL,
     result VARCHAR(100),
+
+    is_final BOOLEAN NOT NULL DEFAULT TRUE,
+    redeemed BOOLEAN NOT NULL DEFAULT FALSE,
+    redeemed_at DATETIME NULL,
+
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE SET NULL,
-    FOREIGN KEY (coupon_id) REFERENCES coupons(coupon_id) ON DELETE SET NULL
+
+    INDEX idx_lottery_records_member_time (
+        member_id,
+        created_at
+    ),
+
+    FOREIGN KEY (member_id)
+        REFERENCES members(member_id)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (prize_id)
+        REFERENCES lottery_prizes(prize_id)
+        ON DELETE RESTRICT,
+
+    FOREIGN KEY (coupon_id)
+        REFERENCES coupons(coupon_id)
+        ON DELETE SET NULL
 );
+
+INSERT IGNORE INTO lottery_prizes (
+    prize_code,
+    prize_name,
+    prize_type,
+    prize_value,
+    probability_weight,
+    stock_quantity,
+    prize_status
+)
+VALUES
+    (
+        'cash_50',
+        '$50',
+        'coupon',
+        50,
+        1,
+        NULL,
+        'active'
+    ),
+    (
+        'discount_90',
+        '9折',
+        'discount',
+        0.90,
+        1,
+        NULL,
+        'active'
+    ),
+    (
+        'cash_200',
+        '$200',
+        'coupon',
+        200,
+        1,
+        NULL,
+        'active'
+    ),
+    (
+        'gift',
+        '小禮品',
+        'gift',
+        0,
+        1,
+        NULL,
+        'active'
+    ),
+    (
+        'free_shipping',
+        '免運',
+        'free_shipping',
+        0,
+        1,
+        NULL,
+        'active'
+    ),
+    (
+        'retry',
+        '再抽一次',
+        'retry',
+        0,
+        1,
+        NULL,
+        'active'
+    );
 
 CREATE TABLE IF NOT EXISTS member_preferences (
     preference_id INT AUTO_INCREMENT PRIMARY KEY,
