@@ -1,7 +1,15 @@
 import os
 import uuid
 
-from flask import Blueprint, request, redirect, jsonify, render_template
+from flask import (
+    Blueprint,
+    request,
+    redirect,
+    jsonify,
+    render_template,
+    url_for,
+    send_from_directory,
+)
 from werkzeug.utils import secure_filename
 
 from database.db import (
@@ -64,6 +72,107 @@ def allowed_image_file(filename):
 
     return extension in ALLOWED_IMAGE_EXTENSIONS
 
+
+def _safe_member_image_url(image_path):
+    if not image_path:
+        return None
+
+    normalized_path = str(image_path).replace("\\", "/")
+    static_marker = "static/"
+    member_image_marker = "member_images/"
+
+    if normalized_path.startswith(static_marker):
+        return url_for(
+            "static",
+            filename=normalized_path[len(static_marker):]
+        )
+
+    if static_marker in normalized_path:
+        return url_for(
+            "static",
+            filename=normalized_path.split(static_marker, 1)[1]
+        )
+
+    if os.path.isabs(str(image_path)):
+        if member_image_marker in normalized_path:
+            filename = normalized_path.rsplit(member_image_marker, 1)[1]
+            return url_for("member.member_image", filename=filename)
+
+        return None
+
+    if member_image_marker in normalized_path:
+        filename = normalized_path.rsplit(member_image_marker, 1)[1]
+    else:
+        filename = normalized_path
+
+    return url_for("member.member_image", filename=filename)
+
+
+def _get_member_detail(member_id):
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT member_id, name, phone, birthday, vip, member_level,
+                   visit_count, line_user_id, total_amount,
+                   favorite_product, face_image, registration_source,
+                   created_at, updated_at
+            FROM members
+            WHERE member_id = %s
+        """, (member_id,))
+
+        member = cursor.fetchone() or {}
+        member["display_face_image"] = _safe_member_image_url(
+            member.get("face_image")
+            or member.get("photo")
+            or member.get("image")
+        )
+
+        return member
+
+    except Exception as e:
+        print("取得會員詳細資料失敗：", e)
+        return {}
+
+    finally:
+        if cursor is not None:
+            cursor.close()
+
+        if conn is not None:
+            conn.close()
+
+
+def _get_member_visit_records(member_id):
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT log_id, visit_time, recognized_at, last_seen_at,
+                   leave_time, stay_seconds, visit_status
+            FROM recognition_logs
+            WHERE member_id = %s
+            ORDER BY visit_time DESC, recognized_at DESC, log_id DESC
+        """, (member_id,))
+
+        return cursor.fetchall() or []
+
+    except Exception as e:
+        print("取得會員到店歷史失敗：", e)
+        return []
+
+    finally:
+        if cursor is not None:
+            cursor.close()
+
+        if conn is not None:
+            conn.close()
+
 @member_bp.route("/member")
 def member():
     conn = get_connection()
@@ -83,6 +192,11 @@ def member():
     conn.close()
 
     return render_template("member.html", members=members)
+
+
+@member_bp.route("/member_images/<path:filename>")
+def member_image(filename):
+    return send_from_directory(MEMBER_IMAGE_DIR, filename)
 
 
 @member_bp.route("/member/recognition_log", methods=["POST"])
@@ -109,6 +223,18 @@ def add_recognition_log():
         }), 500
 
    
+
+@member_bp.route("/member/<int:member_id>")
+def member_detail(member_id):
+    member = _get_member_detail(member_id)
+    records = _get_member_visit_records(member_id)
+
+    return render_template(
+        "member_detail.html",
+        member=member,
+        records=records
+    )
+
 
 @member_bp.route("/member/add", methods=["GET", "POST"])
 def add_member_page():

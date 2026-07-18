@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+{% set member_level = member.get("member_level", "") if member else "" %}
+{% set is_vip = member.get("vip") if member else false %}
+{% set latest_record = records[0] if records else {} %}
+{% set latest_visit_time = (
+    latest_record.get("visit_time")
+    or latest_record.get("recognized_at")
+    or member.get("updated_at", "")
+    if member else ""
+) %}
+
+<section class="page-header">
+    <p class="tag">Member Detail</p>
+    <h1>會員詳細資料</h1>
+    <p>查看會員基本資料、照片與到店歷史紀錄。</p>
+</section>
+
+<section class="member-detail-layout">
+    <div class="member-detail-card">
+        <h2>基本資料</h2>
+
+        <div class="member-detail-grid">
+            <div class="detail-field">
+                <span>姓名</span>
+                <strong>{{ member.get("name", "") or "-" }}</strong>
+            </div>
+
+            <div class="detail-field">
+                <span>手機</span>
+                <strong>{{ member.get("phone", "") or "-" }}</strong>
+            </div>
+
+            <div class="detail-field">
+                <span>LINE User ID</span>
+                <strong>{{ member.get("line_user_id", "") or "-" }}</strong>
+            </div>
+
+            <div class="detail-field">
+                <span>會員狀態</span>
+                {% if is_vip or member_level == "vip" %}
+                    <strong><span class="badge vip">VIP 會員</span></strong>
+                {% elif member_level == "guest" %}
+                    <strong><span class="badge normal">訪客</span></strong>
+                {% else %}
+                    <strong><span class="badge normal">一般會員</span></strong>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="member-stats-row">
+            <div class="detail-field">
+                <span>總來店次數</span>
+                <strong>{{ member.get("visit_count", 0) or 0 }}</strong>
+            </div>
+
+            <div class="detail-field">
+                <span>最近來店時間</span>
+                <strong>{{ latest_visit_time or "-" }}</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="member-photo-card">
+        <h2>主要照片</h2>
+
+        {% if member.get("display_face_image") %}
+            <img
+                src="{{ member.get('display_face_image') }}"
+                alt="{{ member.get('name', '會員') }} 的主要照片"
+                class="member-main-photo"
+            >
+        {% else %}
+            <div class="member-photo-placeholder">
+                尚無照片
+            </div>
+        {% endif %}
+    </div>
+</section>
+
+<section class="member-table-card">
+    <div class="table-header">
+        <h2>到店歷史</h2>
+        <a href="/member" class="secondary-btn">返回列表</a>
+    </div>
+
+    <table class="member-table">
+        <thead>
+            <tr>
+                <th>到店時間</th>
+                <th>離店時間</th>
+                <th>停留時間</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for record in records %}
+                {% set stay_seconds = record.get("stay_seconds") %}
+                {% set stay_minutes = (stay_seconds / 60)|round(0, "floor")|int if stay_seconds else 0 %}
+                <tr>
+                    <td>{{ record.get("visit_time") or record.get("recognized_at") or "-" }}</td>
+                    <td>{{ record.get("leave_time") or record.get("last_seen_at") or "-" }}</td>
+                    <td>
+                        {% if stay_seconds %}
+                            {{ stay_minutes }} 分鐘
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="3">目前沒有到店歷史</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+{% endblock %}

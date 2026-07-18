@@ -412,6 +412,79 @@ body {
     color: #1f2937;
 }
 
+.member-detail-layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.member-detail-card,
+.member-photo-card {
+    background-color: white;
+    padding: 28px;
+    border-radius: 18px;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+.member-detail-card h2,
+.member-photo-card h2 {
+    margin-top: 0;
+}
+
+.member-detail-grid,
+.member-stats-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+}
+
+.member-stats-row {
+    margin-top: 18px;
+}
+
+.detail-field {
+    padding: 16px;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background-color: #f9fafb;
+}
+
+.detail-field span {
+    display: block;
+    margin-bottom: 8px;
+    color: #6b7280;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.detail-field strong {
+    color: #1f2937;
+    font-size: 18px;
+}
+
+.member-main-photo,
+.member-photo-placeholder {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: 14px;
+}
+
+.member-main-photo {
+    object-fit: cover;
+    border: 1px solid #e5e7eb;
+}
+
+.member-photo-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f3f4f6;
+    color: #6b7280;
+    border: 1px dashed #cbd5e1;
+    font-weight: 700;
+}
+
 .badge,
 .status {
     display: inline-block;
@@ -563,8 +636,14 @@ body {
 
     .cards,
     .camera-layout,
+    .member-detail-layout,
     .line-status-layout,
     .rule-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .member-detail-grid,
+    .member-stats-row {
         grid-template-columns: 1fr;
     }
 
