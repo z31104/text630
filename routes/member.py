@@ -1,7 +1,7 @@
 import os
 import uuid
 
-from flask import Blueprint, request, redirect, jsonify
+from flask import Blueprint, request, redirect, jsonify, render_template
 from werkzeug.utils import secure_filename
 
 from database.db import (
@@ -73,72 +73,16 @@ def member():
         SELECT member_id, name, phone, birthday, vip, member_level,
                visit_count, line_user_id, total_amount,
                favorite_product, face_image, registration_source,
-                    created_at , updated_at
+               created_at, updated_at
         FROM members
+        ORDER BY member_id ASC
     """)
-    db_members = cursor.fetchall()
+    members = cursor.fetchall()
 
     cursor.close()
     conn.close()
 
-    html = """
-    <h1>會員資料頁</h1>
-    <p><a href="/member/add">新增會員</a></p>
-
-    <table border="1" cellpadding="8">
-        <tr>
-            <th>會員編號</th>
-            <th>姓名</th>
-            <th>電話</th>
-            <th>生日</th>
-            <th>VIP</th>
-            <th>會員等級</th>
-            <th>來店次數</th>
-            <th>LINE User ID</th>
-            <th>累積消費</th>
-            <th>偏好商品</th>
-            <th>人臉圖片</th>
-            <th>註冊來源</th>
-            <th>操作</th>
-        </tr>
-    """
-
-    for m in db_members:
-        member_id = m["member_id"]
-        
-        member_level_text = {
-            "vip": "VIP 會員",
-            "normal": "一般會員",
-            "guest": "陌生客"
-        }.get(m["member_level"], "未知")
-
-        html += f"""
-
-        <tr>
-            <td>{m["member_id"]}</td>
-            <td>{m["name"]}</td>
-            <td>{m["phone"] or ""}</td>
-            <td>{m["birthday"] or ""}</td>
-            <td>{"是" if m["vip"] else "否"}</td>
-            <td>{m["member_level"] or ""}</td>
-            <td>{m["visit_count"]}</td>
-            <td>{m["line_user_id"] or ""}</td>
-            <td>{m["total_amount"]}</td>
-            <td>{m["favorite_product"] or ""}</td>
-            <td>{m["face_image"] or ""}</td>
-            <td>{m["registration_source"] or ""}</td>
-            <td>
-                <a href="/member/edit/{member_id}">修改</a>
-                <a href="/member/delete/{member_id}">刪除</a>
-            </td>
-        </tr>
-        """
-
-    html += """
-    </table>
-    """
-
-    return html
+    return render_template("member.html", members=members)
 
 
 @member_bp.route("/member/recognition_log", methods=["POST"])

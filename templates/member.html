@@ -4,24 +4,23 @@
 
 <section class="page-header">
     <p class="tag">Member Management</p>
-    <h1>會員資料管理頁面</h1>
+    <h1>會員資料管理</h1>
     <p>
-        此頁面為前端靜態畫面，欄位名稱依照組長提供的資料格式設計，
-        後續可串接資料庫或 AI 辨識結果。
+        管理會員基本資料、LINE User ID 與會員狀態，方便前台辨識與後續行銷作業。
     </p>
 </section>
 
 <section class="member-toolbar">
     <div>
         <h2>會員列表</h2>
-        <p>顯示會員姓名、VIP 狀態、LINE 使用者 ID 與辨識資訊。</p>
+        <p>顯示目前資料庫中的會員資料。</p>
     </div>
 
-    <button class="primary-btn">新增會員</button>
+    <a href="/member/add" class="primary-btn">新增會員</a>
 </section>
 
 <section class="search-box">
-    <input type="text" placeholder="搜尋 name、member_id 或 line_user_id">
+    <input type="text" placeholder="搜尋姓名、會員編號或 LINE User ID">
     <button class="secondary-btn">搜尋</button>
 </section>
 
@@ -29,110 +28,58 @@
     <table class="member-table">
         <thead>
             <tr>
-                <th>id</th>
-                <th>member_id</th>
-                <th>name</th>
+                <th>會員編號</th>
+                <th>姓名</th>
+                <th>手機</th>
+                <th>LINE User ID</th>
                 <th>會員狀態</th>
-                <th>line_user_id</th>
-                <th>confidence</th>
-                <th>recognized_at</th>
-                <th>偏好</th>
+                <th>最近來店</th>
                 <th>操作</th>
             </tr>
         </thead>
 
         <tbody>
-    <tr>
-        <td>1</td>
-        <td>1</td>
-        <td>王小明</td>
-        <td><span class="badge vip">VIP會員</span></td>
-        <td>U123456789</td>
-        <td>咖啡、甜點、新品通知</td>
-        <td>0.95</td>
-        <td>2026-07-02 19:30:00</td>
-        <td>
-            <button class="secondary-btn">查看</button>
-            <button class="secondary-btn">編輯</button>
-        </td>
-    </tr>
-
-    <tr>
-        <td>2</td>
-        <td>2</td>
-        <td>林怡君</td>
-        <td><span class="badge normal">一般會員</span></td>
-        <td>U987654321</td>
-        <td>飲品、優惠券</td>
-        <td>0.88</td>
-        <td>2026-07-03 14:20:00</td>
-        <td>
-            <button class="secondary-btn">查看</button>
-            <button class="secondary-btn">編輯</button>
-        </td>
-    </tr>
-
-    <tr>
-        <td>3</td>
-        <td>-</td>
-        <td>Guest</td>
-        <td><span class="badge guest">訪客</span></td>
-        <td>-</td>
-        <td>-</td>
-        <td>0</td>
-        <td>---</td>
-        <td>
-            <button class="secondary-btn">查看</button>
-        </td>
-    </tr>
-</tbody>
+            {% for member in members %}
+                {% set member_id = member.get("member_id", "") %}
+                {% set member_level = member.get("member_level", "") %}
+                <tr>
+                    <td>{{ member_id or "-" }}</td>
+                    <td>{{ member.get("name", "") or "-" }}</td>
+                    <td>{{ member.get("phone", "") or "-" }}</td>
+                    <td>{{ member.get("line_user_id", "") or "-" }}</td>
+                    <td>
+                        {% if member_level == "vip" or member.get("vip") %}
+                            <span class="badge vip">VIP 會員</span>
+                        {% elif member_level == "guest" %}
+                            <span class="badge normal">訪客</span>
+                        {% else %}
+                            <span class="badge normal">一般會員</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ member.get("updated_at", "") or "-" }}</td>
+                    <td>
+                        <a
+                            href="/member/{{ member_id }}"
+                            class="secondary-btn"
+                        >
+                            查看
+                        </a>
+                        <button
+                            type="button"
+                            class="secondary-btn"
+                            data-member-id="{{ member_id }}"
+                        >
+                            刪除
+                        </button>
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="7">目前沒有會員資料</td>
+                </tr>
+            {% endfor %}
+        </tbody>
     </table>
-</section>
-     <section class="data-rule-card">
-    <h2>會員偏好欄位預留</h2>
-
-    <div class="rule-grid">
-        <div class="rule-item">
-            <h3>喜歡咖啡</h3>
-            <p>之後可用於推薦咖啡類商品或發送咖啡優惠券。</p>
-        </div>
-
-        <div class="rule-item">
-            <h3>喜歡甜點</h3>
-            <p>之後可用於甜點折扣、生日禮或回訪優惠。</p>
-        </div>
-
-        <div class="rule-item">
-            <h3>喜歡飲品</h3>
-            <p>可用於飲品新品通知與個人化推薦。</p>
-        </div>
-
-        <div class="rule-item">
-            <h3>喜歡新品通知</h3>
-            <p>未來可透過 LINE 發送新品或專屬活動訊息。</p>
-        </div>
-    </div>
-</section>
-<section class="data-rule-card">
-    <h2>顯示規則</h2>
-
-    <div class="rule-grid">
-        <div class="rule-item">
-            <h3>result_type = vip</h3>
-            <p>顯示 VIP 標籤，Dashboard 與會員中心都用醒目的 VIP 樣式。</p>
-        </div>
-
-        <div class="rule-item">
-            <h3>result_type = member</h3>
-            <p>顯示一般會員，代表已註冊但不是 VIP。</p>
-        </div>
-
-        <div class="rule-item">
-            <h3>result_type = guest</h3>
-            <p>顯示 Guest 或訪客，不會觸發 VIP LINE 通知。</p>
-        </div>
-    </div>
 </section>
 
 {% endblock %}
-
