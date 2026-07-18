@@ -2,94 +2,114 @@
 
 {% block title %}Dashboard｜智慧會員系統{% endblock %}
 
-{% block content %}
-<!--
-Dashboard 預計串接 API JSON 格式：
-{
-  "summary": {
-    "today_visits": 20,
-    "vip_visits": 5,
-    "member_visits": 12,
-    "guest_visits": 3,
-    "current_in_store": 4,
-    "average_stay_minutes": 18
-  },
-  "recent_recognitions": [
-    {
-      "log_id": 101,
-      "member_id": 3,
-      "camera_id": 1,
-      "name": "王小明",
-      "vip": true,
-      "member_level": "vip",
-      "member_level_text": "VIP 會員",
-      "line_user_id": "U123456789",
-      "recognition_status": "recognized",
-      "visit_status": "staying",
-      "recognized_at": "2026-07-15 13:20:00",
-      "visit_time": "2026-07-15 13:20:00",
-      "leave_time": null,
-      "stay_minutes": 18,
-      "camera_location": "入口攝影機",
-      "confidence": 0.92,
-      "face_image": "001.jpg"
-    }
-  ],
-  "vip_notifications": [
-    {
-      "notification_id": 8,
-      "member_id": 3,
-      "log_id": 101,
-      "line_user_id": "U123456789",
-      "message": "VIP 會員王小明已到店",
-      "status": "success",
-      "sent_at": "2026-07-15 13:21:00"
-    }
-  ]
-}
--->
+{% macro display_value(value) -%}
+    {%- if value is undefined or value is none or value == "" -%}
+        -
+    {%- else -%}
+        {{ value }}
+    {%- endif -%}
+{%- endmacro %}
 
+{% macro status_badge(value) -%}
+    {%- if value is undefined or value is none or value == "" -%}
+        -
+    {%- elif value in ["left", "failed", "error"] -%}
+        <span class="status inactive">{{ value }}</span>
+    {%- elif value in ["staying", "arrived"] -%}
+        <span class="status staying">{{ value }}</span>
+    {%- elif value in ["pending", "guest"] -%}
+        <span class="status pending">{{ value }}</span>
+    {%- else -%}
+        <span class="status active">{{ value }}</span>
+    {%- endif -%}
+{%- endmacro %}
+
+{% macro subject_name(row) -%}
+    {%- if row.subject_type == "member" -%}
+        {{ row.name or "未知訪客" }}
+    {%- elif row.subject_type == "visitor" -%}
+        {{ row.name or row.visitor_code or "未知訪客" }}
+    {%- else -%}
+        未知訪客
+    {%- endif -%}
+{%- endmacro %}
+
+{% macro subject_text(row) -%}
+    {%- if row.subject_type == "member" -%}
+        {{ row.member_level_text or "一般會員" }}
+    {%- elif row.subject_type == "visitor" -%}
+        固定散客
+    {%- else -%}
+        未知訪客
+    {%- endif -%}
+{%- endmacro %}
+
+{% macro subject_badge_class(row) -%}
+    {%- if row.subject_type == "member" and (row.vip or row.member_level == "vip") -%}
+        vip
+    {%- elif row.subject_type == "member" -%}
+        member
+    {%- else -%}
+        normal
+    {%- endif -%}
+{%- endmacro %}
+
+{% block content %}
 <section class="dashboard-header">
     <h1>管理後台 Dashboard</h1>
-    <p>追蹤今日到店、會員辨識、VIP 通知與店內即時狀態。Active visit 尚未完成的欄位先以測試資料預留。</p>
+    <p>追蹤今日到店、會員辨識、VIP 通知與店內即時狀態。</p>
 </section>
 
 <section class="dashboard-stats">
-    <div class="dashboard-card">
-        <p>今日到店人數</p>
-        <h2>20</h2>
-        <span>today_visits</span>
-    </div>
+    {% if summary %}
+        <div class="dashboard-card">
+            <p>今日辨識次數</p>
+            <h2>{{ display_value(summary.today_recognitions) }}</h2>
+            <span>today_recognitions</span>
+        </div>
 
-    <div class="dashboard-card highlight">
-        <p>VIP 到店人數</p>
-        <h2>5</h2>
-        <span>vip_visits</span>
-    </div>
+        <div class="dashboard-card highlight">
+            <p>今日 VIP 通知</p>
+            <h2>{{ display_value(summary.today_vip_notifications) }}</h2>
+            <span>today_vip_notifications</span>
+        </div>
 
-    <div class="dashboard-card">
-        <p>一般會員人數</p>
-        <h2>12</h2>
-        <span>member_visits</span>
-    </div>
+        <div class="dashboard-card">
+            <p>會員總數</p>
+            <h2>{{ display_value(summary.total_members) }}</h2>
+            <span>total_members</span>
+        </div>
 
-    <div class="dashboard-card">
-        <p>Guest 人數</p>
-        <h2>3</h2>
-        <span>guest_visits</span>
-    </div>
+        <div class="dashboard-card">
+            <p>固定散客總數</p>
+            <h2>{{ display_value(summary.total_visitors) }}</h2>
+            <span>total_visitors</span>
+        </div>
 
-    <div class="dashboard-card is-placeholder">
-        <p>目前店內人數</p>
-        <h2>4</h2>
-        <span>current_in_store，待 active visit 串接</span>
-    </div>
+        <div class="dashboard-card">
+            <p>目前店內人數</p>
+            <h2>{{ display_value(summary.active_visits) }}</h2>
+            <span>active_visits</span>
+        </div>
 
-    <div class="dashboard-card is-placeholder">
-        <p>平均停留時間</p>
-        <h2>18 分</h2>
-        <span>average_stay_minutes，待 active visit 串接</span>
-    </div>
+        <div class="dashboard-card">
+            <p>平均停留時間</p>
+            <h2>
+                {% if summary.average_stay_minutes is undefined or summary.average_stay_minutes is none or summary.average_stay_minutes == "" %}
+                    -
+                {% else %}
+                    {{ summary.average_stay_minutes }} 分
+                {% endif %}
+            </h2>
+            <span>average_stay_minutes</span>
+        </div>
+    {% else %}
+        <div class="dashboard-card">
+            <p>Summary 統計</p>
+            <h2>-</h2>
+            <span>目前沒有資料</span>
+        </div>
+    {% endif %}
 </section>
 
 <section class="dashboard-main dashboard-main-wide">
@@ -102,51 +122,68 @@ Dashboard 預計串接 API JSON 格式：
         <table class="dashboard-table">
             <thead>
                 <tr>
-                    <th>時間</th>
+                    <th>Log ID</th>
+                    <th>訪客</th>
+                    <th>身分</th>
                     <th>會員 ID</th>
-                    <th>姓名</th>
-                    <th>會員等級</th>
+                    <th>散客 ID</th>
+                    <th>散客代碼</th>
                     <th>VIP</th>
+                    <th>本次到店開始</th>
+                    <th>辨識紀錄建立</th>
+                    <th>最後辨識時間</th>
+                    <th>離店時間</th>
+                    <th>停留秒數</th>
+                    <th>停留分鐘</th>
                     <th>辨識狀態</th>
                     <th>到店狀態</th>
-                    <th>停留分鐘</th>
+                    <th>攝影機</th>
                     <th>信心分數</th>
+                    <th>建立時間</th>
                 </tr>
             </thead>
             <tbody>
-                <tr>
-                    <td>13:20</td>
-                    <td>3</td>
-                    <td>王小明</td>
-                    <td><span class="badge vip">VIP 會員</span></td>
-                    <td>true</td>
-                    <td><span class="status active">recognized</span></td>
-                    <td><span class="status staying">staying</span></td>
-                    <td>18</td>
-                    <td>0.92</td>
-                </tr>
-                <tr>
-                    <td>12:55</td>
-                    <td>7</td>
-                    <td>陳怡君</td>
-                    <td><span class="badge member">一般會員</span></td>
-                    <td>false</td>
-                    <td><span class="status active">recognized</span></td>
-                    <td><span class="status inactive">left</span></td>
-                    <td>9</td>
-                    <td>0.88</td>
-                </tr>
-                <tr>
-                    <td>12:40</td>
-                    <td>-</td>
-                    <td>Guest</td>
-                    <td><span class="badge normal">Guest</span></td>
-                    <td>false</td>
-                    <td><span class="status pending">guest</span></td>
-                    <td><span class="status staying">staying</span></td>
-                    <td>2</td>
-                    <td>0.41</td>
-                </tr>
+                {% for row in recent_recognitions %}
+                    {% set stay_minutes = row.stay_minutes|default(none) %}
+                    {% set stay_seconds = row.stay_seconds|default(none) %}
+                    {% if stay_minutes is none and stay_seconds is not none %}
+                        {% set stay_minutes = (stay_seconds / 60)|round(0, "floor")|int %}
+                    {% endif %}
+
+                    <tr>
+                        <td>{{ display_value(row.log_id) }}</td>
+                        <td>{{ subject_name(row) }}</td>
+                        <td><span class="badge {{ subject_badge_class(row) }}">{{ subject_text(row) }}</span></td>
+                        <td>{{ display_value(row.member_id) }}</td>
+                        <td>{{ display_value(row.visitor_id) }}</td>
+                        <td>{{ display_value(row.visitor_code) }}</td>
+                        <td>
+                            {% set vip_value = row.vip|default(none) %}
+                            {% if vip_value is none %}
+                                -
+                            {% elif vip_value %}
+                                true
+                            {% else %}
+                                false
+                            {% endif %}
+                        </td>
+                        <td>{{ display_value(row.visit_time) }}</td>
+                        <td>{{ display_value(row.recognized_at) }}</td>
+                        <td>{{ display_value(row.last_seen_at) }}</td>
+                        <td>{{ display_value(row.leave_time) }}</td>
+                        <td>{{ display_value(row.stay_seconds) }}</td>
+                        <td>{{ display_value(stay_minutes) }}</td>
+                        <td>{{ status_badge(row.recognition_status) }}</td>
+                        <td>{{ status_badge(row.visit_status) }}</td>
+                        <td>{{ display_value(row.camera_location or row.camera_id) }}</td>
+                        <td>{{ display_value(row.confidence) }}</td>
+                        <td>{{ display_value(row.created_at) }}</td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="18">目前沒有資料</td>
+                    </tr>
+                {% endfor %}
             </tbody>
         </table>
     </div>
@@ -154,37 +191,47 @@ Dashboard 預計串接 API JSON 格式：
     <div class="vip-alert-card">
         <div class="table-header">
             <h2>VIP 通知紀錄</h2>
-            <span>vip_notifications</span>
+            <span>recent_vip_notifications</span>
         </div>
 
         <table class="dashboard-table">
             <thead>
                 <tr>
-                    <th>通知時間</th>
+                    <th>通知 ID</th>
                     <th>會員 ID</th>
                     <th>Log ID</th>
+                    <th>會員姓名</th>
+                    <th>會員等級</th>
                     <th>店員 LINE User ID</th>
                     <th>推播內容</th>
                     <th>推播狀態</th>
+                    <th>送出時間</th>
+                    <th>建立時間</th>
+                    <th>攝影機</th>
+                    <th>信心分數</th>
                 </tr>
             </thead>
             <tbody>
-                <tr>
-                    <td>13:21</td>
-                    <td>3</td>
-                    <td>101</td>
-                    <td>U123456789</td>
-                    <td>VIP 會員王小明已到店</td>
-                    <td><span class="status active">success</span></td>
-                </tr>
-                <tr>
-                    <td>11:08</td>
-                    <td>9</td>
-                    <td>96</td>
-                    <td>U987654321</td>
-                    <td>VIP 會員林佳蓉已到店</td>
-                    <td><span class="status pending">pending</span></td>
-                </tr>
+                {% for row in recent_vip_notifications %}
+                    <tr>
+                        <td>{{ display_value(row.notification_id) }}</td>
+                        <td>{{ display_value(row.member_id) }}</td>
+                        <td>{{ display_value(row.log_id) }}</td>
+                        <td>{{ display_value(row.member_name or row.name) }}</td>
+                        <td><span class="badge vip">{{ row.member_level_text or "VIP 會員" }}</span></td>
+                        <td>{{ display_value(row.line_user_id) }}</td>
+                        <td>{{ display_value(row.message) }}</td>
+                        <td>{{ status_badge(row.status) }}</td>
+                        <td>{{ display_value(row.sent_at) }}</td>
+                        <td>{{ display_value(row.created_at) }}</td>
+                        <td>{{ display_value(row.camera_location or row.camera_id) }}</td>
+                        <td>{{ display_value(row.confidence) }}</td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="12">目前沒有資料</td>
+                    </tr>
+                {% endfor %}
             </tbody>
         </table>
     </div>
