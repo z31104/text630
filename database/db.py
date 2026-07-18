@@ -1523,16 +1523,7 @@ def get_all_visitor_faces():
 
 def get_dashboard_summary():
     """
-    取得 Dashboard 上方統計卡片需要的資料。
-
-    回傳格式：
-    {
-        "total_members": 會員總數,
-        "total_visitors": 散客總數,
-        "today_recognitions": 今日辨識次數,
-        "active_visits": 目前店內人數,
-        "today_vip_notifications": 今日 VIP 通知數
-    }
+    查詢 Dashboard 統計資料。
     """
 
     conn = None
@@ -1554,49 +1545,99 @@ def get_dashboard_summary():
                 FROM visitors
             ) AS total_visitors,
 
-            (
-                SELECT COUNT(*)
-                FROM recognition_logs
-                WHERE DATE(recognized_at) = CURDATE()
-            ) AS today_recognitions,
+            COUNT(*) AS today_total,
 
-            (
-                SELECT COUNT(*)
-                FROM recognition_logs
-                WHERE leave_time IS NULL
-                  AND visit_status IN (%s, %s)
-            ) AS active_visits,
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN subject_type = 'member'
+                         AND vip = TRUE
+                        THEN 1
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS today_vip,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN subject_type = 'member'
+                         AND vip = FALSE
+                        THEN 1
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS today_normal_members,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN subject_type = 'visitor'
+                        THEN 1
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS today_visitors,
+
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN leave_time IS NULL
+                         AND visit_status IN ('arrived', 'staying')
+                        THEN 1
+                        ELSE 0
+                    END
+                ),
+                0
+            ) AS currently_in_store,
+
+            COALESCE(
+                ROUND(
+                    AVG(
+                        CASE
+                            WHEN visit_status = 'left'
+                            THEN stay_minutes
+                            ELSE NULL
+                        END
+                    ),
+                    2
+                ),
+                0
+            ) AS average_stay_minutes,
 
             (
                 SELECT COUNT(*)
                 FROM vip_notifications
                 WHERE DATE(created_at) = CURDATE()
             ) AS today_vip_notifications
+
+        FROM recognition_logs
+        WHERE DATE(visit_time) = CURDATE()
         """
 
-        cursor.execute(
-            sql,
-            (
-                VISIT_STATUS_ARRIVED,
-                VISIT_STATUS_STAYING
-            )
-        )
-
+        cursor.execute(sql)
         summary = cursor.fetchone()
 
         if summary is None:
             return {
                 "total_members": 0,
                 "total_visitors": 0,
-                "today_recognitions": 0,
-                "active_visits": 0,
+                "today_total": 0,
+                "today_vip": 0,
+                "today_normal_members": 0,
+                "today_visitors": 0,
+                "currently_in_store": 0,
+                "average_stay_minutes": 0,
                 "today_vip_notifications": 0
             }
 
         return summary
 
     except Exception as e:
-        print("取得 Dashboard 統計資料失敗：", e)
+        print("取得 Dashboard 統計失敗：", e)
         raise
 
     finally:
@@ -1604,8 +1645,7 @@ def get_dashboard_summary():
             cursor.close()
 
         if conn and conn.is_connected():
-            conn.close()                
-        
+            conn.close()
 def get_recent_recognitions(limit=10):
     """
     取得最近的辨識紀錄。
