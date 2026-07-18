@@ -1545,7 +1545,7 @@ def get_dashboard_summary():
                 FROM visitors
             ) AS total_visitors,
 
-            COUNT(*) AS today_total,
+            COUNT(*) AS today_recognitions,
 
             COALESCE(
                 SUM(
@@ -1592,7 +1592,7 @@ def get_dashboard_summary():
                     END
                 ),
                 0
-            ) AS currently_in_store,
+            ) AS active_visits,
 
             COALESCE(
                 ROUND(
@@ -1625,11 +1625,11 @@ def get_dashboard_summary():
             return {
                 "total_members": 0,
                 "total_visitors": 0,
-                "today_total": 0,
+                "today_recognitions": 0,
                 "today_vip": 0,
                 "today_normal_members": 0,
                 "today_visitors": 0,
-                "currently_in_store": 0,
+                "active_visits": 0,
                 "average_stay_minutes": 0,
                 "today_vip_notifications": 0
             }
