@@ -1,61 +1,75 @@
 const LIFF_ID = "2010668858-gsTCqv7v";
 
-const spinWheelNew = document.getElementById("spinWheel");
-const spinButtonNew = document.getElementById("spinButton");
-const lotteryResultNew = document.getElementById("lotteryResult");
-const registerFormNew = document.getElementById("registerForm");
-const registerButtonNew = document.getElementById("registerButton");
-const registerResultNew = document.getElementById("registerResult");
-const lineUserIdInputNew = document.getElementById("line_user_id");
-const lineHintNew = document.getElementById("lineHint");
-const faceImageInputNew = document.getElementById("face_image");
-const facePreviewNew = document.getElementById("facePreview");
-const clearFaceImageButtonNew = document.getElementById("clearFaceImage");
-const birthdayInputNew = document.getElementById("birthday");
-const lotteryPrizeCardNew = document.getElementById("lotteryPrizeCard");
-const lotteryPrizeNameNew = document.getElementById("lotteryPrizeName");
-const lotteryPrizeDetailNew = document.getElementById("lotteryPrizeDetail");
-const lotteryQrCodeNew = document.getElementById("lotteryQrCode");
-const lotteryConfettiNew = document.getElementById("lotteryConfetti");
+const spinWheel = document.getElementById("spinWheel");
+const spinButton = document.getElementById("spinButton");
+const lotteryResult = document.getElementById("lotteryResult");
+const registerForm = document.getElementById("registerForm");
+const registerButton = document.getElementById("registerButton");
+const registerResult = document.getElementById("registerResult");
+const lineUserIdInput = document.getElementById("line_user_id");
+const lineHint = document.getElementById("lineHint");
+const faceImageInput = document.getElementById("face_image");
+const facePreview = document.getElementById("facePreview");
+const clearFaceImageButton = document.getElementById("clearFaceImage");
+const lotteryPrizeCard = document.getElementById("lotteryPrizeCard");
+const lotteryPrizeName = document.getElementById("lotteryPrizeName");
+const lotteryPrizeDetail = document.getElementById("lotteryPrizeDetail");
+const lotteryQrCode = document.getElementById("lotteryQrCode");
+const lotteryConfetti = document.getElementById("lotteryConfetti");
 
-let registerSuccessNew = false;
-let registeredMemberNew = null;
+let registerSuccess = false;
+let registeredMember = null;
+let isSpinning = false;
+let currentRotation = 0;
 
-function showRegisterResultNew(message, type) {
-    registerResultNew.textContent = message;
-    registerResultNew.hidden = false;
-    registerResultNew.className = "register-result " + type;
-}
-function setLineHintNew(message) {
-    if (lineHintNew) {
-        lineHintNew.textContent = message;
+const prizes = [
+    { id: "WELCOME_50", name: "$50 折價券" },
+    { id: "WELCOME_10_OFF", name: "全品項 9 折" },
+    { id: "WELCOME_100", name: "$100 折價券" },
+    { id: "WELCOME_DESSERT", name: "甜點招待券" },
+    { id: "WELCOME_DRINK", name: "飲品兌換券" },
+    { id: "WELCOME_RETRY", name: "再抽一次" }
+];
+
+function setLineHint(message, type = "") {
+    if (!lineHint) {
+        return;
     }
+
+    lineHint.textContent = message;
+    lineHint.className = type ? `form-hint ${type}` : "form-hint";
 }
 
-function setLineUserIdFromQueryNew() {
+function showRegisterResult(message, type) {
+    if (!registerResult) {
+        return;
+    }
+
+    registerResult.textContent = message;
+    registerResult.hidden = false;
+    registerResult.className = `register-result ${type}`;
+}
+
+function setLineUserIdFromQuery() {
     const params = new URLSearchParams(window.location.search);
-    const queryLineUserId = params.get("line_user_id");
+    const queryLineUserId = params.get("line_user_id") || params.get("userId");
 
-    if (queryLineUserId) {
-        lineUserIdInputNew.value = queryLineUserId;
-        setLineHintNew("已從連結帶入 LINE User ID，可以完成註冊。");
-        return true;
+    if (!queryLineUserId || !lineUserIdInput) {
+        return false;
     }
 
-    return false;
+    lineUserIdInput.value = queryLineUserId.trim();
+    setLineHint("已帶入 LINE User ID，可以完成註冊。", "success");
+    return true;
 }
 
-function initLiffProfileNew() {
-    const hasQueryLineUserId = setLineUserIdFromQueryNew();
-
-    if (hasQueryLineUserId) {
+function initLiffProfile() {
+    if (setLineUserIdFromQuery()) {
         return;
     }
 
     if (typeof liff === "undefined") {
-        if (!hasQueryLineUserId) {
-            setLineHintNew("目前無法載入 LINE LIFF，請從 LINE 註冊連結開啟此頁。");
-        }
+        setLineHint("目前不是從 LINE LIFF 開啟，請從 LINE 註冊連結進入。", "warning");
         return;
     }
 
@@ -69,41 +83,53 @@ function initLiffProfileNew() {
             return liff.getProfile();
         })
         .then(function (profile) {
-            if (!profile) {
+            if (!profile || !lineUserIdInput) {
                 return;
             }
 
-            lineUserIdInputNew.value = profile.userId;
-            setLineHintNew("已取得 LINE User ID，請填寫資料並完成註冊。");
+            lineUserIdInput.value = profile.userId;
+            setLineHint("已取得 LINE User ID，可以完成註冊。", "success");
         })
-        .catch(function (err) {
-            console.error("LIFF 初始化失敗", err);
-            if (!lineUserIdInputNew.value.trim()) {
-                setLineHintNew("無法取得 LINE 使用者資料，請重新從 LINE 註冊連結開啟。");
+        .catch(function (error) {
+            console.error("LIFF 初始化失敗", error);
+            if (!lineUserIdInput || !lineUserIdInput.value.trim()) {
+                setLineHint("無法取得 LINE User ID，請從 LINE 官方帳號的註冊連結重新開啟。", "error");
             }
         });
 }
 
-function resetRegisterButtonNew() {
-    if (!registerSuccessNew) {
-        registerButtonNew.disabled = false;
-        registerButtonNew.textContent = "完成註冊";
+function resetRegisterButton() {
+    if (!registerButton || registerSuccess) {
+        return;
+    }
+
+    registerButton.disabled = false;
+    registerButton.textContent = "完成註冊";
+}
+
+function getSelectedPreferences() {
+    return Array.from(document.querySelectorAll('input[name="preference"]:checked'))
+        .map(function (checkbox) {
+            return checkbox.value;
+        });
+}
+
+function resetFacePreview() {
+    if (facePreview) {
+        facePreview.hidden = true;
+        facePreview.removeAttribute("src");
+    }
+
+    if (clearFaceImageButton) {
+        clearFaceImageButton.hidden = true;
     }
 }
 
-function getSelectedPreferencesNew() {
-    return Array.from(
-        document.querySelectorAll('input[name="preference"]:checked')
-    ).map(function (checkbox) {
-        return checkbox.value;
-    });
-}
-
-function buildPrizePayloadNew(prize) {
-    const memberId = registeredMemberNew && (
-        registeredMemberNew.member_id ||
-        registeredMemberNew.id ||
-        registeredMemberNew.memberId
+function buildPrizePayload(prize) {
+    const memberId = registeredMember && (
+        registeredMember.member_id ||
+        registeredMember.id ||
+        registeredMember.memberId
     );
 
     return JSON.stringify({
@@ -111,20 +137,20 @@ function buildPrizePayloadNew(prize) {
         prize_id: prize.id,
         prize_name: prize.name,
         member_id: memberId || null,
-        line_user_id: lineUserIdInputNew ? lineUserIdInputNew.value.trim() || null : null,
-        timestamp: new Date().toISOString()
+        line_user_id: lineUserIdInput ? lineUserIdInput.value.trim() || null : null,
+        issued_at: new Date().toISOString()
     });
 }
 
-function renderPrizeQrCodeNew(payload) {
-    if (!lotteryQrCodeNew) {
+function renderPrizeQrCode(payload) {
+    if (!lotteryQrCode) {
         return;
     }
 
-    lotteryQrCodeNew.innerHTML = "";
+    lotteryQrCode.innerHTML = "";
 
     if (typeof QRCode !== "undefined") {
-        new QRCode(lotteryQrCodeNew, {
+        new QRCode(lotteryQrCode, {
             text: payload,
             width: 132,
             height: 132,
@@ -136,134 +162,136 @@ function renderPrizeQrCodeNew(payload) {
     }
 
     const fallbackImage = document.createElement("img");
-    fallbackImage.src = "https://api.qrserver.com/v1/create-qr-code/?size=132x132&data=" + encodeURIComponent(payload);
+    fallbackImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=132x132&data=${encodeURIComponent(payload)}`;
     fallbackImage.alt = "中獎兌換 QR Code";
-    lotteryQrCodeNew.appendChild(fallbackImage);
+    lotteryQrCode.appendChild(fallbackImage);
 }
 
-function showPrizeResultNew(prize) {
-    const payload = buildPrizePayloadNew(prize);
+function showPrizeResult(prize) {
+    const payload = buildPrizePayload(prize);
 
-    if (lotteryPrizeNameNew) {
-        lotteryPrizeNameNew.textContent = prize.name;
+    if (lotteryPrizeName) {
+        lotteryPrizeName.textContent = prize.name;
     }
 
-    if (lotteryPrizeDetailNew) {
-        lotteryPrizeDetailNew.textContent = "兌換資料已包含獎項、會員資訊與產生時間。";
+    if (lotteryPrizeDetail) {
+        lotteryPrizeDetail.textContent = "兌換資料已包含獎項、會員資訊與產生時間。";
     }
 
-    renderPrizeQrCodeNew(payload);
+    renderPrizeQrCode(payload);
 
-    if (lotteryPrizeCardNew) {
-        lotteryPrizeCardNew.hidden = false;
+    if (lotteryPrizeCard) {
+        lotteryPrizeCard.hidden = false;
     }
 }
 
-function launchLotteryConfettiNew() {
-    if (!lotteryConfettiNew) {
+function launchLotteryConfetti() {
+    if (!lotteryConfetti) {
         return;
     }
 
-    lotteryConfettiNew.innerHTML = "";
-    lotteryConfettiNew.classList.add("is-active");
+    lotteryConfetti.innerHTML = "";
+    lotteryConfetti.classList.add("is-active");
 
     for (let i = 0; i < 34; i += 1) {
         const piece = document.createElement("span");
-        piece.style.setProperty("--confetti-left", Math.random() * 100 + "%");
-        piece.style.setProperty("--confetti-delay", Math.random() * 0.4 + "s");
-        piece.style.setProperty("--confetti-drift", (Math.random() * 120 - 60) + "px");
-        piece.style.setProperty("--confetti-rotate", (Math.random() * 420 + 120) + "deg");
+        piece.style.setProperty("--confetti-left", `${Math.random() * 100}%`);
+        piece.style.setProperty("--confetti-delay", `${Math.random() * 0.4}s`);
+        piece.style.setProperty("--confetti-drift", `${Math.random() * 120 - 60}px`);
+        piece.style.setProperty("--confetti-rotate", `${Math.random() * 420 + 120}deg`);
         piece.style.setProperty("--confetti-color", ["#facc15", "#2563eb", "#22c55e", "#ef4444", "#f97316"][i % 5]);
-        lotteryConfettiNew.appendChild(piece);
+        lotteryConfetti.appendChild(piece);
     }
 
     window.setTimeout(function () {
-        lotteryConfettiNew.classList.remove("is-active");
-        lotteryConfettiNew.innerHTML = "";
+        lotteryConfetti.classList.remove("is-active");
+        lotteryConfetti.innerHTML = "";
     }, 2800);
 }
 
-if (registerFormNew) {
-    initLiffProfileNew();
+if (registerForm) {
+    initLiffProfile();
 
-    faceImageInputNew.addEventListener("change", function () {
-        const file = faceImageInputNew.files[0];
+    if (faceImageInput) {
+        faceImageInput.addEventListener("change", function () {
+            const file = faceImageInput.files[0];
 
-        if (!file) {
-            facePreviewNew.hidden = true;
-            facePreviewNew.src = "";
-            if (clearFaceImageButtonNew) {
-                clearFaceImageButtonNew.hidden = true;
+            if (!file) {
+                resetFacePreview();
+                return;
             }
-            return;
-        }
 
-        facePreviewNew.src = URL.createObjectURL(file);
-        facePreviewNew.hidden = false;
-        if (clearFaceImageButtonNew) {
-            clearFaceImageButtonNew.hidden = false;
-        }
-    });
+            if (facePreview) {
+                facePreview.src = URL.createObjectURL(file);
+                facePreview.hidden = false;
+            }
 
-    if (clearFaceImageButtonNew) {
-        clearFaceImageButtonNew.addEventListener("click", function () {
-            faceImageInputNew.value = "";
-            facePreviewNew.hidden = true;
-            facePreviewNew.src = "";
-            clearFaceImageButtonNew.hidden = true;
+            if (clearFaceImageButton) {
+                clearFaceImageButton.hidden = false;
+            }
         });
     }
 
-    registerFormNew.addEventListener("submit", function (event) {
+    if (clearFaceImageButton && faceImageInput) {
+        clearFaceImageButton.addEventListener("click", function () {
+            faceImageInput.value = "";
+            resetFacePreview();
+        });
+    }
+
+    registerForm.addEventListener("submit", function (event) {
         event.preventDefault();
 
-        if (registerSuccessNew) {
+        if (registerSuccess) {
             return;
         }
 
-        const name = document.getElementById("name").value.trim();
-        const phone = document.getElementById("phone").value.trim();
-        const lineUserId = lineUserIdInputNew.value.trim();
-        const faceImageFile = faceImageInputNew.files[0];
-        const birthday = birthdayInputNew ? birthdayInputNew.value : "";
-        const preferences = getSelectedPreferencesNew();
+        const nameInput = document.getElementById("name");
+        const phoneInput = document.getElementById("phone");
+        const name = nameInput ? nameInput.value.trim() : "";
+        const phone = phoneInput ? phoneInput.value.trim() : "";
+        const lineUserId = lineUserIdInput ? lineUserIdInput.value.trim() : "";
+        const faceImageFile = faceImageInput && faceImageInput.files ? faceImageInput.files[0] : null;
 
         if (!name) {
-            showRegisterResultNew("請輸入姓名。", "error");
+            showRegisterResult("請輸入姓名。", "error");
             return;
         }
 
         if (!lineUserId) {
-            showRegisterResultNew("尚未取得 LINE User ID，請從 LINE 註冊連結重新開啟。", "error");
+            showRegisterResult("缺少 LINE User ID，請從 LINE 官方帳號的註冊連結重新開啟。", "error");
             return;
         }
 
         if (!faceImageFile) {
-            showRegisterResultNew("請上傳會員臉部照片。", "error");
+            showRegisterResult("請上傳臉部照片。", "error");
             return;
         }
 
         const allowedTypes = ["image/jpeg", "image/png"];
         if (!allowedTypes.includes(faceImageFile.type)) {
-            showRegisterResultNew("照片格式需為 JPG 或 PNG。", "error");
+            showRegisterResult("照片格式僅支援 JPG 或 PNG。", "error");
             return;
         }
 
         const maxSize = 8 * 1024 * 1024;
         if (faceImageFile.size > maxSize) {
-            showRegisterResultNew("照片大小不可超過 8 MB。", "error");
+            showRegisterResult("照片大小不可超過 8 MB。", "error");
             return;
         }
 
-        registerButtonNew.disabled = true;
-        registerButtonNew.textContent = "註冊中...";
+        if (registerButton) {
+            registerButton.disabled = true;
+            registerButton.textContent = "註冊中...";
+        }
 
         const formData = new FormData();
         formData.append("name", name);
         formData.append("phone", phone);
         formData.append("line_user_id", lineUserId);
-        formData.append("birthday", birthday);
-        formData.append("preferences", JSON.stringify(preferences));
+        formData.append("preferences", JSON.stringify(getSelectedPreferences()));
+        formData.append("favorite_product", getSelectedPreferences()[0] || "");
+        formData.append("registration_source", "line");
         formData.append("face_image", faceImageFile);
 
         fetch("/line/register", {
@@ -281,79 +309,67 @@ if (registerFormNew) {
             })
             .then(function (result) {
                 if (!result.ok || !result.data.success) {
-                    showRegisterResultNew(result.data.message || "註冊失敗，請稍後再試。", "error");
+                    showRegisterResult(result.data.message || "註冊失敗，請稍後再試。", "error");
                     return;
                 }
 
-                const member = result.data.member || {};
-                registeredMemberNew = member;
-                registerSuccessNew = true;
+                registeredMember = result.data.member || {};
+                registerSuccess = true;
 
-                showRegisterResultNew(
-                    `${result.data.message || "註冊成功"}${member.member_id ? "，會員編號：" + member.member_id : ""}`,
-                    "success"
-                );
+                const memberId = registeredMember.member_id ? `，會員編號：${registeredMember.member_id}` : "";
+                showRegisterResult(`${result.data.message || "註冊成功"}${memberId}`, "success");
 
-                registerFormNew.querySelectorAll("input").forEach(function (input) {
+                registerForm.querySelectorAll("input").forEach(function (input) {
                     input.disabled = true;
                 });
 
-                registerButtonNew.disabled = true;
-                registerButtonNew.textContent = "已完成註冊";
+                if (registerButton) {
+                    registerButton.disabled = true;
+                    registerButton.textContent = "已完成註冊";
+                }
 
-                if (spinButtonNew && lotteryResultNew) {
-                    spinButtonNew.disabled = false;
-                    lotteryResultNew.textContent = "註冊完成，可以抽一次迎新獎勵。";
+                if (spinButton && lotteryResult) {
+                    spinButton.disabled = false;
+                    lotteryResult.textContent = "註冊完成，可以抽一次迎新獎勵。";
                 }
             })
-            .catch(function (err) {
-                console.error("註冊送出失敗", err);
-                showRegisterResultNew("網路或伺服器發生錯誤，請稍後再試。", "error");
+            .catch(function (error) {
+                console.error("註冊 API 呼叫失敗", error);
+                showRegisterResult("網路連線失敗，請稍後再試。", "error");
             })
-            .finally(resetRegisterButtonNew);
+            .finally(resetRegisterButton);
     });
 }
 
-const prizesNew = [
-    { id: "WELCOME_50", name: "$50 折價券" },
-    { id: "WELCOME_10_OFF", name: "9 折優惠" },
-    { id: "WELCOME_200", name: "$200 折價券" },
-    { id: "WELCOME_GIFT", name: "小禮品" },
-    { id: "WELCOME_FREE_SHIP", name: "免運券" },
-    { id: "WELCOME_RETRY", name: "再抽一次" }
-];
-let isSpinningNew = false;
-let currentRotationNew = 0;
-
-if (spinButtonNew && spinWheelNew && lotteryResultNew) {
-    spinButtonNew.addEventListener("click", function () {
-        if (isSpinningNew) {
+if (spinButton && spinWheel && lotteryResult) {
+    spinButton.addEventListener("click", function () {
+        if (isSpinning || !registerSuccess) {
             return;
         }
 
-        isSpinningNew = true;
-        spinButtonNew.disabled = true;
-        lotteryResultNew.textContent = "抽獎中...";
+        isSpinning = true;
+        spinButton.disabled = true;
+        lotteryResult.textContent = "抽獎中...";
 
-        spinWheelNew.style.setProperty("--wheel-text-fix", "0deg");
+        spinWheel.style.setProperty("--wheel-text-fix", "0deg");
 
-        const prizeIndex = Math.floor(Math.random() * prizesNew.length);
-        const segmentDegree = 360 / prizesNew.length;
+        const prizeIndex = Math.floor(Math.random() * prizes.length);
+        const segmentDegree = 360 / prizes.length;
         const prizeCenterDegree = prizeIndex * segmentDegree + segmentDegree / 2;
         const targetDegree = 360 - prizeCenterDegree;
         const extraSpins = 5 * 360;
-        const finalRotation = currentRotationNew + extraSpins + targetDegree;
+        const finalRotation = currentRotation + extraSpins + targetDegree;
 
-        spinWheelNew.style.transform = `rotate(${finalRotation}deg)`;
-        currentRotationNew = finalRotation;
+        spinWheel.style.transform = `rotate(${finalRotation}deg)`;
+        currentRotation = finalRotation;
 
-        setTimeout(function () {
-            spinWheelNew.style.setProperty("--wheel-text-fix", `${finalRotation}deg`);
-            lotteryResultNew.textContent = `抽獎結果：${prizesNew[prizeIndex].name}`;
-            showPrizeResultNew(prizesNew[prizeIndex]);
-            launchLotteryConfettiNew();
-            spinButtonNew.disabled = false;
-            isSpinningNew = false;
+        window.setTimeout(function () {
+            spinWheel.style.setProperty("--wheel-text-fix", `${finalRotation}deg`);
+            lotteryResult.textContent = `抽獎結果：${prizes[prizeIndex].name}`;
+            showPrizeResult(prizes[prizeIndex]);
+            launchLotteryConfetti();
+            spinButton.disabled = false;
+            isSpinning = false;
         }, 4200);
     });
 }

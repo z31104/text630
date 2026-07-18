@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LINE 會員註冊｜智慧會員系統</title>
+    <title>LINE 會員註冊</title>
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -11,7 +11,7 @@
 
 <body class="customer-page">
     <main class="customer-register-container">
-        <section class="customer-register-hero promo-hero">
+        <section class="customer-register-hero promo-hero register-hero-clean welcome-gift-hero">
             <div class="promo-decoration promo-light-left"></div>
             <div class="promo-decoration promo-light-right"></div>
 
@@ -46,37 +46,30 @@
 
         <section class="customer-register-layout">
             <div class="register-card">
-                <h2>會員註冊表單</h2>
+                <h2>會員註冊資料</h2>
 
                 <p class="form-hint" id="lineHint">
-                    正在取得 LINE 使用者資料...
+                    正在取得 LINE User ID...
                 </p>
 
                 <form class="register-form" id="registerForm" action="/line/register" method="post" enctype="multipart/form-data">
                     <div class="form-group">
                         <label for="name">姓名</label>
-                        <input type="text" id="name" name="name" placeholder="請輸入姓名" required>
+                        <input type="text" id="name" name="name" placeholder="請輸入姓名" autocomplete="name" required>
                     </div>
 
                     <div class="form-group">
                         <label for="phone">手機號碼</label>
-                        <input type="tel" id="phone" name="phone" placeholder="請輸入手機號碼">
+                        <input type="tel" id="phone" name="phone" placeholder="請輸入手機號碼" autocomplete="tel">
                     </div>
 
                     <div class="form-group">
-                        <label for="birthday">生日</label>
-                        <input type="date" id="birthday" name="birthday">
-                    </div>
-
-                    <div class="form-group">
-                        <label>偏好商品（可複選）</label>
+                        <label>喜好項目 <span class="optional-text">可選填</span></label>
                         <div class="pref-options">
                             <label class="pref-option"><input type="checkbox" name="preference" value="咖啡"> 咖啡</label>
                             <label class="pref-option"><input type="checkbox" name="preference" value="甜點"> 甜點</label>
-                            <label class="pref-option"><input type="checkbox" name="preference" value="飲品"> 飲品</label>
-                            <label class="pref-option"><input type="checkbox" name="preference" value="服飾"> 服飾</label>
-                            <label class="pref-option"><input type="checkbox" name="preference" value="保養品"> 保養品</label>
-                            <label class="pref-option"><input type="checkbox" name="preference" value="新品通知"> 新品通知</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="茶飲"> 茶飲</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="輕食"> 輕食</label>
                         </div>
                     </div>
 
@@ -88,7 +81,7 @@
                         <img id="facePreview" class="face-preview" alt="臉部照片預覽" hidden>
                         <button type="button" class="clear-file-btn" id="clearFaceImage" hidden>移除照片</button>
                         <p class="form-hint">
-                            請上傳清楚正臉照片，支援 JPG 或 PNG，檔案大小上限 8 MB。
+                            請上傳 JPG 或 PNG，臉部需清楚可辨識，檔案大小不可超過 8 MB。
                         </p>
                     </div>
 
@@ -100,31 +93,33 @@
 
             <div class="customer-benefits">
                 <div class="benefit-card">
-                    <p class="benefit-label">新會員禮</p>
-                    <h2>註冊完成即可抽獎</h2>
-                    <p>完成會員資料與照片上傳後，可參加一次迎新抽獎，做為註冊成功的前端提示流程。</p>
+                    <p class="benefit-label">註冊後流程</p>
+                    <h2>資料建立成功後即可辨識</h2>
+                    <p>
+                        前端會送出 name、phone、line_user_id 與 face_image，後端完成會員建檔與 Face Encoding 後，Camera 可立即辨識新會員。
+                    </p>
 
                     <div class="coupon-ticket">
                         <span>NEW MEMBER</span>
-                        <strong>$50 起</strong>
+                        <strong>100元折價</strong>
                     </div>
                 </div>
 
                 <div class="benefit-card">
-                    <p class="benefit-label">註冊完成後開放</p>
-                    <h2>迎新幸運轉盤</h2>
-                    <p>註冊成功後按鈕才會啟用，避免使用者在送出前誤觸。</p>
+                    <p class="benefit-label">迎新抽獎</p>
+                    <h2>註冊成功才能抽一次</h2>
+                    <p>送出成功後會啟用抽獎按鈕，抽中獎項後產生 QR Code，方便門市核銷。</p>
 
                     <div class="lottery-area">
                         <div class="wheel-wrapper">
                             <div class="wheel-pointer"></div>
                             <div class="spin-wheel" id="spinWheel">
                                 <span class="wheel-item item-1">$50</span>
-                                <span class="wheel-item item-2">9 折</span>
-                                <span class="wheel-item item-3">$200</span>
-                                <span class="wheel-item item-4">小禮品</span>
-                                <span class="wheel-item item-5">免運</span>
-                                <span class="wheel-item item-6">再抽一次</span>
+                                <span class="wheel-item item-2">9折</span>
+                                <span class="wheel-item item-3">$100</span>
+                                <span class="wheel-item item-4">甜點</span>
+                                <span class="wheel-item item-5">飲品</span>
+                                <span class="wheel-item item-6">再抽</span>
                             </div>
                         </div>
 
@@ -133,7 +128,7 @@
                         </button>
 
                         <p class="lottery-result" id="lotteryResult">
-                            完成註冊後即可抽一次迎新獎勵。
+                            註冊成功後即可參加迎新抽獎。
                         </p>
 
                         <div class="lottery-prize-card" id="lotteryPrizeCard" hidden>

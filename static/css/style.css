@@ -1560,3 +1560,98 @@ body {
     background-color: #fee2e2;
     color: #991b1b;
 }
+
+/* Week 3 LINE registration page */
+.register-hero-clean .promo-coupon-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.register-hero-clean .promo-coupon strong {
+    font-size: 30px;
+}
+
+.welcome-gift-hero .promo-tag {
+    color: #bfdbfe;
+    font-size: 18px;
+    margin-bottom: 28px;
+}
+
+.welcome-gift-hero .promo-subtitle {
+    max-width: 800px;
+}
+
+.welcome-gift-hero .promo-coupon-row {
+    max-width: 930px;
+}
+
+.welcome-gift-hero .promo-coupon {
+    min-height: 150px;
+    padding: 28px 20px;
+}
+
+.welcome-gift-hero .promo-coupon strong {
+    font-size: 46px;
+}
+
+.welcome-gift-hero .promo-bottom-badge {
+    margin-top: 32px;
+}
+
+.form-hint {
+    color: #64748b;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.form-hint.success {
+    color: #166534;
+}
+
+.form-hint.warning {
+    color: #92400e;
+}
+
+.form-hint.error {
+    color: #991b1b;
+}
+
+.optional-text {
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 400;
+}
+
+.clear-file-btn {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 8px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #334155;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.clear-file-btn[hidden] {
+    display: none;
+}
+
+.register-card input:disabled {
+    background-color: #f1f5f9;
+    color: #64748b;
+}
+
+@media (max-width: 768px) {
+    .register-hero-clean .promo-coupon-row {
+        grid-template-columns: 1fr;
+    }
+
+    .welcome-gift-hero .promo-coupon {
+        min-height: 132px;
+    }
+
+    .form-group label.pref-option {
+        width: 100%;
+    }
+}
