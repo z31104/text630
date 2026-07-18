@@ -250,6 +250,7 @@ if (registerForm) {
         const phoneInput = document.getElementById("phone");
         const name = nameInput ? nameInput.value.trim() : "";
         const phone = phoneInput ? phoneInput.value.trim() : "";
+        const birthday = document.getElementById("birthday").value;
         const lineUserId = lineUserIdInput ? lineUserIdInput.value.trim() : "";
         const faceImageFile = faceImageInput && faceImageInput.files ? faceImageInput.files[0] : null;
 
@@ -288,6 +289,7 @@ if (registerForm) {
         const formData = new FormData();
         formData.append("name", name);
         formData.append("phone", phone);
+        formData.append("birthday", birthday);
         formData.append("line_user_id", lineUserId);
         formData.append("preferences", JSON.stringify(getSelectedPreferences()));
         formData.append("favorite_product", getSelectedPreferences()[0] || "");
