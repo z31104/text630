@@ -25,6 +25,12 @@
 </section>
 
 <section class="member-table-card">
+    {% if request.args.get("delete_error") %}
+        <div class="alert alert-danger" role="alert">
+            刪除會員失敗，請稍後再試或確認相關資料狀態。
+        </div>
+    {% endif %}
+
     <table class="member-table">
         <thead>
             <tr>
@@ -64,13 +70,19 @@
                         >
                             會員詳細資料
                         </a>
-                        <button
-                            type="button"
-                            class="secondary-btn"
-                            data-member-id="{{ member_id }}"
+                        <form
+                            method="POST"
+                            action="{{ url_for('member.delete_member', member_id=member_id) }}"
+                            class="member-delete-form"
+                            onsubmit="return confirm('確定要刪除此會員嗎？');"
                         >
-                            刪除
-                        </button>
+                            <button
+                                type="submit"
+                                class="secondary-btn"
+                            >
+                                刪除
+                            </button>
+                        </form>
                     </td>
                 </tr>
             {% else %}

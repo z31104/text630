@@ -512,22 +512,38 @@ def add_member_page():
     """
 
 
-@member_bp.route("/member/delete/<int:member_id>")
+@member_bp.route("/member/delete/<int:member_id>", methods=["POST"])
 def delete_member(member_id):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
+    cursor = None
 
-    cursor.execute("DELETE FROM vip_notifications WHERE member_id = %s", (member_id,))
-    cursor.execute("DELETE FROM recognition_logs WHERE member_id = %s", (member_id,))
-    cursor.execute("DELETE FROM face_images WHERE member_id = %s", (member_id,))
-    cursor.execute("DELETE FROM members WHERE member_id = %s", (member_id,))
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    conn.commit()
+        cursor.execute("DELETE FROM vip_notifications WHERE member_id = %s", (member_id,))
+        cursor.execute("DELETE FROM recognition_logs WHERE member_id = %s", (member_id,))
+        cursor.execute("DELETE FROM face_images WHERE member_id = %s", (member_id,))
+        cursor.execute("DELETE FROM members WHERE member_id = %s", (member_id,))
 
-    cursor.close()
-    conn.close()
+        conn.commit()
 
-    return redirect("/member")
+        return redirect("/member")
+
+    except Exception as e:
+        print("delete member failed:", e)
+
+        if conn is not None:
+            conn.rollback()
+
+        return redirect(url_for("member.member", delete_error=1))
+
+    finally:
+        if cursor is not None:
+            cursor.close()
+
+        if conn is not None:
+            conn.close()
 
 
 @member_bp.route("/member/edit/<int:member_id>", methods=["GET", "POST"])
