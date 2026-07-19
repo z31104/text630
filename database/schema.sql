@@ -313,7 +313,7 @@ VALUES
         'active'
     ),
     (
-    (
+
         'retry_once',
         '再抽一次',
         'retry',
@@ -322,7 +322,7 @@ VALUES
         NULL,
         'active'
     )
-);
+;
 
 CREATE TABLE IF NOT EXISTS member_preferences (
     preference_id INT AUTO_INCREMENT PRIMARY KEY,
