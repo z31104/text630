@@ -61,55 +61,29 @@
 </section>
 
 <section class="dashboard-stats">
-    {% if summary %}
-        <div class="dashboard-card">
-            <p>今日辨識次數</p>
-            <h2>{{ display_value(summary.today_recognitions) }}</h2>
-            <span>today_recognitions</span>
-        </div>
+    <div class="dashboard-card">
+        <p>今日到店</p>
+        <h2>{{ summary.today_visits|default(0, true) }}</h2>
+        <span>today_visits</span>
+    </div>
 
-        <div class="dashboard-card highlight">
-            <p>今日 VIP 通知</p>
-            <h2>{{ display_value(summary.today_vip_notifications) }}</h2>
-            <span>today_vip_notifications</span>
-        </div>
+    <div class="dashboard-card highlight">
+        <p>今日 VIP</p>
+        <h2>{{ summary.today_vip|default(0, true) }}</h2>
+        <span>today_vip</span>
+    </div>
 
-        <div class="dashboard-card">
-            <p>會員總數</p>
-            <h2>{{ display_value(summary.total_members) }}</h2>
-            <span>total_members</span>
-        </div>
+    <div class="dashboard-card">
+        <p>新會員</p>
+        <h2>{{ summary.new_members|default(0, true) }}</h2>
+        <span>new_members</span>
+    </div>
 
-        <div class="dashboard-card">
-            <p>固定散客總數</p>
-            <h2>{{ display_value(summary.total_visitors) }}</h2>
-            <span>total_visitors</span>
-        </div>
-
-        <div class="dashboard-card">
-            <p>目前店內人數</p>
-            <h2>{{ display_value(summary.active_visits) }}</h2>
-            <span>active_visits</span>
-        </div>
-
-        <div class="dashboard-card">
-            <p>平均停留時間</p>
-            <h2>
-                {% if summary.average_stay_minutes is undefined or summary.average_stay_minutes is none or summary.average_stay_minutes == "" %}
-                    -
-                {% else %}
-                    {{ summary.average_stay_minutes }} 分
-                {% endif %}
-            </h2>
-            <span>average_stay_minutes</span>
-        </div>
-    {% else %}
-        <div class="dashboard-card">
-            <p>Summary 統計</p>
-            <h2>-</h2>
-            <span>目前沒有資料</span>
-        </div>
-    {% endif %}
+    <div class="dashboard-card">
+        <p>散客</p>
+        <h2>{{ summary.visitors|default(0, true) }}</h2>
+        <span>visitors</span>
+    </div>
 </section>
 
 <section class="dashboard-main dashboard-main-wide">

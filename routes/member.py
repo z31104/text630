@@ -178,17 +178,37 @@ def _get_member_visit_records(member_id):
 
 @member_bp.route("/member")
 def member():
+    keyword = request.args.get("keyword", "").strip()
+
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
 
-    cursor.execute("""
+    sql = """
         SELECT member_id, name, phone, birthday, vip, member_level,
                visit_count, line_user_id, total_amount,
                favorite_product, face_image, registration_source,
                created_at, updated_at
         FROM members
-        ORDER BY member_id ASC
-    """)
+    """
+
+    params = ()
+
+    if keyword:
+        search_pattern = f"%{keyword}%"
+        sql += """
+            WHERE name LIKE %s
+               OR phone LIKE %s
+               OR line_user_id LIKE %s
+        """
+        params = (
+            search_pattern,
+            search_pattern,
+            search_pattern
+        )
+
+    sql += " ORDER BY member_id ASC"
+
+    cursor.execute(sql, params)
     members = cursor.fetchall()
 
     for member_data in members:
@@ -202,7 +222,11 @@ def member():
     cursor.close()
     conn.close()
 
-    return render_template("member.html", members=members)
+    return render_template(
+        "member.html",
+        members=members,
+        keyword=keyword
+    )
 
 
 @member_bp.route("/member_images/<path:filename>")
