@@ -82,6 +82,15 @@ ADD COLUMN prize_id INT NULL
 AFTER member_id;
 */
 
+-- 若 lottery_records 已有 prize_id，
+-- 但還沒有 prize_id 外鍵，才解除註解單獨執行一次
+/*
+ALTER TABLE lottery_records
+ADD CONSTRAINT fk_lottery_records_prize
+FOREIGN KEY (prize_id)
+REFERENCES lottery_prizes(prize_id)
+ON DELETE RESTRICT;
+*/
 
 
 -- 4. 若舊表缺少 is_final，才單獨執行一次
@@ -139,3 +148,27 @@ VALUES
     ('gift', '小禮品', 'gift', 0, 1, NULL, 'active'),
     ('free_shipping', '免運', 'free_shipping', 0, 1, NULL, 'active'),
     ('retry', '再抽一次', 'retry', 0, 1, NULL, 'active');
+
+-- 10. 檢查 lottery_records 是否已有 prize_id 外鍵
+SELECT
+    CONSTRAINT_NAME,
+    TABLE_NAME,
+    COLUMN_NAME,
+    REFERENCED_TABLE_NAME,
+    REFERENCED_COLUMN_NAME
+FROM information_schema.KEY_COLUMN_USAGE
+WHERE TABLE_SCHEMA = DATABASE()
+  AND TABLE_NAME = 'lottery_records'
+  AND COLUMN_NAME = 'prize_id'
+  AND REFERENCED_TABLE_NAME IS NOT NULL;
+
+
+-- 若上面沒有查到 prize_id 外鍵，
+-- 才解除下方註解並單獨執行一次
+/*
+ALTER TABLE lottery_records
+ADD CONSTRAINT fk_lottery_records_prize
+FOREIGN KEY (prize_id)
+REFERENCES lottery_prizes(prize_id)
+ON DELETE RESTRICT;
+*/    

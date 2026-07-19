@@ -1,6 +1,7 @@
 import os
 import mysql.connector
 import json
+import random
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -2008,3 +2009,239 @@ def get_member_lottery_records(member_id):
 
         if conn and conn.is_connected():
             conn.close()                      
+
+
+def draw_lottery_for_member(member_id):
+    """
+    會員正式抽獎。
+
+    這個函式會在同一個 transaction 中完成：
+    1. 鎖定會員資料
+    2. 檢查是否已經抽到最終獎項
+    3. 查詢目前可抽的獎品
+    4. 依照 probability_weight 抽獎
+    5. 扣除有限庫存
+    6. 寫入 lottery_records
+    7. commit
+    """
+
+    conn = None
+    cursor = None
+
+    try:
+        if member_id is None:
+            raise ValueError("member_id 不可為空")
+
+        member_id = int(member_id)
+
+        conn = get_connection()
+
+        # 明確關閉自動提交，
+        # 讓下面所有 SQL 都在同一個 transaction 裡
+        conn.autocommit = False
+
+        cursor = conn.cursor(dictionary=True)
+
+        # -------------------------------------------------
+        # 第 1 步：鎖定這一位會員
+        # -------------------------------------------------
+        # FOR UPDATE 的意思：
+        # 如果同一位會員快速按兩次，
+        # 第二個請求必須等待第一個請求結束。
+        cursor.execute(
+            """
+            SELECT
+                member_id,
+                name
+            FROM members
+            WHERE member_id = %s
+            FOR UPDATE
+            """,
+            (member_id,)
+        )
+
+        member = cursor.fetchone()
+
+        if member is None:
+            raise ValueError("找不到這位會員")
+
+        # -------------------------------------------------
+        # 第 2 步：檢查是否已有最終獎項
+        # -------------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                lottery_id,
+                member_id,
+                prize_id,
+                prize_name,
+                result,
+                is_final,
+                created_at
+            FROM lottery_records
+            WHERE member_id = %s
+              AND is_final = TRUE
+            ORDER BY created_at DESC,
+                     lottery_id DESC
+            LIMIT 1
+            """,
+            (member_id,)
+        )
+
+        completed_record = cursor.fetchone()
+
+        if completed_record is not None:
+            conn.rollback()
+
+            return {
+                "success": False,
+                "message": "這位會員已經完成抽獎",
+                "already_completed": True,
+                "record": completed_record
+            }
+
+        # -------------------------------------------------
+        # 第 3 步：查詢目前可以抽的獎品
+        # -------------------------------------------------
+        cursor.execute(
+            """
+            SELECT
+                prize_id,
+                prize_code,
+                prize_name,
+                prize_type,
+                prize_value,
+                probability_weight,
+                stock_quantity,
+                prize_status
+            FROM lottery_prizes
+            WHERE prize_status = 'active'
+              AND probability_weight > 0
+              AND (
+                    stock_quantity IS NULL
+                    OR stock_quantity > 0
+                  )
+            ORDER BY prize_id ASC
+            FOR UPDATE
+            """
+        )
+
+        prizes = cursor.fetchall()
+
+        if not prizes:
+            raise ValueError("目前沒有可以抽的獎品")
+
+        # -------------------------------------------------
+        # 第 4 步：依照權重抽獎
+        # -------------------------------------------------
+        weights = [
+            prize["probability_weight"]
+            for prize in prizes
+        ]
+
+        selected_prize = random.choices(
+            prizes,
+            weights=weights,
+            k=1
+        )[0]
+
+        prize_id = selected_prize["prize_id"]
+        prize_name = selected_prize["prize_name"]
+        prize_type = selected_prize["prize_type"]
+
+        # 「再抽一次」不是最終獎品
+        is_final = prize_type != "retry"
+
+        # -------------------------------------------------
+        # 第 5 步：有限庫存的獎品要扣 1
+        # -------------------------------------------------
+        if selected_prize["stock_quantity"] is not None:
+            cursor.execute(
+                """
+                UPDATE lottery_prizes
+                SET stock_quantity = stock_quantity - 1
+                WHERE prize_id = %s
+                  AND stock_quantity > 0
+                """,
+                (prize_id,)
+            )
+
+            if cursor.rowcount != 1:
+                raise RuntimeError("獎品庫存不足，請重新抽獎")
+
+        # -------------------------------------------------
+        # 第 6 步：寫入抽獎紀錄
+        # -------------------------------------------------
+        cursor.execute(
+            """
+            INSERT INTO lottery_records (
+                member_id,
+                prize_id,
+                coupon_id,
+                prize_name,
+                result,
+                is_final,
+                redeemed,
+                redeemed_at
+            )
+            VALUES (
+                %s,
+                %s,
+                NULL,
+                %s,
+                %s,
+                %s,
+                FALSE,
+                NULL
+            )
+            """,
+            (
+                member_id,
+                prize_id,
+                prize_name,
+                prize_name,
+                bool(is_final)
+            )
+        )
+
+        lottery_id = cursor.lastrowid
+
+        # -------------------------------------------------
+        # 第 7 步：全部成功後才 commit
+        # -------------------------------------------------
+        conn.commit()
+
+        return {
+            "success": True,
+            "message": "抽獎成功",
+            "already_completed": False,
+            "lottery_id": lottery_id,
+            "is_final": bool(is_final),
+            "prize": selected_prize
+        }
+
+    except (TypeError, ValueError) as e:
+        if conn:
+            conn.rollback()
+
+        print("抽獎失敗：", e)
+
+        return {
+            "success": False,
+            "message": str(e),
+            "already_completed": False
+        }
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+
+        print("抽獎處理失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
