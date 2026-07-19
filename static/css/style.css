@@ -796,6 +796,13 @@ body {
     color: #111827;
 }
 
+.vip-alert-card .dashboard-table th:nth-child(7),
+.vip-alert-card .dashboard-table td:nth-child(7) {
+    min-width: 220px;
+    white-space: normal;
+    word-break: keep-all;
+}
+
 .badge.vip {
     background-color: #facc15;
     color: #111827;
@@ -1723,14 +1730,243 @@ body {
 
 @media (max-width: 768px) {
     .register-hero-clean .promo-coupon-row {
-        grid-template-columns: 1fr;
+        display: flex;
+        grid-template-columns: none;
+        gap: 12px;
+        margin: 0 -18px;
+        padding: 0 18px 8px;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
     }
 
     .welcome-gift-hero .promo-coupon {
-        min-height: 132px;
+        flex: 0 0 72%;
+        min-height: 112px;
+        padding: 16px 14px;
+        scroll-snap-align: start;
+    }
+
+    .customer-register-container {
+        width: 94%;
+        padding: 20px 0;
+    }
+
+    .customer-register-hero {
+        padding: 24px 18px;
+        margin-bottom: 18px;
+        border-radius: 18px;
+    }
+
+    .customer-register-hero h1 {
+        font-size: 26px;
+        margin: 8px 0 10px;
+        line-height: 1.25;
+    }
+
+    .customer-register-hero p {
+        line-height: 1.55;
+    }
+
+    .welcome-gift-hero .promo-tag {
+        font-size: 13px;
+        margin-bottom: 10px;
+    }
+
+    .welcome-gift-hero .promo-subtitle {
+        font-size: 14px;
+        margin-bottom: 18px;
+    }
+
+    .welcome-gift-hero .promo-coupon span {
+        padding: 4px 10px;
+        font-size: 12px;
+        margin-bottom: 8px;
+    }
+
+    .welcome-gift-hero .promo-coupon strong {
+        font-size: 30px;
+        margin-bottom: 8px;
+    }
+
+    .welcome-gift-hero .promo-coupon p {
+        font-size: 13px;
+        line-height: 1.45;
+    }
+
+    .welcome-gift-hero .promo-bottom-badge {
+        margin-top: 16px;
+        padding: 10px 16px;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+
+    .welcome-gift-hero .promo-decoration {
+        display: none;
+    }
+
+    .register-card,
+    .benefit-card {
+        padding: 20px;
+        border-radius: 14px;
+    }
+
+    .register-card h2,
+    .benefit-card h2 {
+        font-size: 20px;
+    }
+
+    .benefit-card p {
+        font-size: 14px;
+        line-height: 1.55;
     }
 
     .form-group label.pref-option {
         width: 100%;
+    }
+}
+
+@media (max-width: 576px) {
+    html,
+    body,
+    .customer-page {
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+
+    .customer-register-container {
+        width: 100%;
+        max-width: 100%;
+        padding: 14px 10px;
+    }
+
+    .customer-register-hero {
+        width: 100%;
+        max-width: 100%;
+        padding: 20px 12px 18px;
+        overflow: hidden;
+    }
+
+    .welcome-gift-hero .promo-tag {
+        position: relative;
+        z-index: 2;
+        display: block;
+        width: fit-content;
+        margin: 0 0 8px;
+        font-size: 12px;
+        line-height: 1.2;
+    }
+
+    .welcome-gift-hero.promo-hero::after {
+        top: 10px;
+        right: 12px;
+        z-index: 1;
+        max-width: 50%;
+        font-size: 14px;
+        letter-spacing: 5px;
+        text-align: right;
+        opacity: 0.65;
+    }
+
+    .customer-register-hero h1 {
+        font-size: 24px;
+        margin: 6px 0 8px;
+    }
+
+    .welcome-gift-hero .promo-subtitle {
+        font-size: 13px;
+        line-height: 1.45;
+        margin-bottom: 14px;
+    }
+
+    .register-hero-clean .promo-coupon-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+        padding: 0;
+        overflow-x: visible;
+        scroll-snap-type: none;
+    }
+
+    .welcome-gift-hero .promo-coupon {
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        flex: initial;
+        box-sizing: border-box;
+        min-height: 105px;
+        padding: 10px 5px;
+        border-radius: 14px;
+        scroll-snap-align: none;
+        overflow: hidden;
+    }
+
+    .welcome-gift-hero .promo-coupon span {
+        max-width: 100%;
+        padding: 3px 6px;
+        font-size: 11px;
+        line-height: 1.2;
+        white-space: normal;
+        word-break: keep-all;
+        overflow-wrap: anywhere;
+    }
+
+    .welcome-gift-hero .promo-coupon strong {
+        font-size: 22px;
+        line-height: 1;
+        margin-bottom: 6px;
+        white-space: normal;
+    }
+
+    .welcome-gift-hero .promo-coupon p {
+        font-size: 11px;
+        line-height: 1.3;
+        text-align: center;
+        white-space: normal;
+        word-break: keep-all;
+        overflow-wrap: anywhere;
+    }
+
+    .welcome-gift-hero .promo-bottom-badge {
+        width: 100%;
+        margin-top: 14px;
+        padding: 8px 10px;
+        border-radius: 14px;
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 768px) {
+    .recognition-log-card,
+    .vip-alert-card {
+        padding: 20px 16px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .dashboard-table {
+        min-width: 980px;
+    }
+
+    .dashboard-table th,
+    .dashboard-table td {
+        padding: 12px 10px;
+        white-space: nowrap;
+    }
+
+    .vip-alert-card .dashboard-table {
+        min-width: 1040px;
+    }
+
+    .vip-alert-card .dashboard-table th:nth-child(7),
+    .vip-alert-card .dashboard-table td:nth-child(7) {
+        min-width: 260px;
+        max-width: 320px;
+        white-space: normal;
+        word-break: keep-all;
+        line-height: 1.5;
     }
 }
