@@ -37,7 +37,15 @@ CREATE TABLE IF NOT EXISTS members (
     birthday DATE NULL,
     vip BOOLEAN DEFAULT FALSE,
     member_level VARCHAR(20) DEFAULT 'normal',
+    -- 第三週舊欄位，暫時保留
     visit_count INT DEFAULT 0,
+
+-- 第四週正式欄位
+    last_visit_time DATETIME NULL,
+    total_visit_time INT NOT NULL DEFAULT 0,
+    total_visit_count INT NOT NULL DEFAULT 0,
+    updated_by VARCHAR(100) NULL,
+
     line_user_id VARCHAR(100) UNIQUE,
     total_amount INT DEFAULT 0,
     favorite_product VARCHAR(100),
@@ -104,13 +112,11 @@ CREATE TABLE IF NOT EXISTS visitor_faces (
 
 CREATE TABLE IF NOT EXISTS recognition_logs (
     log_id INT AUTO_INCREMENT PRIMARY KEY,
-
     subject_type VARCHAR(20) NOT NULL DEFAULT 'unknown',
     member_id INT NULL,
     visitor_id INT NULL,
     visitor_code VARCHAR(50) NULL,
     camera_id VARCHAR(50),
-
     name VARCHAR(50),
     vip BOOLEAN DEFAULT FALSE,
     line_user_id VARCHAR(100),
@@ -126,6 +132,11 @@ CREATE TABLE IF NOT EXISTS recognition_logs (
     leave_time DATETIME NULL,
     stay_seconds INT DEFAULT 0,
     stay_minutes DECIMAL(10,2) DEFAULT 0,
+
+    notification_sent BOOLEAN NOT NULL DEFAULT FALSE,
+    coupon_sent BOOLEAN NOT NULL DEFAULT FALSE,
+    lottery_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+
     camera_location VARCHAR(100),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 

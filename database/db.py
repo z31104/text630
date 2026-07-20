@@ -77,7 +77,10 @@ def get_all_members():
             birthday,       
             vip,
             member_level,
-            visit_count,
+            total_visit_count,
+            last_visit_time,
+            total_visit_time,
+            updated_by,
             line_user_id,
             total_amount,
             favorite_product,
@@ -113,7 +116,10 @@ def get_member_by_id(member_id):
             birthday,
             vip,
             member_level,
-            visit_count,
+            total_visit_count,
+            last_visit_time,
+            total_visit_time,
+            updated_by,
             line_user_id,
             total_amount,
             favorite_product,
@@ -723,14 +729,28 @@ def close_recognition_visit(
                     subject_type == "member"
                     and member_id is not None
                 ):
+                    
                     cursor.execute(
                         """
                         UPDATE members
-                        SET visit_count =
-                            COALESCE(visit_count, 0) + 1
+                        SET
+                            total_visit_count =
+                                COALESCE(total_visit_count, 0) + 1,
+
+                            total_visit_time =
+                                COALESCE(total_visit_time, 0) + %s,
+
+                            last_visit_time = %s,
+
+                            updated_by = 'system'
+
                         WHERE member_id = %s
                         """,
-                        (member_id,)
+                        (
+                            stay_seconds,
+                            leave_time,
+                            member_id
+                        )
                     )
 
                 elif (
@@ -743,6 +763,10 @@ def close_recognition_visit(
                         SET
                             visit_count =
                                 COALESCE(visit_count, 0) + 1,
+
+                            visitor_visit_count =
+                                COALESCE(visitor_visit_count, 0) + 1,
+
                             last_seen_at = %s
                         WHERE visitor_id = %s
                         """,
@@ -778,7 +802,7 @@ def insert_member(
     birthday=None,
     vip=False,
     member_level="normal",
-    visit_count=0,
+    total_visit_count=0,
     line_user_id=None,
     total_amount=0,
     favorite_product=None,
@@ -802,7 +826,7 @@ INSERT INTO members (
     birthday,
     vip,
     member_level,
-    visit_count,
+    total_visit_count,
     line_user_id,
     total_amount,
     favorite_product,
@@ -820,7 +844,7 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         birthday,
         vip,
         member_level,
-        visit_count,
+        total_visit_count,
         line_user_id,
         total_amount,
         favorite_product,
@@ -1058,7 +1082,7 @@ def get_all_member_faces():
             m.birthday,
             m.vip,
             m.member_level,
-            m.visit_count,
+            m.total_visit_count,
             m.line_user_id,
             m.total_amount,
             m.favorite_product,
@@ -1191,7 +1215,7 @@ def get_visitor_by_id(visitor_id):
             visitor_id,
             visitor_code,
             display_name,
-            visit_count,
+            visitor_visit_count,
             first_seen_at,
             last_seen_at,
             created_at,
@@ -1364,7 +1388,7 @@ def register_visitor_with_face(
         INSERT INTO visitors (
             visitor_code,
             display_name,
-            visit_count,
+            visitor_visit_count,
             first_seen_at,
             last_seen_at
         )
@@ -1466,7 +1490,7 @@ def get_all_visitor_faces():
             vf.created_at AS face_created_at,
             v.visitor_code,
             v.display_name,
-            v.visit_count,
+            v.visitor_visit_count,
             v.first_seen_at,
             v.last_seen_at,
             v.created_at AS visitor_created_at,

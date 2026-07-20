@@ -1,5 +1,71 @@
 USE smart_member_system;
 
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE members ADD COLUMN last_visit_time DATETIME NULL AFTER visit_count',
+        'SELECT "members.last_visit_time 已存在"'
+    )
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'members'
+      AND COLUMN_NAME = 'last_visit_time'
+);
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE members ADD COLUMN total_visit_time INT NOT NULL DEFAULT 0 AFTER last_visit_time',
+        'SELECT "members.total_visit_time 已存在"'
+    )
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'members'
+      AND COLUMN_NAME = 'total_visit_time'
+);
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE members ADD COLUMN total_visit_count INT NOT NULL DEFAULT 0 AFTER total_visit_time',
+        'SELECT "members.total_visit_count 已存在"'
+    )
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'members'
+      AND COLUMN_NAME = 'total_visit_count'
+);
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+
+SET @sql = (
+    SELECT IF(
+        COUNT(*) = 0,
+        'ALTER TABLE members ADD COLUMN updated_by VARCHAR(100) NULL AFTER total_visit_count',
+        'SELECT "members.updated_by 已存在"'
+    )
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'members'
+      AND COLUMN_NAME = 'updated_by'
+);
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 -- =====================================================
 -- Sprint 3 資料庫升級檔
 -- 注意：ALTER TABLE 與 CREATE INDEX 原則上只執行一次
@@ -171,4 +237,8 @@ ADD CONSTRAINT fk_lottery_records_prize
 FOREIGN KEY (prize_id)
 REFERENCES lottery_prizes(prize_id)
 ON DELETE RESTRICT;
-*/    
+*/
+
+UPDATE members
+SET total_visit_count = COALESCE(visit_count, 0)
+WHERE total_visit_count = 0;
