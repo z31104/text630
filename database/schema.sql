@@ -312,7 +312,7 @@ VALUES
         NULL,
         'active'
     ),
-    (
+    
     (
         'retry_once',
         '再抽一次',
@@ -321,7 +321,7 @@ VALUES
         1,
         NULL,
         'active'
-    )
+    
 );
 
 CREATE TABLE IF NOT EXISTS member_preferences (
