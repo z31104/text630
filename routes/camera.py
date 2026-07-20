@@ -3,7 +3,7 @@ import cv2
 import time
 import threading
 from datetime import datetime
-from flask import Blueprint, Response
+from flask import Blueprint, Response, jsonify
 from services.visit_service import (
     build_subject_key,
     handle_recognition,
@@ -34,6 +34,18 @@ camera_bp = Blueprint("camera", __name__)
 # 再交給新的 /camera/video_feed 使用。
 camera_instance = None
 camera_instance_lock = threading.Lock()
+
+# =============================
+# 攝影機連線狀態
+# =============================
+
+camera_status = {
+    "connected": False,
+    "status": "Disconnected",
+    "message": "攝影機尚未開啟"
+}
+
+camera_status_lock = threading.Lock()
 
 # =============================
 # 攝影機設定
@@ -92,6 +104,13 @@ guest_confirm_count = 0
 # 連續 2 次辨識為 Guest 才正式顯示與記錄
 GUEST_CONFIRM_REQUIRED = 2
 
+# 連續幾幀沒有偵測到人臉，
+# 才正式切換成 no_face，避免眨眼或瞬間轉頭造成畫面閃爍。
+no_face_frame_count = 0
+
+# 建議先從 5 幀開始測試。
+NO_FACE_CONFIRM_REQUIRED = 5
+
 # 設定參數
 RECOGNITION_INTERVAL = 2       # 每 2 秒做一次人臉比對
 LAST_SEEN_UPDATE_INTERVAL = 15 # 每 15 秒更新一次資料庫
@@ -100,8 +119,23 @@ MIN_CONFIDENCE = 0.5           # 信心值低於 0.5 的會員辨識結果先不
 LEAVE_TIMEOUT = 60             # 超過 60 秒沒再看到同一會員，就先視為離店
 CAMERA_ID = "camera_1"         # 對應 recognition_logs.camera_id
 
+def update_camera_status(
+    connected,
+    status,
+    message
+):
+    """
+    更新攝影機目前連線狀態。
 
+    connected：
+    True 代表攝影機可正常讀取；
+    False 代表尚未開啟或已中斷。
+    """
 
+    with camera_status_lock:
+        camera_status["connected"] = connected
+        camera_status["status"] = status
+        camera_status["message"] = message
 
 def now_text():
     """回傳目前時間文字，格式統一給 recognition_logs 使用。"""
@@ -111,11 +145,13 @@ def now_text():
 def open_camera(camera_index=CAMERA_INDEX):
     """
     開啟攝影機。
-
-    Windows 建議使用 cv2.CAP_DSHOW，
-    外接 USB 攝影機通常能更快開啟，
-    也較不容易出現 MSMF 無法讀取畫面的問題。
     """
+
+    update_camera_status(
+        connected=False,
+        status="Connecting",
+        message="正在嘗試開啟攝影機"
+    )
 
     print(
         f"嘗試開啟攝影機，"
@@ -154,6 +190,13 @@ def open_camera(camera_index=CAMERA_INDEX):
             f"無法開啟攝影機，"
             f"camera_index={camera_index}"
         )
+        
+        update_camera_status(
+            connected=False,
+            status="Disconnected",
+            message="無法開啟攝影機"
+        )
+        
         cap.release()
         return None
 
@@ -166,6 +209,13 @@ def open_camera(camera_index=CAMERA_INDEX):
                 f"攝影機暖機失敗，"
                 f"camera_index={camera_index}"
             )
+            
+            update_camera_status(
+                connected=False,
+                status="Disconnected",
+                message="攝影機暖機失敗"
+            )
+            
             cap.release()
             return None
 
@@ -175,7 +225,13 @@ def open_camera(camera_index=CAMERA_INDEX):
         f"已開啟攝影機，"
         f"camera_index={camera_index}"
     )
-
+    
+    update_camera_status(
+        connected=True,
+        status="Connected",
+        message="攝影機已正常連線"
+    )
+    
     return cap
 
 def acquire_camera():
@@ -228,6 +284,12 @@ def release_camera(cap):
 
         if camera_instance is cap:
             camera_instance = None
+    
+    update_camera_status(
+        connected=False,
+        status="Disconnected",
+        message="攝影機串流已關閉"
+    )
 
     print("攝影機已釋放")
 
@@ -305,8 +367,21 @@ def generate_frames():
     global last_result
     global last_guest_log_time
     global guest_confirm_count
+    global no_face_frame_count
 
     cap = acquire_camera()
+
+    # =============================
+    # FPS 計算初始值
+    # =============================
+    # 使用 monotonic() 計時，不受電腦系統時間調整影響。
+    fps_start_time = time.monotonic()
+
+    # 記錄這一秒內成功處理的畫面數量。
+    fps_frame_count = 0
+
+    # 實際顯示在攝影機畫面上的 FPS。
+    current_fps = 0.0
 
     if cap is None:
         print("攝影機串流停止：無法取得攝影機")
@@ -317,128 +392,170 @@ def generate_frames():
             time.sleep(0.01)
 
             success, frame = cap.read()
-
+            
             if not success or frame is None:
                 print("讀取攝影機畫面失敗，結束本次串流")
+                update_camera_status(
+                    connected=False,
+                    status="Disconnected",
+                    message="攝影機畫面讀取失敗"
+                )
+                
                 break
+            
+            # 每成功取得一張畫面，就累積一幀。
+            fps_frame_count += 1
+            
+            # 計算距離上次更新 FPS 經過多少秒。
+            fps_elapsed_time = (
+                time.monotonic()
+                - fps_start_time
+            )
+            
+            # 每隔至少 1 秒更新一次 FPS，
+            # 避免數字每一幀快速跳動。
+            if fps_elapsed_time >= 1.0:
+                current_fps = round(
+                    fps_frame_count / fps_elapsed_time,
+                    1
+                )
+                
+                # 重設下一輪 FPS 計算。
+                fps_frame_count = 0
+                fps_start_time = time.monotonic()
 
             faces = detect_face(frame)
             current_time = time.time()
             has_face = len(faces) > 0
         
             
-            # 畫面沒有人臉
+            # 畫面沒有偵測到人臉
             if not has_face:
-                 guest_confirm_count = 0
-
-                 last_result = {
-                      "subject_type": "none",
-                      "member_id": None,
-                      "visitor_id": None,
-                      "visitor_code": None,
-                      "name": "No Face",
-                      "phone": None,
-                      "vip": False,
-                      "member_level": "guest",
-                      "visit_count": 0,
-                      "line_user_id": None,
-                      "registration_source": None,
-                      "total_amount": 0,
-                      "favorite_product": None,
-                      "face_image": None,
-                      "confidence": 0,
-                      "recognition_status": "no_face",
-                      "member_level_text": "No Face"
-                }
+                no_face_frame_count += 1
+                guest_confirm_count = 0
+                
+                # 連續多幀沒有臉才切換 no_face，
+                # 避免眨眼、低頭或短暫側臉造成畫面閃爍。
+                if (
+                    no_face_frame_count
+                    >= NO_FACE_CONFIRM_REQUIRED
+                ):
+                    last_result = {
+                        "subject_type": "none",
+                        "member_id": None,
+                        "visitor_id": None,
+                        "visitor_code": None,
+                        "name": "No Face",
+                        "phone": None,
+                        "vip": False,
+                        "member_level": "guest",
+                        "visit_count": 0,
+                        "line_user_id": None,
+                        "registration_source": None,
+                        "total_amount": 0,
+                        "favorite_product": None,
+                        "face_image": None,
+                        "confidence": 0,
+                        "recognition_status": "no_face",
+                        "member_level_text": "No Face"
+                        }
             
-            # 畫面有偵測到人臉，而且超過辨識間隔
-            # 才執行會員人臉比對
-            elif (
-                current_time - last_recognition_time
-                >= RECOGNITION_INTERVAL
-            ):
-                recognition_result = recognize_face(frame, faces)
-                last_recognition_time = current_time
+            # 畫面重新偵測到人臉
+            else:
+                no_face_frame_count = 0
                 
-                recognition_status = recognition_result.get(
-                    "recognition_status"
-                )
-                
-                # 成功辨識會員，立即顯示並清除 Guest 累積次數
-                if recognition_status == "recognized":
-                    guest_confirm_count = 0
-                    last_result = recognition_result
+                # 超過辨識間隔才執行會員與散客比對
+                if (
+                    current_time - last_recognition_time
+                    >= RECOGNITION_INTERVAL
+                ):
+                    recognition_result = recognize_face(
+                        frame,
+                        faces
+                    )
                     
-                # 第一次辨識為 Guest 時先顯示 Detecting
-                elif recognition_status == "guest":
-                    guest_confirm_count += 1
+                    last_recognition_time = current_time
                     
-                    # 同一張未知人臉連續確認達標後，
-                    # # 才正式建立固定 visitor。
-                    if (
-                        guest_confirm_count
-                        >= GUEST_CONFIRM_REQUIRED
-                    ):
-                        print(
-                            "未知人臉連續確認完成，"
-                            "開始建立固定散客"
-                        )
+                    recognition_status = recognition_result.get(
+                        "recognition_status"
+                    )
+                    
+                    # 成功辨識會員或既有散客
+                    if recognition_status == "recognized":
+                        guest_confirm_count = 0
+                        last_result = recognition_result
                         
-                        visitor_result = register_new_visitor(
-                            frame,
-                            faces
-                        )
+                    # 第一次辨識為 Guest 時先顯示 Detecting
+                    elif recognition_status == "guest":
+                        guest_confirm_count += 1
                         
+                        # 同一張未知人臉連續確認達標後，
+                        # 才正式建立固定 visitor。
                         if (
-                            visitor_result.get("subject_type")
-                            == "visitor"
-                            and visitor_result.get("visitor_id")
-                            is not None
+                            guest_confirm_count
+                            >= GUEST_CONFIRM_REQUIRED
                         ):
-                            last_result = visitor_result
-                            
                             print(
-                                "固定散客建立成功："
-                                f"visitor_id="
-                                f"{visitor_result.get('visitor_id')}"
+                                "未知人臉連續確認完成，"
+                                "開始建立固定散客"
+                            )
+                            
+                            visitor_result = register_new_visitor(
+                                frame,
+                                faces
+                            )
+                            
+                            if (
+                                visitor_result.get("subject_type")
+                                == "visitor"
+                                and visitor_result.get("visitor_id")
+                                is not None
+                            ):
+                                last_result = visitor_result
+                                
+                                print(
+                                    "固定散客建立成功："
+                                    f"visitor_id="
+                                    f"{visitor_result.get('visitor_id')}"
                                 )
                             
-                        else:
-                            last_result = visitor_result
+                            else:
+                                last_result = visitor_result
+                                
+                                print(
+                                    "固定散客建立失敗，"
+                                    "本次不寫入到店紀錄"
+                                )
                             
-                            print(
-                                "固定散客建立失敗，"
-                                "本次不寫入到店紀錄"
-                            )
-                        
-                        # 不論成功或失敗，結束本輪確認，
-                        # 避免下一次立即重複建檔。
-                        guest_confirm_count = 0
+                            # 不論成功或失敗，
+                            # 結束本輪 Guest 確認。
+                            guest_confirm_count = 0
+                            
+                        else:
+                            last_result = {
+                                "subject_type": "unknown",
+                                "member_id": None,
+                                "visitor_id": None,
+                                "visitor_code": None,
+                                "name": "Detecting",
+                                "phone": None,
+                                "vip": False,
+                                "member_level": "guest",
+                                "visit_count": 0,
+                                "line_user_id": None,
+                                "registration_source": None,
+                                "total_amount": 0,
+                                "favorite_product": None,
+                                "face_image": None,
+                                "confidence": 0,
+                                "recognition_status": "detecting",
+                                "member_level_text": "Detecting"
+                            }
                     
+                    # failed 或其他狀態
                     else:
-                        last_result = {
-                            "subject_type": "unknown",
-                            "member_id": None,
-                            "visitor_id": None,
-                            "visitor_code": None,
-                            "name": "Detecting",
-                            "phone": None,
-                            "vip": False,
-                            "member_level": "guest",
-                            "visit_count": 0,
-                            "line_user_id": None,
-                            "registration_source": None,
-                            "total_amount": 0,
-                            "favorite_product": None,
-                            "face_image": None,
-                            "confidence": 0,
-                            "recognition_status": "detecting",
-                            "member_level_text": "Detecting"
-                        }
-                # failed 或其他狀態直接保留
-                else:
-                    guest_confirm_count = 0
-                    last_result = recognition_result
+                        guest_confirm_count = 0
+                        last_result = recognition_result
 
 
             current_member_id = last_result.get("member_id")
@@ -503,6 +620,21 @@ def generate_frames():
                     faces,
                     last_result
                 )
+            
+            # =============================
+            # 顯示實際 Camera FPS
+            # ============================
+            # FPS 不屬於資料庫欄位，
+            # 目前只顯示在攝影機即時畫面上。
+            cv2.putText(
+                frame,
+                f"FPS: {current_fps:.1f}",
+                (20, 145),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                (0, 255, 0),
+                2
+            )
 
             # 將 OpenCV 畫面轉成 JPEG
             ret, buffer = cv2.imencode(
@@ -528,6 +660,12 @@ def generate_frames():
 
     except Exception as e:
         print(f"攝影機串流發生錯誤：{e}")
+        
+        update_camera_status(
+            connected=False,
+            status="Disconnected",
+            message="攝影機串流發生錯誤"
+        )
 
     finally:
         release_camera(cap)
@@ -537,10 +675,111 @@ def generate_frames():
 def camera():
     return """
     <h1>智慧會員辨識系統 - 攝影機畫面</h1>
+
     <p>即時攝影機串流</p>
-    <p>本週測試重點：一般會員 / VIP / Guest 辨識、到店時間、離店時間、停留時間</p>
-    <img src="/camera/video_feed" width="640">
+
+    <p>
+        Camera Status：
+        <strong id="camera-status">
+            Connecting
+        </strong>
+    </p>
+
+    <p id="camera-message">
+        正在確認攝影機狀態
+    </p>
+
+    <p>
+        本週測試重點：
+        攝影機 FPS、連線／中斷狀態、
+        VIP／一般會員／散客標籤、
+        no_face／failed 防呆
+    </p>
+
+    <img
+        id="camera-stream"
+        src="/camera/video_feed"
+        width="640"
+        alt="攝影機串流"
+    >
+
+    <script>
+        async function refreshCameraStatus() {
+            const statusElement =
+                document.getElementById(
+                    "camera-status"
+                );
+
+            const messageElement =
+                document.getElementById(
+                    "camera-message"
+                );
+
+            try {
+                const response = await fetch(
+                    "/camera/status",
+                    {
+                        cache: "no-store"
+                    }
+                );
+
+                const data = await response.json();
+
+                statusElement.textContent =
+                    data.status;
+
+                messageElement.textContent =
+                    data.message;
+
+                if (data.connected) {
+                    statusElement.style.color =
+                        "green";
+
+                } else if (
+                    data.status === "Connecting"
+                ) {
+                    statusElement.style.color =
+                        "orange";
+
+                } else {
+                    statusElement.style.color =
+                        "red";
+                }
+
+            } catch (error) {
+                statusElement.textContent =
+                    "Disconnected";
+
+                statusElement.style.color =
+                    "red";
+
+                messageElement.textContent =
+                    "無法取得攝影機狀態";
+            }
+        }
+
+        refreshCameraStatus();
+
+        setInterval(
+            refreshCameraStatus,
+            2000
+        );
+    </script>
     """
+
+
+@camera_bp.route("/camera/status")
+def get_camera_status():
+    """
+    提供前端查詢目前攝影機連線狀態。
+    """
+
+    with camera_status_lock:
+        return jsonify({
+            "connected": camera_status["connected"],
+            "status": camera_status["status"],
+            "message": camera_status["message"]
+        })
 
 
 @camera_bp.route("/camera/video_feed")

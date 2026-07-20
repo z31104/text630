@@ -1145,7 +1145,12 @@ face_cascade = cv2.CascadeClassifier(
 
 
 def detect_face(frame):
-    """偵測畫面中的人臉，並過濾明顯不合理的誤判框。"""
+    """
+    偵測畫面中的人臉。
+
+    為提升攝影機流暢度，先將畫面縮小至 50% 進行偵測，
+    再把人臉座標換算回原始畫面。
+    """
 
     if frame is None:
         return []
@@ -1154,36 +1159,69 @@ def detect_face(frame):
         print("Haar Cascade 載入失敗，無法偵測人臉")
         return []
 
-    gray = cv2.cvtColor(
+    # =============================
+    # 縮小偵測畫面
+    # =============================
+    # 0.5 代表寬、高各縮小一半，
+    # 整體像素數約剩原本的四分之一。
+    detection_scale = 0.5
+
+    small_frame = cv2.resize(
         frame,
+        None,
+        fx=detection_scale,
+        fy=detection_scale,
+        interpolation=cv2.INTER_LINEAR
+    )
+
+    gray = cv2.cvtColor(
+        small_frame,
         cv2.COLOR_BGR2GRAY
     )
 
     # 改善光線差異
     gray = cv2.equalizeHist(gray)
 
+    # 因為畫面縮小一半，
+    # minSize 和 maxSize 也調整為原本的一半。
     detected_faces = face_cascade.detectMultiScale(
         gray,
         scaleFactor=1.15,
         minNeighbors=5,
-        minSize=(80, 80),
-        maxSize=(450, 450)
+        minSize=(40, 40),
+        maxSize=(225, 225)
     )
 
     frame_height, frame_width = frame.shape[:2]
     valid_faces = []
 
-    for x, y, w, h in detected_faces:
+    for small_x, small_y, small_w, small_h in detected_faces:
+        # 將縮小畫面中的座標，
+        # 換算回原始 640 × 480 畫面。
+        x = int(small_x / detection_scale)
+        y = int(small_y / detection_scale)
+        w = int(small_w / detection_scale)
+        h = int(small_h / detection_scale)
+
+        # 防止換算後超出原始畫面範圍。
+        x = max(0, x)
+        y = max(0, y)
+        w = min(w, frame_width - x)
+        h = min(h, frame_height - y)
+
+        if w <= 0 or h <= 0:
+            continue
+
         aspect_ratio = w / float(h)
 
-        # 一般正面人臉框比例通常接近正方形
+        # 一般正面人臉框比例通常接近正方形。
         if not 0.75 <= aspect_ratio <= 1.30:
             continue
 
         center_x = x + w / 2
         center_y = y + h / 2
 
-        # 排除過度靠近畫面四周的誤判
+        # 排除過度靠近畫面四周的誤判。
         if center_x < frame_width * 0.03:
             continue
 
@@ -1201,8 +1239,7 @@ def detect_face(frame):
         )
 
     # 目前階段只處理單人辨識：
-    # 若偵測到多個框，只保留面積最大的人臉框，
-    # 避免脖子、衣服或背景紋理造成的小型誤判框。
+    # 多個框時只保留面積最大的人臉。
     if valid_faces:
         largest_face = max(
             valid_faces,
@@ -1395,71 +1432,152 @@ def recognize_face(frame, faces):
 
 def draw_face_boxes(frame, faces, result=None):
     """
-    在畫面上畫出人臉框框。
-    OpenCV cv2.putText 不支援中文，所以畫面上用英文顯示，
-    但 log / 資料庫仍保留中文姓名與中文類型。
+    在畫面上顯示統一的辨識標籤。
+
+    顯示規則：
+    - VIP 會員：VIP
+    - 一般會員：Member
+    - 已建檔散客：Visitor
+    - 陌生人確認中：Detecting
+    - 尚未建檔陌生人：Guest
+    - 辨識失敗：Failed
+
+    OpenCV 的 cv2.putText 不支援中文，
+    因此攝影機畫面使用英文標籤。
     """
 
     if result is None:
-        result = recognize_face(frame, faces)
+        result = recognize_face(
+            frame,
+            faces
+        )
 
     subject_type = result.get(
         "subject_type",
         "unknown"
     )
-    
+
     member_level = result.get(
         "member_level",
         "guest"
     )
-    
+
     recognition_status = result.get(
         "recognition_status",
         "no_face"
     )
-    
-    # 第一次比對為 Guest 時仍在等待第二次確認
+
+    member_id = result.get("member_id")
+    visitor_id = result.get("visitor_id")
+    confidence = result.get("confidence", 0)
+
+    # =============================
+    # 統一畫面顯示標籤
+    # =============================
+
     if recognition_status == "detecting":
-        display_name = "Detecting..."
-        member_type = "Detecting..."
-        box_name = "Detecting..."
-    
+        display_name = "Detecting"
+        display_type = "Detecting"
+        box_label = "Detecting"
+
+    elif recognition_status == "failed":
+        display_name = "Recognition Failed"
+        display_type = "Failed"
+        box_label = "Failed"
+
     elif (
         subject_type == "visitor"
-        and result.get("visitor_id") is not None
+        and visitor_id is not None
     ):
-        visitor_id = result.get("visitor_id")
-        visitor_code = result.get("visitor_code")
-        
+        # 不再顯示完整 visitor_code，
+        # 避免文字過長與其他欄位重疊。
         display_name = f"Visitor ID: {visitor_id}"
-        member_type = "Known Visitor"
-        box_name = (
-            visitor_code
-            or f"Visitor {visitor_id}"
-        )
-        
-    elif member_level == "vip":
-        display_name = f"Member ID: {result['member_id']}"
-        member_type = "VIP Member"
-        box_name = f"VIP {result['member_id']}"
-    
-    elif member_level == "normal":
-        display_name = f"Member ID: {result['member_id']}"
-        member_type = "Normal Member"
-        box_name = f"Member {result['member_id']}"
-        
+        display_type = "Visitor"
+        box_label = "Visitor"
+
+    elif (
+        subject_type == "member"
+        and member_level == "vip"
+        and member_id is not None
+    ):
+        display_name = f"Member ID: {member_id}"
+        display_type = "VIP"
+        box_label = "VIP"
+
+    elif (
+        subject_type == "member"
+        and member_id is not None
+    ):
+        display_name = f"Member ID: {member_id}"
+        display_type = "Member"
+        box_label = "Member"
+
     else:
         display_name = "Guest"
-        member_type = "Guest"
-        box_name = "Guest"
+        display_type = "Guest"
+        box_label = "Guest"
 
-    cv2.putText(frame, f"Name: {display_name}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-    cv2.putText(frame, f"Type: {member_type}", (20, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-    cv2.putText(frame, f"Confidence: {result.get('confidence', 0)}", (20, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+    # =============================
+    # 左上角辨識資訊
+    # =============================
 
-    for (x, y, w, h) in faces:
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        cv2.putText(frame, box_name, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    cv2.putText(
+        frame,
+        f"Name: {display_name}",
+        (20, 40),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (0, 255, 0),
+        2
+    )
+
+    cv2.putText(
+        frame,
+        f"Type: {display_type}",
+        (20, 75),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (0, 255, 0),
+        2
+    )
+
+    cv2.putText(
+        frame,
+        f"Confidence: {confidence}",
+        (20, 110),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (0, 255, 0),
+        2
+    )
+
+    # =============================
+    # 人臉框與框上標籤
+    # =============================
+
+    for x, y, w, h in faces:
+        cv2.rectangle(
+            frame,
+            (x, y),
+            (x + w, y + h),
+            (0, 255, 0),
+            2
+        )
+
+        label_y = max(
+            y - 10,
+            25
+        )
+
+        cv2.putText(
+            frame,
+            box_label,
+            (x, label_y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 0),
+            2
+        )
 
     return frame
 
