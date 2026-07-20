@@ -82,16 +82,6 @@ ADD COLUMN prize_id INT NULL
 AFTER member_id;
 */
 
--- 若 lottery_records 已有 prize_id，
--- 但還沒有 prize_id 外鍵，才解除註解單獨執行一次
-/*
-ALTER TABLE lottery_records
-ADD CONSTRAINT fk_lottery_records_prize
-FOREIGN KEY (prize_id)
-REFERENCES lottery_prizes(prize_id)
-ON DELETE RESTRICT;
-*/
-
 
 -- 4. 若舊表缺少 is_final，才單獨執行一次
 /*
@@ -180,8 +170,9 @@ ON DELETE RESTRICT;
 -- 11. 建立散客主表
 CREATE TABLE IF NOT EXISTS visitors (
     visitor_id INT AUTO_INCREMENT PRIMARY KEY,
-    visitor_code VARCHAR(50) NULL,
-    name VARCHAR(100) NULL,
+    visitor_code VARCHAR(50) NOT NULL UNIQUE,
+    display_name VARCHAR(50) DEFAULT 'Visitor',
+    first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     visit_count INT NOT NULL DEFAULT 0,
     last_seen_at DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -196,7 +187,7 @@ CREATE TABLE IF NOT EXISTS visitors (
 
 -- 12. 建立散客人臉資料表
 CREATE TABLE IF NOT EXISTS visitor_faces (
-    face_id INT AUTO_INCREMENT PRIMARY KEY,
+    visitor_face_id INT AUTO_INCREMENT PRIMARY KEY
     visitor_id INT NOT NULL,
     image_path VARCHAR(255) NULL,
     encoding_data LONGTEXT NOT NULL,
@@ -294,7 +285,7 @@ CALL add_column_if_missing(
 CALL add_column_if_missing(
     'recognition_logs',
     'stay_minutes',
-    'INT NOT NULL DEFAULT 0 AFTER stay_seconds'
+    'DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER stay_seconds'
 );
 
 DROP PROCEDURE IF EXISTS add_column_if_missing;
