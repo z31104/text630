@@ -1560,85 +1560,30 @@ def get_dashboard_summary():
         SELECT
             (
                 SELECT COUNT(*)
-                FROM members
-            ) AS total_members,
+                FROM recognition_logs
+                WHERE DATE(visit_time) = CURDATE()
+            ) AS today_visits,
 
             (
                 SELECT COUNT(*)
-                FROM visitors
-            ) AS total_visitors,
-
-            COUNT(*) AS today_recognitions,
-
-            COALESCE(
-                SUM(
-                    CASE
-                        WHEN subject_type = 'member'
-                         AND vip = TRUE
-                        THEN 1
-                        ELSE 0
-                    END
-                ),
-                0
+                FROM recognition_logs
+                WHERE DATE(visit_time) = CURDATE()
+                  AND subject_type = 'member'
+                  AND vip = TRUE
             ) AS today_vip,
 
-            COALESCE(
-                SUM(
-                    CASE
-                        WHEN subject_type = 'member'
-                         AND vip = FALSE
-                        THEN 1
-                        ELSE 0
-                    END
-                ),
-                0
-            ) AS today_normal_members,
-
-            COALESCE(
-                SUM(
-                    CASE
-                        WHEN subject_type = 'visitor'
-                        THEN 1
-                        ELSE 0
-                    END
-                ),
-                0
-            ) AS today_visitors,
-
-            COALESCE(
-                SUM(
-                    CASE
-                        WHEN leave_time IS NULL
-                         AND visit_status IN ('arrived', 'staying')
-                        THEN 1
-                        ELSE 0
-                    END
-                ),
-                0
-            ) AS active_visits,
-
-            COALESCE(
-                ROUND(
-                    AVG(
-                        CASE
-                            WHEN visit_status = 'left'
-                            THEN stay_minutes
-                            ELSE NULL
-                        END
-                    ),
-                    2
-                ),
-                0
-            ) AS average_stay_minutes,
+            (
+                SELECT COUNT(*)
+                FROM members
+                WHERE DATE(created_at) = CURDATE()
+            ) AS new_members,
 
             (
                 SELECT COUNT(*)
-                FROM vip_notifications
-                WHERE DATE(created_at) = CURDATE()
-            ) AS today_vip_notifications
-
-        FROM recognition_logs
-        WHERE DATE(visit_time) = CURDATE()
+                FROM recognition_logs
+                WHERE DATE(visit_time) = CURDATE()
+                  AND subject_type = 'visitor'
+            ) AS visitors
         """
 
         cursor.execute(sql)
@@ -1646,15 +1591,10 @@ def get_dashboard_summary():
 
         if summary is None:
             return {
-                "total_members": 0,
-                "total_visitors": 0,
-                "today_recognitions": 0,
+                "today_visits": 0,
                 "today_vip": 0,
-                "today_normal_members": 0,
-                "today_visitors": 0,
-                "active_visits": 0,
-                "average_stay_minutes": 0,
-                "today_vip_notifications": 0
+                "new_members": 0,
+                "visitors": 0
             }
 
         return summary

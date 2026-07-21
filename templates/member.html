@@ -20,8 +20,15 @@
 </section>
 
 <section class="search-box">
-    <input type="text" placeholder="搜尋姓名、會員編號或 LINE User ID">
-    <button class="secondary-btn">搜尋</button>
+    <form method="get" action="{{ url_for('member.member') }}">
+        <input
+            type="text"
+            name="keyword"
+            value="{{ keyword or '' }}"
+            placeholder="搜尋姓名、手機或 LINE User ID"
+        >
+        <button type="submit" class="secondary-btn">搜尋</button>
+    </form>
 </section>
 
 <section class="member-table-card">
@@ -87,7 +94,13 @@
                 </tr>
             {% else %}
                 <tr>
-                    <td colspan="7">目前沒有會員資料</td>
+                    <td colspan="7">
+                        {% if keyword %}
+                            查無會員資料
+                        {% else %}
+                            目前沒有會員資料
+                        {% endif %}
+                    </td>
                 </tr>
             {% endfor %}
         </tbody>
