@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS products (
         REFERENCES product_categories(category_id)
         ON DELETE SET NULL
 );
+-- 正式會員
 CREATE TABLE IF NOT EXISTS members (
     member_id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
@@ -40,14 +41,14 @@ CREATE TABLE IF NOT EXISTS members (
     -- 第三週舊欄位，暫時保留
     visit_count INT DEFAULT 0,
 
--- 第四週正式欄位
+    -- 第四週正式欄位
     last_visit_time DATETIME NULL,
     total_visit_time INT NOT NULL DEFAULT 0,
     total_visit_count INT NOT NULL DEFAULT 0,
     updated_by VARCHAR(100) NULL,
 
     line_user_id VARCHAR(100) UNIQUE,
-    total_amount INT DEFAULT 0,
+    total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0,
     favorite_product VARCHAR(100),
     face_image VARCHAR(255),
     registration_source VARCHAR(20) DEFAULT 'line',
@@ -90,7 +91,12 @@ CREATE TABLE IF NOT EXISTS visitors (
     visitor_id INT AUTO_INCREMENT PRIMARY KEY,
     visitor_code VARCHAR(50) NOT NULL UNIQUE,
     display_name VARCHAR(50) DEFAULT 'Visitor',
+
+     -- 第三週目前使用的散客到店次數欄位。
+    -- 第四週預計統一為 visitor_visit_count，
+    -- 待 AI 與 Visitors 頁面完成切換後再正式改名。
     visit_count INT DEFAULT 0,
+
     first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_seen_at DATETIME NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -127,10 +133,16 @@ CREATE TABLE IF NOT EXISTS recognition_logs (
     visit_status VARCHAR(30) DEFAULT 'arrived',
 
     recognized_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    visit_time DATETIME,
+        visit_time DATETIME,
     last_seen_at DATETIME NULL,
     leave_time DATETIME NULL,
+
+    -- 第四週正式停留時間欄位，統一以秒數儲存
     stay_seconds INT DEFAULT 0,
+
+    -- 第三週相容欄位：
+    -- 待 AI 與 Dashboard 完成切換後移除。
+    -- 前端顯示分鐘時，請由 stay_seconds 換算。
     stay_minutes DECIMAL(10,2) DEFAULT 0,
 
     notification_sent BOOLEAN NOT NULL DEFAULT FALSE,
@@ -210,8 +222,15 @@ CREATE TABLE IF NOT EXISTS member_coupons (
     coupon_id INT NOT NULL,
     source VARCHAR(50),
     status VARCHAR(20) DEFAULT 'unused',
+
+    -- 第三週目前使用名稱。
+    -- 第四週雲端名稱預計統一為 receive_time。
     issued_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    -- 第三週目前使用名稱。
+    -- 第四週雲端名稱預計統一為 used_time。
     used_at DATETIME,
+
     FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE CASCADE,
     FOREIGN KEY (coupon_id) REFERENCES coupons(coupon_id) ON DELETE CASCADE
 );

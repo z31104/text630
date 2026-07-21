@@ -764,9 +764,7 @@ def close_recognition_visit(
                             visit_count =
                                 COALESCE(visit_count, 0) + 1,
 
-                            visitor_visit_count =
-                                COALESCE(visitor_visit_count, 0) + 1,
-
+                                
                             last_seen_at = %s
                         WHERE visitor_id = %s
                         """,
@@ -1215,7 +1213,7 @@ def get_visitor_by_id(visitor_id):
             visitor_id,
             visitor_code,
             display_name,
-            visitor_visit_count,
+            visit_count,
             first_seen_at,
             last_seen_at,
             created_at,
@@ -1388,7 +1386,7 @@ def register_visitor_with_face(
         INSERT INTO visitors (
             visitor_code,
             display_name,
-            visitor_visit_count,
+            visit_count,
             first_seen_at,
             last_seen_at
         )
@@ -1490,7 +1488,7 @@ def get_all_visitor_faces():
             vf.created_at AS face_created_at,
             v.visitor_code,
             v.display_name,
-            v.visitor_visit_count,
+            v.visit_count,
             v.first_seen_at,
             v.last_seen_at,
             v.created_at AS visitor_created_at,
