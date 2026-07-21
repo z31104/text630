@@ -572,92 +572,171 @@ def delete_member(member_id):
 
 @member_bp.route("/member/edit/<int:member_id>", methods=["GET", "POST"])
 def edit_member(member_id):
-    conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    conn = None
+    cursor = None
+    saved_image_path = None
 
-    cursor.execute("""
-        SELECT member_id, name, phone, birthday, vip, member_level,
-               visit_count, line_user_id, total_amount,
-               favorite_product, face_image, registration_source
-        FROM members
-        WHERE member_id = %s
-    """, (member_id,))
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT member_id, name, phone, birthday, vip, member_level,
+                   face_image
+            FROM members
+            WHERE member_id = %s
+        """, (member_id,))
 
-    target_member = cursor.fetchone()
+        target_member = cursor.fetchone()
 
-    if target_member is None:
-        cursor.close()
-        conn.close()
-        return "找不到會員"
+        if target_member is None:
+            return "找不到會員", 404
 
-    if request.method == "POST":
-         vip = request.form.get("vip") == "1"
-         member_level = "vip" if vip else "normal"
-       
-         sql = """
-        UPDATE members
-        SET name = %s,
-            phone = %s,
-            birthday = %s,
-            vip = %s,
-            member_level = %s,
-            visit_count = %s,
-            line_user_id = %s,
-            total_amount = %s,
-            favorite_product = %s,
-            face_image = %s
-        WHERE member_id = %s
-        """
+        if request.method == "GET":
+            return redirect(url_for(
+                "member.member_detail",
+                member_id=member_id
+            ))
 
-         data = (
-            request.form.get("name"),
-            request.form.get("phone"),
-            request.form.get("birthday") or None,
+        name = (request.form.get("name") or "").strip()
+        phone = (request.form.get("phone") or "").strip() or None
+        birthday = (request.form.get("birthday") or "").strip() or None
+        vip = request.form.get("vip") == "1"
+        member_level = "vip" if vip else "normal"
+
+        if not name:
+            return redirect(url_for(
+                "member.member_detail",
+                member_id=member_id,
+                error="姓名不可為空"
+            ))
+
+        image_file = request.files.get("face_image")
+        has_new_image = bool(
+            image_file is not None
+            and image_file.filename
+        )
+        face_image_path = target_member.get("face_image")
+
+        if has_new_image:
+            if not allowed_image_file(image_file.filename):
+                return redirect(url_for(
+                    "member.member_detail",
+                    member_id=member_id,
+                    error="照片格式錯誤，只接受 jpg、jpeg、png"
+                ))
+
+            original_filename = secure_filename(image_file.filename)
+            extension = original_filename.rsplit(".", 1)[1].lower()
+            new_filename = f"member_{uuid.uuid4().hex}.{extension}"
+            saved_image_path = os.path.join(
+                MEMBER_IMAGE_DIR,
+                new_filename
+            )
+            image_file.save(saved_image_path)
+
+            face_check_result = validate_member_face_image(
+                saved_image_path
+            )
+
+            if not face_check_result.get("success"):
+                if os.path.exists(saved_image_path):
+                    os.remove(saved_image_path)
+
+                saved_image_path = None
+                return redirect(url_for(
+                    "member.member_detail",
+                    member_id=member_id,
+                    error=face_check_result.get(
+                        "message",
+                        "會員照片驗證失敗"
+                    )
+                ))
+
+            face_image_path = saved_image_path
+
+        cursor.execute("""
+            UPDATE members
+            SET name = %s,
+                phone = %s,
+                birthday = %s,
+                vip = %s,
+                member_level = %s,
+                face_image = %s
+            WHERE member_id = %s
+        """, (
+            name,
+            phone,
+            birthday,
             vip,
             member_level,
-            int(request.form.get("visit_count") or 0),
-            request.form.get("line_user_id"),
-            int(request.form.get("total_amount") or 0),
-            request.form.get("favorite_product"),
-            request.form.get("face_image"),
+            face_image_path,
             member_id
-        )
+        ))
+        conn.commit()
 
-         cursor.execute(sql, data)
-         conn.commit()
+        if has_new_image:
+            face_register_result = register_member_face(
+                member_id=member_id,
+                image_path=saved_image_path
+            )
 
-         cursor.close()
-         conn.close()
+            if not face_register_result.get("success"):
+                cursor.execute("""
+                    UPDATE members
+                    SET name = %s,
+                        phone = %s,
+                        birthday = %s,
+                        vip = %s,
+                        member_level = %s,
+                        face_image = %s
+                    WHERE member_id = %s
+                """, (
+                    target_member.get("name"),
+                    target_member.get("phone"),
+                    target_member.get("birthday"),
+                    target_member.get("vip"),
+                    target_member.get("member_level"),
+                    target_member.get("face_image"),
+                    member_id
+                ))
+                conn.commit()
 
-         return redirect("/member")
+                if os.path.exists(saved_image_path):
+                    os.remove(saved_image_path)
 
-    cursor.close()
-    conn.close()
+                saved_image_path = None
+                return redirect(url_for(
+                    "member.member_detail",
+                    member_id=member_id,
+                    error=face_register_result.get(
+                        "message",
+                        "會員人臉建檔失敗"
+                    )
+                ))
 
-    vip_selected = "selected" if target_member["vip"] else ""
-    normal_selected = "" if target_member["vip"] else "selected"
+        return redirect(url_for(
+            "member.member_detail",
+            member_id=member_id,
+            saved=1
+        ))
 
-    return f"""
-    <h1>修改會員</h1>
+    except Exception as e:
+        if conn is not None:
+            conn.rollback()
 
-    <form method="POST" enctype="multipart/form-data">
-        <p>會員編號：{target_member['member_id']}</p>
-        <p>姓名：<input type="text" name="name" value="{target_member['name'] or ''}"></p>
-        <p>電話：<input type="text" name="phone" value="{target_member['phone'] or ''}"></p>
-        <p>生日：<input type="date" name="birthday" value="{target_member['birthday'] or ''}"></p>
-        <p>LINE User ID：<input type="text" name="line_user_id" value="{target_member['line_user_id'] or ''}"></p>
-        <p>來店次數：<input type="number" name="visit_count" value="{target_member['visit_count'] or 0}"></p>
-        <p>累積消費：<input type="number" name="total_amount" value="{target_member['total_amount'] or 0}"></p>
-        <p>偏好商品：<input type="text" name="favorite_product" value="{target_member['favorite_product'] or ''}"></p>
-        <p>人臉圖片路徑：<input type="text" name="face_image" value="{target_member['face_image'] or ''}"></p>
-        <p>是否 VIP：
-            <select name="vip">
-                <option value="0" {normal_selected}>一般會員</option>
-                <option value="1" {vip_selected}>VIP會員</option>
-            </select>
-        </p>
-        <button type="submit">儲存修改</button>
-    </form>
+        if saved_image_path and os.path.exists(saved_image_path):
+            os.remove(saved_image_path)
 
-    <p><a href="/member">回會員列表</a></p>
-    """
+        print("修改會員資料失敗：", e)
+        return redirect(url_for(
+            "member.member_detail",
+            member_id=member_id,
+            error="會員資料儲存失敗"
+        ))
+
+    finally:
+        if cursor is not None:
+            cursor.close()
+
+        if conn is not None:
+            conn.close()

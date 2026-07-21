@@ -18,72 +18,130 @@
     <p>查看會員基本資料、照片與到店歷史紀錄。</p>
 </section>
 
-<section class="member-detail-layout">
-    <div class="member-detail-card">
-        <h2>基本資料</h2>
-
-        <div class="member-detail-grid">
-            <div class="detail-field">
-                <span>姓名</span>
-                <strong>{{ member.get("name", "") or "-" }}</strong>
-            </div>
-
-            <div class="detail-field">
-                <span>手機</span>
-                <strong>{{ member.get("phone", "") or "-" }}</strong>
-            </div>
-
-            <div class="detail-field">
-                <span>LINE User ID</span>
-                <strong>{{ member.get("line_user_id", "") or "-" }}</strong>
-            </div>
-
-            <div class="detail-field">
-                <span>會員狀態</span>
-                {% if is_vip or member_level == "vip" %}
-                    <strong><span class="badge vip">VIP 會員</span></strong>
-                {% elif member_level == "guest" %}
-                    <strong><span class="badge normal">訪客</span></strong>
-                {% else %}
-                    <strong><span class="badge normal">一般會員</span></strong>
-                {% endif %}
-            </div>
-        </div>
-
-        <div class="member-stats-row">
-            <div class="detail-field">
-                <span>總來店次數</span>
-                <strong>{{ member.get("visit_count", 0) or 0 }}</strong>
-            </div>
-
-            <div class="detail-field">
-                <span>最近來店時間</span>
-                <strong>{{ latest_visit_time or "-" }}</strong>
-            </div>
-        </div>
+{% if request.args.get("saved") %}
+    <div class="member-form-message success" role="status">
+        會員資料已儲存。
     </div>
+{% endif %}
 
-    <div class="member-photo-card">
-        <h2>主要照片</h2>
+{% if request.args.get("error") %}
+    <div class="member-form-message error" role="alert">
+        {{ request.args.get("error") }}
+    </div>
+{% endif %}
 
-        {% if member.get("display_face_image") %}
-            <img
-                src="{{ member.get('display_face_image') }}"
-                alt="{{ member.get('name', '會員') }} 的主要照片"
-                class="member-main-photo"
+<form
+    class="member-detail-form"
+    method="POST"
+    action="{{ url_for('member.edit_member', member_id=member.get('member_id')) }}"
+    enctype="multipart/form-data"
+>
+    <section class="member-detail-layout">
+        <div class="member-detail-card">
+            <h2>基本資料</h2>
+
+            <div class="member-detail-grid">
+                <div class="detail-field">
+                    <label for="member-name">姓名</label>
+                    <input
+                        id="member-name"
+                        class="detail-input"
+                        type="text"
+                        name="name"
+                        value="{{ member.get('name', '') or '' }}"
+                        required
+                    >
+                </div>
+
+                <div class="detail-field">
+                    <label for="member-phone">手機</label>
+                    <input
+                        id="member-phone"
+                        class="detail-input"
+                        type="tel"
+                        name="phone"
+                        value="{{ member.get('phone', '') or '' }}"
+                        autocomplete="tel"
+                    >
+                </div>
+
+                <div class="detail-field">
+                    <label for="member-birthday">生日</label>
+                    <input
+                        id="member-birthday"
+                        class="detail-input"
+                        type="date"
+                        name="birthday"
+                        value="{{ member.get('birthday', '') or '' }}"
+                    >
+                </div>
+
+                <div class="detail-field">
+                    <label for="member-vip">會員等級／VIP 狀態</label>
+                    <select id="member-vip" class="detail-input" name="vip">
+                        <option value="0" {% if not is_vip and member_level != "vip" %}selected{% endif %}>
+                            一般會員
+                        </option>
+                        <option value="1" {% if is_vip or member_level == "vip" %}selected{% endif %}>
+                            VIP 會員
+                        </option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="member-stats-row">
+                <div class="detail-field">
+                    <span>總來店次數</span>
+                    <strong>{{ member.get("visit_count", 0) or 0 }}</strong>
+                </div>
+
+                <div class="detail-field">
+                    <span>最近來店時間</span>
+                    <strong>{{ latest_visit_time or "-" }}</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="member-photo-card">
+            <h2>主要照片</h2>
+
+            {% if member.get("display_face_image") %}
+                <img
+                    src="{{ member.get('display_face_image') }}"
+                    alt="{{ member.get('name', '會員') }} 的主要照片"
+                    class="member-main-photo"
+                >
+            {% else %}
+                <div class="member-photo-placeholder">
+                    尚無照片
+                </div>
+            {% endif %}
+
+            <label class="member-photo-upload-label" for="member-face-image">
+                重新上傳會員照片
+            </label>
+            <input
+                id="member-face-image"
+                class="member-photo-input"
+                type="file"
+                name="face_image"
+                accept=".jpg,.jpeg,.png"
             >
-        {% else %}
-            <div class="member-photo-placeholder">
-                尚無照片
-            </div>
-        {% endif %}
+            <p class="member-photo-hint">
+                未選擇新照片時，會保留目前照片。
+            </p>
+        </div>
+    </section>
+
+    <div class="member-detail-actions">
+        <button type="submit" class="primary-btn member-save-btn">儲存修改</button>
+        <a href="/member" class="secondary-btn">返回列表</a>
     </div>
-</section>
+</form>
 
 <section class="member-table-card">
     <div class="table-header">
         <h2>到店歷史</h2>
-        <a href="/member" class="secondary-btn">返回列表</a>
     </div>
 
     <table class="member-table">
