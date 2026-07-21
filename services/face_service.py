@@ -19,10 +19,10 @@ except ModuleNotFoundError:
 
 # MVP 階段仍先用圖片檔名找 fake_db 會員資料。
 # 正式版會由資料庫同學提供 get_member_by_id(member_id)。
-try:
-    from database.fake_db import get_member_by_image
-except Exception:
-    get_member_by_image = None
+# try:
+#     from database.fake_db import get_member_by_image
+# except Exception:
+#     get_member_by_image = None
 
 try:
     from database.db import get_member_by_id as db_get_member_by_id
@@ -600,11 +600,13 @@ def load_member_faces():
                     f"member_id={row.get('member_id')}"
                 )
 
-            if members:
-                print(
-                    f"正式資料庫會員人臉載入完成，共 {len(members)} 筆"
-                )
-                return members
+            print(
+                f"正式資料庫會員人臉載入完成，共 {len(members)} 筆"
+            )
+
+            # 即使資料庫是 0 筆，也直接回傳空清單
+            # 不再載入 member_images 舊測試圖片
+            return members
 
             print("正式資料庫目前沒有可用的人臉資料，改用 member_images")
 
@@ -1145,73 +1147,75 @@ face_cascade = cv2.CascadeClassifier(
 
 
 def detect_face(frame):
-    """偵測畫面中的人臉，並過濾明顯不合理的誤判框。"""
+    """
+    使用 face_recognition 偵測人臉。
+
+    回傳格式維持：
+    [(x, y, w, h)]
+    讓 camera.py 不需要修改。
+    """
 
     if frame is None:
         return []
 
-    if face_cascade.empty():
-        print("Haar Cascade 載入失敗，無法偵測人臉")
+    if face_recognition is None:
+        print("face_recognition 尚未載入")
         return []
 
-    gray = cv2.cvtColor(
-        frame,
-        cv2.COLOR_BGR2GRAY
-    )
-
-    # 改善光線差異
-    gray = cv2.equalizeHist(gray)
-
-    detected_faces = face_cascade.detectMultiScale(
-        gray,
-        scaleFactor=1.15,
-        minNeighbors=5,
-        minSize=(80, 80),
-        maxSize=(450, 450)
-    )
-
-    frame_height, frame_width = frame.shape[:2]
-    valid_faces = []
-
-    for x, y, w, h in detected_faces:
-        aspect_ratio = w / float(h)
-
-        # 一般正面人臉框比例通常接近正方形
-        if not 0.75 <= aspect_ratio <= 1.30:
-            continue
-
-        center_x = x + w / 2
-        center_y = y + h / 2
-
-        # 排除過度靠近畫面四周的誤判
-        if center_x < frame_width * 0.03:
-            continue
-
-        if center_x > frame_width * 0.97:
-            continue
-
-        if center_y < frame_height * 0.03:
-            continue
-
-        if center_y > frame_height * 0.97:
-            continue
-
-        valid_faces.append(
-            (x, y, w, h)
+    try:
+        # OpenCV 是 BGR，face_recognition 需要 RGB
+        rgb_frame = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2RGB
         )
 
-    # 目前階段只處理單人辨識：
-    # 若偵測到多個框，只保留面積最大的人臉框，
-    # 避免脖子、衣服或背景紋理造成的小型誤判框。
-    if valid_faces:
-        largest_face = max(
-            valid_faces,
-            key=lambda face: face[2] * face[3]
+        # 縮小畫面，提高即時偵測速度
+        small_frame = cv2.resize(
+            rgb_frame,
+            (0, 0),
+            fx=0.5,
+            fy=0.5
         )
 
-        return [largest_face]
+        face_locations = face_recognition.face_locations(
+            small_frame,
+            number_of_times_to_upsample=0,
+            model="hog"
+        )
 
-    return []
+        faces = []
+
+        for top, right, bottom, left in face_locations:
+            # 因為前面縮小成 0.5，所以座標乘回 2
+            top *= 2
+            right *= 2
+            bottom *= 2
+            left *= 2
+
+            x = left
+            y = top
+            w = right - left
+            h = bottom - top
+
+            if w > 0 and h > 0:
+                faces.append(
+                    (x, y, w, h)
+                )
+
+        # 目前只處理最大的一張臉
+        if faces:
+            largest_face = max(
+                faces,
+                key=lambda face: face[2] * face[3]
+            )
+
+            return [largest_face]
+
+        return []
+
+    except Exception as e:
+        print(f"人臉偵測失敗：{e}")
+        return []
 
 
 def recognize_face(frame, faces):
@@ -1439,14 +1443,18 @@ def draw_face_boxes(frame, faces, result=None):
         )
         
     elif member_level == "vip":
-        display_name = f"Member ID: {result['member_id']}"
+        member_name = result.get("name", "VIP")
+
+        display_name = member_name
         member_type = "VIP Member"
-        box_name = f"VIP {result['member_id']}"
-    
+        box_name = member_name
+
     elif member_level == "normal":
-        display_name = f"Member ID: {result['member_id']}"
+        member_name = result.get("name", "Member")
+
+        display_name = member_name
         member_type = "Normal Member"
-        box_name = f"Member {result['member_id']}"
+        box_name = member_name
         
     else:
         display_name = "Guest"
@@ -1455,7 +1463,7 @@ def draw_face_boxes(frame, faces, result=None):
 
     cv2.putText(frame, f"Name: {display_name}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
     cv2.putText(frame, f"Type: {member_type}", (20, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-    cv2.putText(frame, f"Confidence: {result.get('confidence', 0)}", (20, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+    cv2.putText(frame, f"Confidence: {result.get('confidence', 0):.2f}", (20, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
     for (x, y, w, h) in faces:
         cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
@@ -1686,6 +1694,12 @@ def close_recognition_visit(
 
 
 def send_line_notify(result, log_id=None):
+
+    print("========== send_line_notify ==========")
+    print(result)
+    print("======================================")
+
+    ...
     """
     發送 LINE VIP 到店通知。
 
@@ -1698,13 +1712,15 @@ def send_line_notify(result, log_id=None):
     6. 根據結果更新 sent / failed
     """
 
-    # 只推播 VIP
-    if (
-        result.get("member_level") != "vip"
-        and result.get("vip") is not True
-    ):
-        return None
+    # 只推播 VIP        
+    is_vip = (
+        str(result.get("member_level", "")).lower() == "vip"
+        or bool(result.get("vip"))
+    )
 
+    if not is_vip:
+        return None
+    
     member_id = result.get("member_id")
     line_user_id = result.get("line_user_id")
     name = result.get("name", "VIP 會員")
