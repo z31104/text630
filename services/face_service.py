@@ -9,7 +9,12 @@ from datetime import datetime
 
 import cv2
 import numpy as np
-from PIL import Image, ImageOps
+from PIL import (
+    Image,
+    ImageOps,
+    ImageDraw,
+    ImageFont,
+)
 
 try:
     import face_recognition
@@ -88,6 +93,76 @@ except Exception as e:
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Windows 內建繁體中文字型
+# 用於 Pillow 在 OpenCV 畫面上顯示中文。
+CHINESE_FONT_PATH = r"C:\Windows\Fonts\msjhbd.ttc"
+
+
+def draw_chinese_text(
+    frame,
+    text,
+    position,
+    font_size=28,
+    color=(0, 255, 0)
+):
+    """
+    使用 Pillow 在 OpenCV 畫面上顯示中文。
+
+    frame：OpenCV BGR 畫面
+    text：要顯示的文字
+    position：(x, y)
+    font_size：字體大小
+    color：OpenCV BGR 顏色
+    """
+
+    if frame is None:
+        return frame
+
+    if not os.path.exists(CHINESE_FONT_PATH):
+        print(
+            "找不到中文字型："
+            f"{CHINESE_FONT_PATH}"
+        )
+        return frame
+
+    try:
+        # OpenCV BGR → RGB
+        rgb_frame = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2RGB
+        )
+
+        pil_image = Image.fromarray(rgb_frame)
+        draw = ImageDraw.Draw(pil_image)
+
+        font = ImageFont.truetype(
+            CHINESE_FONT_PATH,
+            font_size
+        )
+
+        # OpenCV BGR → Pillow RGB
+        b, g, r = color
+        pillow_color = (r, g, b)
+
+        draw.multiline_text(
+            position,
+            str(text),
+            font=font,
+            fill=pillow_color,
+            spacing=6
+        )
+
+        # Pillow RGB → OpenCV BGR
+        return cv2.cvtColor(
+            np.array(pil_image),
+            cv2.COLOR_RGB2BGR
+        )
+
+    except Exception as e:
+        print(f"中文文字繪製失敗：{e}")
+        return frame
+
 
 MEMBER_IMAGE_DIR = os.path.join(
     BASE_DIR,
@@ -1139,31 +1214,28 @@ def check_duplicate_face(encoding, tolerance=0.6):
     }
 
 
-face_cascade = cv2.CascadeClassifier(
-    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-)
-
-
 def detect_face(frame):
     """
-    偵測畫面中的人臉。
+    使用 face_recognition 的 HOG 模型偵測人臉。
 
-    為提升攝影機流暢度，先將畫面縮小至 50% 進行偵測，
-    再把人臉座標換算回原始畫面。
+    為提升攝影機流暢度，先將畫面縮小至 50% 偵測，
+    再將座標換算回原始畫面。
+
+    face_recognition.face_locations() 原始格式：
+    (top, right, bottom, left)
+
+    為相容目前 camera.py 與畫框流程，
+    最後仍回傳：
+    (x, y, w, h)
     """
 
     if frame is None:
         return []
 
-    if face_cascade.empty():
-        print("Haar Cascade 載入失敗，無法偵測人臉")
+    if face_recognition is None:
+        print("face_recognition 尚未載入，無法偵測人臉")
         return []
 
-    # =============================
-    # 縮小偵測畫面
-    # =============================
-    # 0.5 代表寬、高各縮小一半，
-    # 整體像素數約剩原本的四分之一。
     detection_scale = 0.5
 
     small_frame = cv2.resize(
@@ -1174,38 +1246,45 @@ def detect_face(frame):
         interpolation=cv2.INTER_LINEAR
     )
 
-    gray = cv2.cvtColor(
+    # OpenCV 為 BGR，face_recognition 需要 RGB。
+    rgb_small_frame = cv2.cvtColor(
         small_frame,
-        cv2.COLOR_BGR2GRAY
+        cv2.COLOR_BGR2RGB
     )
 
-    # 改善光線差異
-    gray = cv2.equalizeHist(gray)
-
-    # 因為畫面縮小一半，
-    # minSize 和 maxSize 也調整為原本的一半。
-    detected_faces = face_cascade.detectMultiScale(
-        gray,
-        scaleFactor=1.15,
-        minNeighbors=5,
-        minSize=(40, 40),
-        maxSize=(225, 225)
-    )
+    try:
+        detected_locations = face_recognition.face_locations(
+            rgb_small_frame,
+            number_of_times_to_upsample=0,
+            model="hog"
+        )
+    except Exception as e:
+        print(f"HOG 人臉偵測失敗：{e}")
+        return []
 
     frame_height, frame_width = frame.shape[:2]
     valid_faces = []
 
-    for small_x, small_y, small_w, small_h in detected_faces:
-        # 將縮小畫面中的座標，
-        # 換算回原始 640 × 480 畫面。
-        x = int(small_x / detection_scale)
-        y = int(small_y / detection_scale)
-        w = int(small_w / detection_scale)
-        h = int(small_h / detection_scale)
+    for (
+        small_top,
+        small_right,
+        small_bottom,
+        small_left
+    ) in detected_locations:
+
+        x = int(small_left / detection_scale)
+        y = int(small_top / detection_scale)
+
+        right = int(small_right / detection_scale)
+        bottom = int(small_bottom / detection_scale)
+
+        w = right - x
+        h = bottom - y
 
         # 防止換算後超出原始畫面範圍。
         x = max(0, x)
         y = max(0, y)
+
         w = min(w, frame_width - x)
         h = min(h, frame_height - y)
 
@@ -1214,14 +1293,14 @@ def detect_face(frame):
 
         aspect_ratio = w / float(h)
 
-        # 一般正面人臉框比例通常接近正方形。
-        if not 0.75 <= aspect_ratio <= 1.30:
+        # 排除明顯不合理的人臉框。
+        if not 0.65 <= aspect_ratio <= 1.45:
             continue
 
         center_x = x + w / 2
         center_y = y + h / 2
 
-        # 排除過度靠近畫面四周的誤判。
+        # 排除過度靠近畫面四周的偵測結果。
         if center_x < frame_width * 0.03:
             continue
 
@@ -1239,7 +1318,7 @@ def detect_face(frame):
         )
 
     # 目前階段只處理單人辨識：
-    # 多個框時只保留面積最大的人臉。
+    # 多個人臉時，只保留面積最大的一張臉。
     if valid_faces:
         largest_face = max(
             valid_faces,
@@ -1249,7 +1328,6 @@ def detect_face(frame):
         return [largest_face]
 
     return []
-
 
 def recognize_face(frame, faces):
     """
@@ -1430,7 +1508,7 @@ def recognize_face(frame, faces):
 # 畫面顯示
 # -----------------------------
 
-def draw_face_boxes(frame, faces, result=None):
+def draw_face_boxes(frame, faces, result=None, current_fps=None):
     """
     在畫面上顯示統一的辨識標籤。
 
@@ -1467,6 +1545,7 @@ def draw_face_boxes(frame, faces, result=None):
         "no_face"
     )
 
+    name = result.get("name") or ""
     member_id = result.get("member_id")
     visitor_id = result.get("visitor_id")
     confidence = result.get("confidence", 0)
@@ -1500,17 +1579,33 @@ def draw_face_boxes(frame, faces, result=None):
         and member_level == "vip"
         and member_id is not None
     ):
-        display_name = f"Member ID: {member_id}"
+        display_name = (
+            name
+            if name
+            else f"Member ID: {member_id}"
+        )
         display_type = "VIP"
-        box_label = "VIP"
+        box_label = (
+            name
+            if name
+            else "VIP"
+        )
 
     elif (
         subject_type == "member"
         and member_id is not None
     ):
-        display_name = f"Member ID: {member_id}"
+        display_name = (
+            name
+            if name
+            else f"Member ID: {member_id}"
+        )
         display_type = "Member"
-        box_label = "Member"
+        box_label = (
+            name
+            if name
+            else "Member"
+        )
 
     else:
         display_name = "Guest"
@@ -1521,34 +1616,20 @@ def draw_face_boxes(frame, faces, result=None):
     # 左上角辨識資訊
     # =============================
 
-    cv2.putText(
-        frame,
-        f"Name: {display_name}",
-        (20, 40),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (0, 255, 0),
-        2
+    info_text = (
+        f"Name: {display_name}\n"
+        f"Type: {display_type}\n"
+        f"Confidence: {confidence}"
     )
+    if current_fps is not None:
+        info_text += f"\nFPS: {current_fps:.1f}"
 
-    cv2.putText(
+    frame = draw_chinese_text(
         frame,
-        f"Type: {display_type}",
-        (20, 75),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (0, 255, 0),
-        2
-    )
-
-    cv2.putText(
-        frame,
-        f"Confidence: {confidence}",
-        (20, 110),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (0, 255, 0),
-        2
+        info_text,
+        (20, 15),
+        font_size=27,
+        color=(0, 255, 0)
     )
 
     # =============================
@@ -1565,18 +1646,16 @@ def draw_face_boxes(frame, faces, result=None):
         )
 
         label_y = max(
-            y - 10,
-            25
+            y - 32,
+            0
         )
 
-        cv2.putText(
+        frame = draw_chinese_text(
             frame,
             box_label,
             (x, label_y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 255, 0),
-            2
+            font_size=24,
+            color=(0, 255, 0)
         )
 
     return frame
