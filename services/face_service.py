@@ -180,7 +180,8 @@ os.makedirs(
     exist_ok=True
 )
 
-DEFAULT_CAMERA_ID = "camera_1"
+DEFAULT_CAMERA_ID = os.getenv("CAMERA_ID", "camera_1")
+DEFAULT_CAMERA_LOCATION = os.getenv("CAMERA_LOCATION", "入口")
 
 # 人臉距離越小代表越相似
 # 正式會員維持原本 0.6
@@ -253,7 +254,11 @@ def normalize_member_data(member_data):
         "phone": member_data.get("phone"),
         "vip": vip,
         "member_level": member_level,
-        "visit_count": member_data.get("visit_count", 0),
+        # 第四週統一欄位：不再使用 visit_count
+        "total_visit_count": member_data.get("total_visit_count", 0),
+        "last_visit_time": member_data.get("last_visit_time"),
+        "total_visit_time": member_data.get("total_visit_time", 0),
+        "updated_by": member_data.get("updated_by"),
         "line_user_id": member_data.get("line_user_id"),
         "registration_source": member_data.get("registration_source"),
         "total_amount": member_data.get("total_amount", 0),
@@ -292,7 +297,16 @@ def normalize_visitor_data(visitor_data):
         "phone": None,
         "vip": False,
         "member_level": "guest",
-        "visit_count": visitor_data.get("visit_count", 0),
+        "total_visit_count": 0,
+        "last_visit_time": None,
+        "total_visit_time": 0,
+        "updated_by": None,
+        "visitor_visit_count": visitor_data.get("visitor_visit_count", 0),
+        "converted_member_id": visitor_data.get("converted_member_id"),
+        "best_face_image": (
+            visitor_data.get("best_face_image")
+            or visitor_data.get("image_path")
+        ),
         "line_user_id": None,
         "registration_source": None,
         "total_amount": 0,
@@ -342,7 +356,13 @@ def build_result(member_data=None,visitor_data=None,confidence=0,recognition_sta
             "phone": None,
             "vip": False,
             "member_level": "guest",
-            "visit_count": 0,
+            "total_visit_count": 0,
+            "last_visit_time": None,
+            "total_visit_time": 0,
+            "updated_by": None,
+            "visitor_visit_count": 0,
+            "converted_member_id": None,
+            "best_face_image": None,
             "line_user_id": None,
             "registration_source": None,
             "total_amount": 0,
@@ -354,8 +374,20 @@ def build_result(member_data=None,visitor_data=None,confidence=0,recognition_sta
 
     result = {
         **normalized_data,
+        "log_id": None,
+        "camera_id": DEFAULT_CAMERA_ID,
+        "camera_location": DEFAULT_CAMERA_LOCATION,
         "confidence": confidence,
         "recognition_status": recognition_status,
+        "visit_status": None,
+        "recognized_at": None,
+        "visit_time": None,
+        "last_seen_at": normalized_data.get("last_seen_at"),
+        "leave_time": None,
+        "stay_seconds": 0,
+        "notification_sent": False,
+        "coupon_sent": False,
+        "lottery_status": "not_joined" if normalized_data.get("member_id") is not None else None,
         "member_level_text": get_member_level_text(
             normalized_data.get("member_level", "guest")
         )
@@ -648,7 +680,10 @@ def load_member_faces():
                     "phone": row.get("phone"),
                     "vip": bool(row.get("vip", False)),
                     "member_level": row.get("member_level"),
-                    "visit_count": row.get("visit_count", 0),
+                    "total_visit_count": row.get("total_visit_count", 0),
+                    "last_visit_time": row.get("last_visit_time"),
+                    "total_visit_time": row.get("total_visit_time", 0),
+                    "updated_by": row.get("updated_by"),
                     "line_user_id": row.get("line_user_id"),
                     "registration_source": row.get("registration_source"),
                     "total_amount": row.get("total_amount", 0),
@@ -1068,7 +1103,9 @@ def register_new_visitor(frame, faces):
                 "visitor_id": visitor_id,
                 "visitor_code": visitor_code,
                 "display_name": visitor_code,
-                "visit_count": 0,
+                "visitor_visit_count": 0,
+                "converted_member_id": None,
+                "best_face_image": image_path,
                 "image_path": image_path,
                 "first_seen_at": datetime.now(),
                 "last_seen_at": datetime.now()
@@ -1669,9 +1706,7 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
     """
     將 AI 辨識結果整理成 recognition_logs 資料表格式。
 
-    recognition_logs 欄位：
-    visit_id, member_id, camera_id, confidence, member_level, recognition_status,
-    visit_status, visit_time, leave_time, stay_minutes, created_at
+    recognition_logs 第四週欄位統一使用 stay_seconds；stay_minutes 僅供畫面顯示，不寫入資料庫。
     """
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1693,6 +1728,7 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
         
         # 辨識紀錄
         "camera_id": camera_id,
+        "camera_location": result.get("camera_location", DEFAULT_CAMERA_LOCATION),
         "confidence": result.get("confidence", 0),
         "member_level": result.get(
             "member_level",
@@ -1707,12 +1743,10 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
         "visit_time": visit_time,
         "last_seen_at": result.get("last_seen_at"),
         "leave_time": leave_time,
-        "stay_seconds": 0,
-        "stay_minutes": (
-            stay_minutes
-            if stay_minutes is not None
-            else 0
-        ),
+        "stay_seconds": result.get("stay_seconds", 0),
+        "notification_sent": result.get("notification_sent", False),
+        "coupon_sent": result.get("coupon_sent", False),
+        "lottery_status": result.get("lottery_status", "not_joined"),
         "created_at": now
     }
 
@@ -1758,7 +1792,7 @@ def log_recognition_result(result, visit_time=None, leave_time=None, stay_minute
     print(f"visit_status: {recognition_log['visit_status']}")
     print(f"visit_time: {recognition_log['visit_time']}")
     print(f"leave_time: {recognition_log['leave_time']}")
-    print(f"stay_minutes: {recognition_log['stay_minutes']}")
+    print(f"stay_seconds: {recognition_log['stay_seconds']}")
     print(f"created_at: {recognition_log['created_at']}")
     print("=====================================")
 
@@ -1858,8 +1892,7 @@ def close_recognition_visit(
             log_id=log_id,
             last_seen_at=last_seen_at,
             leave_time=leave_time,
-            stay_seconds=stay_seconds,
-            stay_minutes=stay_minutes
+            stay_seconds=stay_seconds
         )
 
         print("========== Recognition Visit Closed ==========")

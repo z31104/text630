@@ -84,7 +84,13 @@ last_result = {
     "phone": None,
     "vip": False,
     "member_level": "guest",
-    "visit_count": 0,
+    "total_visit_count": 0,
+    "last_visit_time": None,
+    "total_visit_time": 0,
+    "updated_by": None,
+    "visitor_visit_count": 0,
+    "converted_member_id": None,
+    "best_face_image": None,
     "line_user_id": None,
     "registration_source": None,
     "total_amount": 0,
@@ -123,7 +129,8 @@ LAST_SEEN_UPDATE_INTERVAL = 15 # 每 15 秒更新一次資料庫
 GUEST_LOG_INTERVAL = 60        # Guest 每 60 秒最多記錄一次，避免太頻繁
 MIN_CONFIDENCE = 0.5           # 信心值低於 0.5 的會員辨識結果先不記錄
 LEAVE_TIMEOUT = 60             # 超過 60 秒沒再看到同一會員，就先視為離店
-CAMERA_ID = "camera_1"         # 對應 recognition_logs.camera_id
+CAMERA_ID = os.getenv("CAMERA_ID", "camera_1")
+CAMERA_LOCATION = os.getenv("CAMERA_LOCATION", "入口")
 
 def update_camera_status(
     connected,
@@ -297,7 +304,10 @@ def release_camera(cap):
 
 
 def update_member_visit(result, current_time):
-    """將會員 active visit 流程交由 visit_service 統一處理。"""
+    """將會員或固定散客 active visit 流程交由 visit_service 統一處理。"""
+    result["camera_id"] = CAMERA_ID
+    result["camera_location"] = CAMERA_LOCATION
+
     outcome = handle_recognition(
         result=result,
         current_time=current_time,
@@ -485,7 +495,13 @@ def generate_frames():
                         "phone": None,
                         "vip": False,
                         "member_level": "guest",
-                        "visit_count": 0,
+                        "total_visit_count": 0,
+    "last_visit_time": None,
+    "total_visit_time": 0,
+    "updated_by": None,
+    "visitor_visit_count": 0,
+    "converted_member_id": None,
+    "best_face_image": None,
                         "line_user_id": None,
                         "registration_source": None,
                         "total_amount": 0,
@@ -577,7 +593,13 @@ def generate_frames():
                                 "phone": None,
                                 "vip": False,
                                 "member_level": "guest",
-                                "visit_count": 0,
+                                "total_visit_count": 0,
+    "last_visit_time": None,
+    "total_visit_time": 0,
+    "updated_by": None,
+    "visitor_visit_count": 0,
+    "converted_member_id": None,
+    "best_face_image": None,
                                 "line_user_id": None,
                                 "registration_source": None,
                                 "total_amount": 0,
