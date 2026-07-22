@@ -336,7 +336,10 @@ def update_member_visit(result, current_time):
         print("===========================================")
 
     elif action == "created":
-        print("========== Member Visit Started ==========")
+        print("========== Subject Visit Started ==========")
+        print(f"subject_type: {outcome.get('subject_type')}")
+        print(f"member_id: {outcome.get('member_id')}")
+        print(f"visitor_id: {outcome.get('visitor_id')}")
         print(f"member_id: {member_id}")
         print(f"log_id: {log_id}")
         print("==========================================")

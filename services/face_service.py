@@ -1936,62 +1936,129 @@ def send_line_notify(result, log_id=None):
     發送 LINE VIP 到店通知。
 
     正確流程：
-    1. 確認為 VIP
-    2. 確認有 member_id 與 log_id
-    3. 先新增 vip_notifications pending 紀錄
-    4. 同一個 log_id 已存在時，直接略過推播
-    5. 新增成功後才呼叫 LINE
-    6. 根據結果更新 sent / failed
+    1. 必須是正式會員
+    2. 必須成功辨識
+    3. 必須是 VIP 且已綁定 LINE
+    4. 只有 arrived 才發送
+    5. 同一次到店不可重複通知
+    6. 先建立 vip_notifications pending
+    7. 再執行 LINE 推播
+    8. 最後更新 sent 或 failed
     """
 
-    # 只推播 VIP
-    if (
-        result.get("member_level") != "vip"
-        and result.get("vip") is not True
-    ):
+    # -----------------------------------------
+    # 1. 只處理正式會員
+    # -----------------------------------------
+    if result.get("subject_type") != "member":
         return None
 
+    # -----------------------------------------
+    # 2. 必須是成功辨識
+    # -----------------------------------------
+    if result.get("recognition_status") != "recognized":
+        return None
+
+    # -----------------------------------------
+    # 3. 必須有正式會員 ID
+    # -----------------------------------------
     member_id = result.get("member_id")
-    line_user_id = result.get("line_user_id")
-    name = result.get("name", "VIP 會員")
 
     if member_id is None:
         print("LINE 推播略過：member_id 不可為空")
         return None
 
+    # -----------------------------------------
+    # 4. 必須是 VIP 會員
+    # member_level 與 vip 兩個欄位都要成立
+    # -----------------------------------------
+    if result.get("member_level") != "vip":
+        return None
+
+    if result.get("vip") is not True:
+        return None
+
+    # -----------------------------------------
+    # 5. 必須有綁定 LINE 使用者 ID
+    # -----------------------------------------
+    line_user_id = result.get("line_user_id")
+
+    if not line_user_id:
+        print(
+            "LINE 推播略過："
+            f"member_id={member_id} 尚未綁定 line_user_id"
+        )
+        return None
+
+    # -----------------------------------------
+    # 6. 只有第一次到店 arrived 才發送
+    # staying 與 left 都不發送
+    # -----------------------------------------
+    if result.get("visit_status") != "arrived":
+        return None
+
+    # -----------------------------------------
+    # 7. 如果本次紀錄已通知過，不重複發送
+    # -----------------------------------------
+    if result.get("notification_sent") is True:
+        return None
+
+    # -----------------------------------------
+    # 8. 必須有本次到店的 Recognition Log ID
+    # log_id 是函式參數，由 visit_service 傳入
+    # -----------------------------------------
     if log_id is None:
         print("LINE 推播略過：log_id 不可為空")
         return None
 
+    name = result.get("name") or "VIP 會員"
+
     if db_insert_vip_notification is None:
-        print("LINE 推播略過：VIP 通知資料庫函式未成功匯入")
+        print(
+            "LINE 推播略過："
+            "VIP 通知資料庫函式未成功匯入"
+        )
         return None
 
     if notify_vip_recognition is None:
-        print("LINE 推播略過：notify_vip_recognition 尚未成功匯入")
+        print(
+            "LINE 推播略過："
+            "notify_vip_recognition 尚未成功匯入"
+        )
         return None
 
     message = f"VIP會員 {name} 到店了！"
 
     try:
         # 先建立 pending 紀錄。
-        # 若同一個 log_id 已存在，DB 函式會回傳 None。
+        # vip_notifications.log_id 為 UNIQUE，
+        # 同一次到店不會重複建立通知。
         notification_id = db_insert_vip_notification(
             member_id=member_id,
             log_id=log_id,
             line_user_id=line_user_id,
             message=message,
-            status="pending"
+            status="pending",
+            notification_type="vip",
+            retry_count=0,
+            response_message=None
         )
 
         if notification_id is None:
-            print("========== VIP Notification Skipped ==========")
+            print(
+                "========== VIP Notification Skipped =========="
+            )
             print(f"log_id: {log_id}")
             print("原因：同一次到店通知已存在，不重複推播")
-            print("==============================================")
+            print(
+                "=============================================="
+            )
+
+            # 代表這筆到店紀錄已經有通知資料。
+            result["notification_sent"] = True
+
             return "duplicate"
 
-        # 只有成功取得 notification_id 才真正發送 LINE
+        # 真正呼叫 LINE 推播
         status = notify_vip_recognition(result)
 
         sent_at = None
@@ -2001,8 +2068,13 @@ def send_line_notify(result, log_id=None):
             sent_at = datetime.now().strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
+
+            # 同步更新 AI 統一結果。
+            result["notification_sent"] = True
+
         else:
             notification_status = "failed"
+            result["notification_sent"] = False
 
         if db_update_vip_notification_status is not None:
             db_update_vip_notification_status(
@@ -2016,17 +2088,26 @@ def send_line_notify(result, log_id=None):
         print(f"log_id: {log_id}")
         print(f"VIP 會員到店：{name}")
         print(f"member_id: {member_id}")
-        print(f"LINE notify status: {notification_status}")
+        print(
+            f"LINE notify status: "
+            f"{notification_status}"
+        )
         print("=======================================")
 
         return notification_status
 
     except Exception as e:
-        print("========== LINE Notification Failed ==========")
+        result["notification_sent"] = False
+
+        print(
+            "========== LINE Notification Failed =========="
+        )
         print(f"log_id: {log_id}")
         print(f"VIP 會員到店：{name}")
         print(f"member_id: {member_id}")
         print(f"LINE notify error: {e}")
-        print("==============================================")
+        print(
+            "=============================================="
+        )
 
         return "failed"

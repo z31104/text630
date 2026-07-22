@@ -68,15 +68,12 @@ def handle_recognition(
     notify_fn: Callable,
 ) -> dict:
     """
-    統一處理正式會員辨識：
+    統一處理正式會員與固定散客的 Active Visit：
 
     1. 記憶體無紀錄時先查 DB active visit
     2. 未過期則恢復原 log_id
     3. 過期則關閉舊 visit，再建立新 visit
     4. 持續辨識時定期更新 last_seen_at
-
-    回傳：
-        {"action": "restored|created|updated|ignored|failed", "log_id": ...}
     """
 
     member_id = result.get("member_id")
@@ -129,14 +126,36 @@ def handle_recognition(
                 )
 
                 if elapsed_seconds < leave_timeout:
+                    restored_visit_time = (
+                        datetime_to_text(db_visit_time)
+                        or current_time_text
+                    )
+
+                    restored_recognized_at = datetime_to_text(
+                        db_active_visit.get("recognized_at")
+                    )
+
+                    # 將資料庫恢復到的 Active Visit 狀態，
+                    # 同步回本次 AI 辨識結果。
+                    result["log_id"] = db_log_id
+                    result["visit_status"] = "staying"
+                    result["recognized_at"] = (
+                        restored_recognized_at
+                        or restored_visit_time
+                    )
+                    result["visit_time"] = restored_visit_time
+                    result["last_seen_at"] = current_time_text
+                    result["leave_time"] = None
+                    result["stay_seconds"] = db_active_visit.get(
+                        "stay_seconds",
+                        0
+                    )
+
                     active_visits[subject_key] = {
                         "log_id": db_log_id,
                         "result": result,
                         "visit_timestamp": visit_timestamp,
-                        "visit_time": (
-                            datetime_to_text(db_visit_time)
-                            or current_time_text
-                        ),
+                        "visit_time": restored_visit_time,
                         "last_seen_timestamp": current_time,
                         "last_seen_at": current_time_text,
                         "last_db_update_timestamp": current_time,
@@ -151,6 +170,8 @@ def handle_recognition(
                         "action": "restored",
                         "log_id": db_log_id,
                         "member_id": member_id,
+                        "visitor_id": visitor_id,
+                        "subject_type": subject_type,
                     }
 
                 leave_timestamp = min(
@@ -192,7 +213,19 @@ def handle_recognition(
                     "action": "failed",
                     "log_id": None,
                     "member_id": member_id,
+                    "visitor_id": visitor_id,
+                    "subject_type": subject_type,
                 }
+
+            # Recognition Log 成功建立後，
+            # 將正式到店資料同步回 AI 統一辨識結果。
+            result["log_id"] = log_id
+            result["visit_status"] = "arrived"
+            result["recognized_at"] = current_time_text
+            result["visit_time"] = current_time_text
+            result["last_seen_at"] = current_time_text
+            result["leave_time"] = None
+            result["stay_seconds"] = 0
 
             active_visits[subject_key] = {
                 "log_id": log_id,
@@ -213,10 +246,32 @@ def handle_recognition(
                 "action": "created",
                 "log_id": log_id,
                 "member_id": member_id,
+                "visitor_id": visitor_id,
+                "subject_type": subject_type,
+                "visit_status": "arrived",
                 "notification_status": notification_status,
             }
 
         visit_data = active_visits[subject_key]
+
+        # 將目前進行中的 Active Visit 資料，
+        # 同步回這一次的 AI 辨識結果。
+        result["log_id"] = visit_data.get("log_id")
+        result["visit_status"] = "staying"
+        result["visit_time"] = visit_data.get("visit_time")
+        result["last_seen_at"] = current_time_text
+        result["leave_time"] = None
+
+        visit_timestamp = visit_data.get("visit_timestamp")
+
+        if visit_timestamp is not None:
+            result["stay_seconds"] = max(
+                int(round(current_time - visit_timestamp)),
+                0
+            )
+        else:
+            result["stay_seconds"] = 0
+
         visit_data["result"] = result
         visit_data["last_seen_timestamp"] = current_time
         visit_data["last_seen_at"] = current_time_text
@@ -243,12 +298,18 @@ def handle_recognition(
                 "action": "updated",
                 "log_id": log_id,
                 "member_id": member_id,
+                "visitor_id": visitor_id,
+                "subject_type": subject_type,
+                "visit_status": "staying",
             }
 
         return {
             "action": "seen",
             "log_id": visit_data.get("log_id"),
             "member_id": member_id,
+            "visitor_id": visitor_id,
+            "subject_type": subject_type,
+            "visit_status": "staying",
         }
 
 def close_timeout_visits(
