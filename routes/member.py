@@ -15,7 +15,7 @@ from werkzeug.utils import secure_filename
 from database.db import (
     get_connection,
     save_recognition_log,
-    register_member_with_face
+    
 )
 UPLOAD_FOLDER = os.path.join(
     "static",
@@ -180,55 +180,85 @@ def _get_member_visit_records(member_id):
 def member():
     keyword = request.args.get("keyword", "").strip()
 
-    conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
+    conn = None
+    cursor = None
 
-    sql = """
-        SELECT member_id, name, phone, birthday, vip, member_level,
-               total_visit_count, line_user_id, total_amount,
-               favorite_product, face_image, registration_source,
-               created_at, updated_at
-        FROM members
-    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
 
-    params = ()
-
-    if keyword:
-        search_pattern = f"%{keyword}%"
-        sql += """
-            WHERE name LIKE %s
-               OR phone LIKE %s
-               OR line_user_id LIKE %s
+        sql = """
+            SELECT
+                member_id,
+                name,
+                phone,
+                birthday,
+                vip,
+                member_level,
+                total_visit_count,
+                line_user_id,
+                total_amount,
+                favorite_product,
+                face_image,
+                registration_source,
+                created_at,
+                updated_at
+            FROM members
         """
-        params = (
-            search_pattern,
-            search_pattern,
-            search_pattern
-        )
 
-    sql += " ORDER BY member_id ASC"
+        params = ()
 
-    cursor.execute(sql, params)
-    members = cursor.fetchall()
+        if keyword:
+            search_pattern = f"%{keyword}%"
 
-    for member_data in members:
-        member_data["display_face_image"] = (
-            _safe_member_image_url(
-                member_data.get("face_image")
+            sql += """
+                WHERE name LIKE %s
+                   OR phone LIKE %s
+                   OR line_user_id LIKE %s
+            """
+
+            params = (
+                search_pattern,
+                search_pattern,
+                search_pattern
             )
+
+        sql += " ORDER BY member_id ASC"
+
+        cursor.execute(sql, params)
+        members = cursor.fetchall() or []
+
+        for member_data in members:
+            member_data["display_face_image"] = (
+                _safe_member_image_url(
+                    member_data.get("face_image")
+                )
+            )
+
+        return render_template(
+            "member.html",
+            members=members,
+            keyword=keyword
         )
 
+    except Exception as e:
+        print("取得會員列表失敗：", e)
 
-    cursor.close()
-    conn.close()
+        return render_template(
+            "member.html",
+            members=[],
+            keyword=keyword,
+            load_error="會員資料載入失敗"
+        ), 500
 
-    return render_template(
-        "member.html",
-        members=members,
-        keyword=keyword
-    )
+    finally:
+        if cursor is not None:
+            cursor.close()
 
+        if conn is not None:
+            conn.close()
 
+            
 @member_bp.route("/member_images/<path:filename>")
 def member_image(filename):
     return send_from_directory(MEMBER_IMAGE_DIR, filename)

@@ -259,6 +259,9 @@ def insert_recognition_log(
         if visit_time is None:
             visit_time = recognized_at
 
+        if last_seen_at is None:
+            last_seen_at = visit_time
+
         # 4. 檢查通過後，才連線資料庫
         conn = get_connection()
         cursor = conn.cursor()
@@ -814,7 +817,9 @@ def insert_member(
 
     try:
         vip = bool(vip)
-        member_level = "vip" if vip else "normal"
+
+        if member_level not in {"vip", "normal"}:    
+             member_level = "vip" if vip else "normal"
 
         conn = get_connection()
         cursor = conn.cursor()
@@ -942,7 +947,13 @@ def register_member_with_face(
     birthday=None,
     vip=False,
     member_level="normal",
+    total_visit_count=0,
+    last_visit_time=None,
+    total_visit_time=0,
+    updated_by="system",
     line_user_id=None,
+    total_amount=0,
+    favorite_product=None,
     face_image=None,
     registration_source="line",
     image_path=None,
@@ -962,8 +973,16 @@ def register_member_with_face(
             raise ValueError("encoding_data 不可為空")
 
         vip = bool(vip)
-        member_level = "vip" if vip else "normal"
-              
+
+        # 外部有傳合法等級時予以保留。
+        # 只有傳入不合法內容時，才依照 vip 自動修正。
+
+        if member_level not in {"vip", "normal"}:    
+            member_level = "vip" if vip else "normal"
+        
+        total_visit_count = int(total_visit_count or 0)
+        total_visit_time = int(total_visit_time or 0)
+        total_amount = total_amount or 0     
         # NumPy array 轉成 Python list
         if hasattr(encoding_data, "tolist"):
             encoding_data = encoding_data.tolist()
@@ -972,8 +991,9 @@ def register_member_with_face(
         if isinstance(encoding_data, (list, tuple)):
             if len(encoding_data) != 128:
                 raise ValueError(
-                    f"encoding_data 必須是 128 維，目前為 {len(encoding_data)} 維"
-                )
+                   f"encoding_data 必須是 128 維，"
+                   f"目前為 {len(encoding_data)} 維"
+            )
 
             encoding_data = json.dumps(
                 list(encoding_data),
@@ -994,11 +1014,17 @@ def register_member_with_face(
             birthday,
             vip,
             member_level,
+            total_visit_count,
+            last_visit_time,
+            total_visit_time,
+            updated_by,
             line_user_id,
+            total_amount,
+            favorite_product,
             face_image,
             registration_source
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         cursor.execute(
@@ -1006,10 +1032,16 @@ def register_member_with_face(
             (
                 name,
                 phone,
-                birthday,  
+                birthday,
                 vip,
                 member_level,
+                total_visit_count,
+                last_visit_time,
+                total_visit_time,
+                updated_by,
                 line_user_id,
+                total_amount,
+                favorite_product,
                 face_image,
                 registration_source
             )
@@ -1038,7 +1070,10 @@ def register_member_with_face(
 
         face_id = cursor.lastrowid
 
-        # 兩個都成功才提交
+        if face_id is None:
+            raise RuntimeError("新增人臉資料後未取得 face_id")
+
+        # 會員與人臉都成功，才一起提交
         conn.commit()
 
         return {
@@ -1552,7 +1587,7 @@ def get_all_visitor_faces():
 
 def get_dashboard_summary():
     """
-    查詢 Dashboard 統計資料。
+    查詢 Dashboard 今日統計資料。
     """
 
     conn = None
@@ -1564,18 +1599,18 @@ def get_dashboard_summary():
 
         sql = """
         SELECT
-            (
-                SELECT COUNT(*)
-                FROM recognition_logs
-                WHERE DATE(visit_time) = CURDATE()
-            ) AS today_visits,
+            COUNT(*) AS today_visits,
 
-            (
-                SELECT COUNT(*)
-                FROM recognition_logs
-                WHERE DATE(visit_time) = CURDATE()
-                  AND subject_type = 'member'
-                  AND vip = TRUE
+            COALESCE(
+                SUM(
+                    CASE
+                        WHEN subject_type = 'member'
+                         AND vip = TRUE
+                        THEN 1
+                        ELSE 0
+                    END
+                ),
+                0
             ) AS today_vip,
 
             COALESCE(
@@ -1611,7 +1646,7 @@ def get_dashboard_summary():
                     END
                 ),
                 0
-            ) AS active_visits,
+            ) AS current_in_store,
 
             COALESCE(
                 ROUND(
@@ -1631,14 +1666,10 @@ def get_dashboard_summary():
                 SELECT COUNT(*)
                 FROM members
                 WHERE DATE(created_at) = CURDATE()
-            ) AS new_members,
+            ) AS new_members
 
-            (
-                SELECT COUNT(*)
-                FROM recognition_logs
-                WHERE DATE(visit_time) = CURDATE()
-                  AND subject_type = 'visitor'
-            ) AS visitors
+        FROM recognition_logs
+        WHERE DATE(visit_time) = CURDATE()
         """
 
         cursor.execute(sql)
@@ -1648,8 +1679,11 @@ def get_dashboard_summary():
             return {
                 "today_visits": 0,
                 "today_vip": 0,
-                "new_members": 0,
-                "visitors": 0
+                "today_normal_members": 0,
+                "today_visitors": 0,
+                "current_in_store": 0,
+                "average_stay_minutes": 0,
+                "new_members": 0
             }
 
         return summary
@@ -1664,6 +1698,7 @@ def get_dashboard_summary():
 
         if conn and conn.is_connected():
             conn.close()
+
 def get_recent_recognitions(limit=10):
     """
     取得最近的辨識紀錄。
