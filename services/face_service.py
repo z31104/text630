@@ -98,6 +98,22 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 用於 Pillow 在 OpenCV 畫面上顯示中文。
 CHINESE_FONT_PATH = r"C:\Windows\Fonts\msjhbd.ttc"
 
+FONT_CACHE = {}
+
+
+def get_cached_font(font_size):
+    """
+    快取 Pillow 字型，避免每一幀都重新從硬碟載入。
+    """
+
+    if font_size not in FONT_CACHE:
+        FONT_CACHE[font_size] = ImageFont.truetype(
+            CHINESE_FONT_PATH,
+            font_size
+        )
+
+    return FONT_CACHE[font_size]
+
 
 def draw_chinese_text(
     frame,
@@ -136,10 +152,7 @@ def draw_chinese_text(
         pil_image = Image.fromarray(rgb_frame)
         draw = ImageDraw.Draw(pil_image)
 
-        font = ImageFont.truetype(
-            CHINESE_FONT_PATH,
-            font_size
-        )
+        font = get_cached_font(font_size)
 
         # OpenCV BGR → Pillow RGB
         b, g, r = color
@@ -184,8 +197,8 @@ DEFAULT_CAMERA_ID = os.getenv("CAMERA_ID", "camera_1")
 DEFAULT_CAMERA_LOCATION = os.getenv("CAMERA_LOCATION", "入口")
 
 # 人臉距離越小代表越相似
-# 正式會員維持原本 0.6
-MEMBER_MATCH_TOLERANCE = 0.6
+# 使用 0.5 降低不同人物被誤認成會員的風險。
+MEMBER_MATCH_TOLERANCE = 0.5
 
 # 散客使用稍嚴格門檻，降低兩位陌生人被當成同一 visitor 的風險
 VISITOR_MATCH_TOLERANCE = 0.55
@@ -1473,7 +1486,10 @@ def recognize_face(frame, faces):
             f"distance={round(member_best_distance, 4)}"
         )
 
-        if member_best_distance < MEMBER_MATCH_TOLERANCE:
+        if (
+            member_best_distance < MEMBER_MATCH_TOLERANCE
+            and member_confidence >= 0.5
+        ):
             return build_result(
                 member_data=member_best_data,
                 confidence=member_confidence,
