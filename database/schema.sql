@@ -260,7 +260,7 @@ CREATE TABLE IF NOT EXISTS lottery_prizes (
 );
 
 CREATE TABLE IF NOT EXISTS lottery_records (
-    record_id INT AUTO_INCREMENT PRIMARY KEY
+    lottery_id INT AUTO_INCREMENT PRIMARY KEY,
 
     member_id INT NOT NULL,
     prize_id INT NOT NULL,

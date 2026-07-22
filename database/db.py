@@ -1910,7 +1910,7 @@ def has_member_completed_lottery(member_id):
 
         sql = """
         SELECT
-            record_id,
+            lottery_id,
             member_id,
             prize_id,
             prize_name,
@@ -1922,7 +1922,7 @@ def has_member_completed_lottery(member_id):
         FROM lottery_records
         WHERE member_id = %s
           AND is_final = TRUE
-        ORDER BY created_at DESC, record_id DESC
+        ORDER BY created_at DESC, lottery_id DESC
         LIMIT 1
         """
 
@@ -2027,7 +2027,7 @@ def get_member_lottery_records(member_id):
 
         sql = """
         SELECT
-            lr.record_id,
+            lr.lottery_id,
             lr.member_id,
             lr.prize_id,
             lr.coupon_id,
@@ -2045,7 +2045,7 @@ def get_member_lottery_records(member_id):
             ON lr.prize_id = lp.prize_id
         WHERE lr.member_id = %s
         ORDER BY lr.created_at DESC,
-                 lr.record_id DESC
+                 lr.lottery_id DESC
         """
 
         cursor.execute(sql, (member_id,))
@@ -2123,7 +2123,7 @@ def draw_lottery_for_member(member_id):
         cursor.execute(
             """
             SELECT
-                record_id,
+                lottery_id,
                 member_id,
                 prize_id,
                 prize_name,
@@ -2134,7 +2134,7 @@ def draw_lottery_for_member(member_id):
             WHERE member_id = %s
               AND is_final = TRUE
             ORDER BY created_at DESC,
-                     record_id DESC
+                     lottery_id DESC
             LIMIT 1
             """,
             (member_id,)
@@ -2267,7 +2267,7 @@ def draw_lottery_for_member(member_id):
             )
         )
 
-        record_id = cursor.lastrowid
+        lottery_id = cursor.lastrowid
 
         # -------------------------------------------------
         # 第 7 步：全部成功後才 commit
@@ -2278,7 +2278,7 @@ def draw_lottery_for_member(member_id):
             "success": True,
             "message": "抽獎成功",
             "already_completed": False,
-            "record_id": record_id,
+            "lottery_id": lottery_id,
             "is_final": bool(is_final),
             "prize": selected_prize
         }
