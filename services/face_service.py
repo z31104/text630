@@ -53,13 +53,24 @@ except Exception as e:
 
 try:
     from database.db import (
-        update_recognition_last_seen as db_update_recognition_last_seen,
-        close_recognition_visit as db_close_recognition_visit
+        update_recognition_last_seen
+        as db_update_recognition_last_seen,
+
+        close_recognition_visit
+        as db_close_recognition_visit,
+
+        update_recognition_notification_sent
+        as db_update_recognition_notification_sent
     )
+
 except Exception as e:
     db_update_recognition_last_seen = None
     db_close_recognition_visit = None
-    print(f"警告：無法載入 recognition_logs 更新函式：{e}")
+    db_update_recognition_notification_sent = None
+
+    print(
+        f"警告：無法載入 recognition_logs 更新函式：{e}"
+    )
 
 try:
     from database.db import (
@@ -1762,7 +1773,7 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
         "stay_seconds": result.get("stay_seconds", 0),
         "notification_sent": result.get("notification_sent", False),
         "coupon_sent": result.get("coupon_sent", False),
-        "lottery_status": result.get("lottery_status", "not_joined"),
+        "lottery_status": (result.get("lottery_status")or ("not_joined"if result.get("subject_type") == "member"else None)),
         "created_at": now
     }
 
@@ -2065,12 +2076,36 @@ def send_line_notify(result, log_id=None):
 
         if status == "sent":
             notification_status = "sent"
+
             sent_at = datetime.now().strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
 
-            # 同步更新 AI 統一結果。
+            # 更新 AI 記憶體中的通知狀態
             result["notification_sent"] = True
+
+            # 更新 recognition_logs.notification_sent
+            if db_update_recognition_notification_sent is not None:
+                try:
+                    updated_rows = (
+                        db_update_recognition_notification_sent(
+                            log_id=log_id,
+                            notification_sent=True
+                        )
+                    )
+
+                    print(
+                        "recognition_logs notification_sent "
+                        f"更新完成：log_id={log_id}，"
+                        f"updated_rows={updated_rows}"
+                    )
+
+                except Exception as e:
+                    print(
+                        "recognition_logs notification_sent "
+                        f"更新失敗：log_id={log_id}，"
+                        f"error={e}"
+                    )
 
         else:
             notification_status = "failed"
