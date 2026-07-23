@@ -719,14 +719,14 @@ def generate_frames():
             # 並將原本紀錄更新為 visit_status="left"
             close_timeout_visits(current_time)
 
-            # 只有畫面有人臉時才畫框與辨識文字
-            if has_face:
-                frame = draw_face_boxes(
-                    frame,
-                    faces,
-                    last_result,
-                    current_fps=current_fps
-                )
+            # 無論有沒有人臉，都顯示目前辨識狀態與 FPS。
+            # faces 為空時不會畫人臉框，只會顯示左上角資訊。
+            frame = draw_face_boxes(
+                frame,
+                faces,
+                last_result,
+                current_fps=current_fps
+            )
             
 
             # 將 OpenCV 畫面轉成 JPEG

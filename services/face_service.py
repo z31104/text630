@@ -1671,6 +1671,16 @@ def draw_face_boxes(frame, faces, result=None, current_fps=None):
     # =============================
     # 統一畫面顯示標籤
     # =============================
+    
+    if recognition_status == "no_face":
+        display_name = "No Face"
+        display_type = "No Face"
+        box_label = ""
+
+    elif recognition_status == "detecting":
+        display_name = "Detecting"
+        display_type = "Detecting"
+        box_label = "Detecting"
 
     if recognition_status == "detecting":
         display_name = "Detecting"
@@ -1731,24 +1741,69 @@ def draw_face_boxes(frame, faces, result=None, current_fps=None):
         box_label = "Guest"
 
     # =============================
-    # 左上角辨識資訊
+    # 左上角英文與數字資訊
     # =============================
 
-    info_text = (
-        f"Name: {display_name}\n"
-        f"Type: {display_type}\n"
-        f"Confidence: {confidence}"
-    )
-    if current_fps is not None:
-        info_text += f"\nFPS: {current_fps:.1f}"
+    text_color = (0, 255, 0)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 0.7
+    font_thickness = 2
+    line_height = 32
 
+    # Name 標題使用 OpenCV
+    cv2.putText(
+        frame,
+        "Name:",
+        (20, 40),
+        font,
+        font_scale,
+        text_color,
+        font_thickness,
+        cv2.LINE_AA
+    )
+
+    # 姓名另外使用 Pillow，才能顯示中文
     frame = draw_chinese_text(
         frame,
-        info_text,
-        (20, 15),
-        font_size=27,
-        color=(0, 255, 0)
+        display_name,
+        (105, 15),
+        font_size=24,
+        color=text_color
     )
+
+    cv2.putText(
+        frame,
+        f"Type: {display_type}",
+        (20, 40 + line_height),
+        font,
+        font_scale,
+        text_color,
+        font_thickness,
+        cv2.LINE_AA
+    )
+
+    cv2.putText(
+        frame,
+        f"Confidence: {confidence}",
+        (20, 40 + line_height * 2),
+        font,
+        font_scale,
+        text_color,
+        font_thickness,
+        cv2.LINE_AA
+    )
+
+    if current_fps is not None:
+        cv2.putText(
+            frame,
+            f"FPS: {current_fps:.1f}",
+            (20, 40 + line_height * 3),
+            font,
+            font_scale,
+            text_color,
+            font_thickness,
+            cv2.LINE_AA
+        )
 
     # =============================
     # 人臉框與框上標籤
@@ -1826,6 +1881,7 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
         "leave_time": leave_time,
         "stay_seconds": result.get("stay_seconds", 0),
         "notification_sent": result.get("notification_sent", False),
+        "coupon_sent": result.get("coupon_sent", False),
         "coupon_sent": result.get("coupon_sent", False),
         "lottery_status": (
             result.get("lottery_status")
