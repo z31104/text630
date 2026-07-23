@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS recognition_logs (
 
     notification_sent BOOLEAN NOT NULL DEFAULT FALSE,
     coupon_sent BOOLEAN NOT NULL DEFAULT FALSE,
-    lottery_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    lottery_status VARCHAR(30) NOT NULL DEFAULT 'not_joined',
 
     camera_location VARCHAR(100),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

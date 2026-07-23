@@ -13,6 +13,7 @@ load_dotenv()
 RECOGNITION_STATUS_RECOGNIZED = "recognized"
 RECOGNITION_STATUS_GUEST = "guest"
 RECOGNITION_STATUS_FAILED = "failed"
+RECOGNITION_STATUS_NO_FACE = "no_face"
 
 # 到店狀態
 VISIT_STATUS_ARRIVED = "arrived"
@@ -134,10 +135,11 @@ def get_member_by_id(member_id):
     )
 
     member = cursor.fetchone()
+
     if member:
-            member["member_level_text"] = get_member_level_text(
-                member.get("member_level")
-    )
+        member["member_level_text"] = get_member_level_text(
+            member.get("member_level")
+        )
 
     cursor.close()
     conn.close()
@@ -164,8 +166,12 @@ def insert_recognition_log(
     last_seen_at=None,
     leave_time=None,
     stay_seconds=0,
+    notification_sent=False,
+    coupon_sent=False,
+    lottery_status="not_joined",
     created_at=None
 ):
+
     conn = None
     cursor = None
 
@@ -229,7 +235,8 @@ def insert_recognition_log(
         valid_recognition_statuses = {
             RECOGNITION_STATUS_RECOGNIZED,
             RECOGNITION_STATUS_GUEST,
-            RECOGNITION_STATUS_FAILED
+            RECOGNITION_STATUS_FAILED,
+            RECOGNITION_STATUS_NO_FACE
         }
 
         # 2. 檢查 visit_status 是否合法
@@ -284,11 +291,14 @@ def insert_recognition_log(
             last_seen_at,
             leave_time,
             stay_seconds,
+            notification_sent,
+            coupon_sent,
+            lottery_status,
             recognized_at,
             created_at,
             camera_location
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         data = (
@@ -308,6 +318,9 @@ def insert_recognition_log(
             last_seen_at,
             leave_time,
             stay_seconds,
+            bool(notification_sent),
+            bool(coupon_sent),
+            lottery_status,
             recognized_at,
             created_at,
             camera_location
@@ -347,14 +360,33 @@ def save_recognition_log(data):
 
         camera_id=data.get("camera_id"),
         member_level=data.get("member_level"),
-        recognition_status=(data.get("recognition_status") or RECOGNITION_STATUS_RECOGNIZED),
-        visit_status=(  data.get("visit_status") or VISIT_STATUS_ARRIVED),
-        visit_time=data.get("visit_time"),
+        recognition_status=(
+            data.get("recognition_status")
+            or RECOGNITION_STATUS_RECOGNIZED
+        ),
+        visit_status=(
+            data.get("visit_status")
+            or VISIT_STATUS_ARRIVED
+        ),
+        visit_time=data.get("visit_time" ),
         last_seen_at=data.get("last_seen_at"),
         leave_time=data.get("leave_time"),
         stay_seconds=data.get("stay_seconds", 0),
+        notification_sent=data.get(
+            "notification_sent",
+            False
+        ),
+        coupon_sent=data.get(
+            "coupon_sent",
+            False
+        ),
+        lottery_status=data.get(
+            "lottery_status",
+            "not_joined" ),
         created_at=data.get("created_at")
+
     )
+
 
 def insert_vip_notification(
     member_id,
@@ -661,13 +693,71 @@ def update_recognition_last_seen(log_id, last_seen_at):
         if conn:
             conn.close()
 
+def update_recognition_notification_sent(
+    log_id,
+    notification_sent=True
+):
+    """
+    更新 recognition_logs 的 VIP 通知發送狀態。
+
+    notification_sent:
+    - True：LINE 通知已成功發送
+    - False：LINE 通知尚未成功發送
+    """
+
+    conn = None
+    cursor = None
+
+    try:
+        if log_id is None:
+            raise ValueError("log_id 不可為空")
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        sql = """
+        UPDATE recognition_logs
+        SET notification_sent = %s
+        WHERE log_id = %s
+        """
+
+        cursor.execute(
+            sql,
+            (
+                bool(notification_sent),
+                log_id
+            )
+        )
+
+        conn.commit()
+
+        return cursor.rowcount
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+
+        print(
+            "更新 recognition_logs.notification_sent 失敗：",
+            e
+        )
+
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
+
 
 def close_recognition_visit(
     log_id,
     last_seen_at,
     leave_time,
     stay_seconds,
-    ):
+):
     conn = None
     cursor = None
 
@@ -709,17 +799,11 @@ def close_recognition_visit(
                 """
                 SELECT
                     subject_type,
-                    member_id,
-                
+                    member_id,                
                     visitor_id
-                
                 FROM recognition_logs
-               
                  WHERE log_id = %s
-
                 """,
-
-
                 (log_id,)
             )
 
@@ -741,14 +825,10 @@ def close_recognition_visit(
                         SET
                             total_visit_count =
                                 COALESCE(total_visit_count, 0) + 1,
-
                             total_visit_time =
                                 COALESCE(total_visit_time, 0) + %s,
-
                             last_visit_time = %s,
-
                             updated_by = 'system'
-
                         WHERE member_id = %s
                         """,
                         (
@@ -767,9 +847,7 @@ def close_recognition_visit(
                         UPDATE visitors
                         SET
                             visitor_visit_count =
-                                COALESCE(visitor_visit_count, 0) + 1,
-
-                                
+                                COALESCE(visitor_visit_count, 0) + 1,                           
                             last_seen_at = %s
                         WHERE visitor_id = %s
                         """,
@@ -819,31 +897,13 @@ def insert_member(
         vip = bool(vip)
 
         if member_level not in {"vip", "normal"}:    
-             member_level = "vip" if vip else "normal"
+            member_level = "vip" if vip else "normal"
 
         conn = get_connection()
         cursor = conn.cursor()
 
         sql = """
-INSERT INTO members (
-    name,
-    phone,
-    birthday,
-    vip,
-    member_level,
-    total_visit_count,
-    line_user_id,
-    total_amount,
-    favorite_product,
-    face_image,
-    registration_source
-)
-VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-"""
-
-        cursor.execute(
-    sql,
-    (
+    INSERT INTO members (
         name,
         phone,
         birthday,
@@ -856,7 +916,25 @@ VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         face_image,
         registration_source
     )
-)
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+
+        cursor.execute(
+            sql,
+            (
+                name,
+                phone,
+                birthday,
+                vip,
+                member_level,
+                total_visit_count,
+                line_user_id,
+                total_amount,
+                favorite_product,
+                face_image,
+                registration_source
+            )
+        )
 
         conn.commit()
         return cursor.lastrowid
@@ -977,12 +1055,12 @@ def register_member_with_face(
         # 外部有傳合法等級時予以保留。
         # 只有傳入不合法內容時，才依照 vip 自動修正。
 
-        if member_level not in {"vip", "normal"}:    
+        if member_level not in {"vip", "normal"}:
             member_level = "vip" if vip else "normal"
         
         total_visit_count = int(total_visit_count or 0)
         total_visit_time = int(total_visit_time or 0)
-        total_amount = total_amount or 0     
+        total_amount = total_amount or 0
         # NumPy array 轉成 Python list
         if hasattr(encoding_data, "tolist"):
             encoding_data = encoding_data.tolist()
@@ -993,7 +1071,7 @@ def register_member_with_face(
                 raise ValueError(
                    f"encoding_data 必須是 128 維，"
                    f"目前為 {len(encoding_data)} 維"
-            )
+                )
 
             encoding_data = json.dumps(
                 list(encoding_data),
@@ -1118,6 +1196,9 @@ def get_all_member_faces():
             m.vip,
             m.member_level,
             m.total_visit_count,
+            m.last_visit_time,
+            m.total_visit_time,
+            m.updated_by,
             m.line_user_id,
             m.total_amount,
             m.favorite_product,
@@ -1427,9 +1508,10 @@ def register_visitor_with_face(
             display_name,
             visitor_visit_count,
             first_seen_at,
-            last_seen_at
+            last_seen_at,
+            best_face_image
         )
-        VALUES (%s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s)
         """
 
         cursor.execute(
@@ -1439,7 +1521,8 @@ def register_visitor_with_face(
                 display_name,
                 0,
                 first_seen_at,
-                last_seen_at
+                last_seen_at,
+                image_path
             )
         )
 

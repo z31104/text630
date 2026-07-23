@@ -117,10 +117,24 @@ def _get_member_detail(member_id):
         conn = get_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
-            SELECT member_id, name, phone, birthday, vip, member_level,
-                   total_visit_count, line_user_id, total_amount,
-                   favorite_product, face_image, registration_source,
-                   created_at, updated_at
+            SELECT
+                member_id,
+                name,
+                phone,
+                birthday,
+                vip,
+                member_level,
+                total_visit_count,
+                last_visit_time,
+                total_visit_time,
+                updated_by,
+                line_user_id,
+                total_amount,
+                favorite_product,
+                face_image,
+                registration_source,
+                created_at,
+                updated_at
             FROM members
             WHERE member_id = %s
         """, (member_id,))

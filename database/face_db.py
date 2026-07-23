@@ -89,6 +89,7 @@ def get_member_by_image(filename):
 
     return get_member_by_face_image(filename)
 
+
 if __name__ == "__main__":
     print(get_member_by_id(1))
     print(get_member_by_name("李小華"))
