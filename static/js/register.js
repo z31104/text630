@@ -138,18 +138,27 @@ function resetFacePreview() {
     }
 }
 
-function buildPrizePayload(prize) {
-    const memberId = registeredMember && (
+function getRegisteredMemberId() {
+    if (!registeredMember) {
+        return null;
+    }
+
+    return (
         registeredMember.member_id ||
         registeredMember.id ||
-        registeredMember.memberId
+        registeredMember.memberId ||
+        null
     );
+}
+
+function buildPrizePayload(prize) {
+    const memberId = getRegisteredMemberId();
 
     return JSON.stringify({
         type: "welcome_lottery_prize",
         prize_id: prize.id,
         prize_name: prize.name,
-        member_id: memberId || null,
+        member_id: memberId,
         line_user_id: lineUserIdInput ? lineUserIdInput.value.trim() || null : null,
         issued_at: new Date().toISOString()
     });
@@ -331,8 +340,12 @@ if (registerForm) {
                 registeredMember = result.data.member || {};
                 registerSuccess = true;
 
-                const memberId = registeredMember.member_id ? `，會員編號：${registeredMember.member_id}` : "";
-                showRegisterResult(`${result.data.message || "註冊成功"}${memberId}`, "success");
+                const memberId = getRegisteredMemberId();
+                console.log("registeredMember:", registeredMember);
+                console.log("memberId:", memberId);
+
+                const memberIdMessage = memberId ? `，會員編號：${memberId}` : "";
+                showRegisterResult(`${result.data.message || "註冊成功"}${memberIdMessage}`, "success");
 
                 registerForm.querySelectorAll("input").forEach(function (input) {
                     input.disabled = true;
