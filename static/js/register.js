@@ -15,21 +15,48 @@ const lotteryPrizeCard = document.getElementById("lotteryPrizeCard");
 const lotteryPrizeName = document.getElementById("lotteryPrizeName");
 const lotteryPrizeDetail = document.getElementById("lotteryPrizeDetail");
 const lotteryQrCode = document.getElementById("lotteryQrCode");
+const lotteryQrWrap = lotteryQrCode ? lotteryQrCode.closest(".lottery-qr-wrap") : null;
 const lotteryConfetti = document.getElementById("lotteryConfetti");
 
 let registerSuccess = false;
 let registeredMember = null;
 let isSpinning = false;
+let isDrawing = false;
+let lotteryCompleted = false;
 let currentRotation = 0;
 
 const prizes = [
     { id: "WELCOME_50", name: "$50 折價券" },
-    { id: "WELCOME_10_OFF", name: "全品項 9 折" },
-    { id: "WELCOME_100", name: "$100 折價券" },
-    { id: "WELCOME_DESSERT", name: "甜點招待券" },
-    { id: "WELCOME_DRINK", name: "飲品兌換券" },
+    { id: "WELCOME_10_OFF", name: "9 折優惠" },
+    { id: "WELCOME_200", name: "$200 折價券" },
+    { id: "WELCOME_GIFT", name: "小禮品" },
+    { id: "WELCOME_FREE_SHIP", name: "免運券" },
     { id: "WELCOME_RETRY", name: "再抽一次" }
 ];
+
+// TODO: 以下 prize_code 暫時沿用前端 prizes 的 id，需與資料庫組確認正式值。
+const prizeIndexMap = {
+    WELCOME_50: 0,
+    WELCOME_10_OFF: 1,
+    WELCOME_200: 2,
+    WELCOME_GIFT: 3,
+    WELCOME_FREE_SHIP: 4,
+    WELCOME_RETRY: 5
+};
+
+function getPrizeIndex(prize) {
+    if (!prize || !prize.prize_code) {
+        throw new Error("後端未提供獎品代碼 prize_code");
+    }
+
+    const index = prizeIndexMap[prize.prize_code];
+
+    if (typeof index !== "number") {
+        throw new Error(`找不到獎品對應位置：${prize.prize_name || prize.prize_code}`);
+    }
+
+    return index;
+}
 
 function setLineHint(message, type = "") {
     if (!lineHint) {
@@ -151,16 +178,60 @@ function getRegisteredMemberId() {
     );
 }
 
+async function requestLotteryDraw(memberId) {
+    if (!memberId) {
+        throw new Error("找不到會員編號，請先完成會員註冊");
+    }
+
+    const response = await fetch("/api/lottery/draw", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            member_id: memberId
+        })
+    });
+
+    let result;
+
+    try {
+        result = await response.json();
+    } catch (error) {
+        throw new Error("伺服器回傳格式錯誤");
+    }
+
+    if (!result || typeof result !== "object") {
+        throw new Error("伺服器回傳格式錯誤");
+    }
+
+    if (!response.ok && result.already_completed !== true) {
+        throw new Error(result.message || "抽獎失敗");
+    }
+
+    return result;
+}
+
 function buildPrizePayload(prize) {
     const memberId = getRegisteredMemberId();
+    const prizeCode = prize.prize_code || prize.id || null;
+    const prizeName = prize.prize_name || prize.name || null;
 
     return JSON.stringify({
         type: "welcome_lottery_prize",
-        prize_id: prize.id,
-        prize_name: prize.name,
         member_id: memberId,
+        record_id: prize.record_id ?? null,
+        prize_id: prizeCode,
+        prize_code: prizeCode,
+        prize_name: prizeName,
         line_user_id: lineUserIdInput ? lineUserIdInput.value.trim() || null : null,
         issued_at: new Date().toISOString()
+    });
+}
+
+function escapeQrPayloadUnicode(payload) {
+    return payload.replace(/[^\x00-\x7F]/g, function (character) {
+        return `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`;
     });
 }
 
@@ -172,15 +243,20 @@ function renderPrizeQrCode(payload) {
     lotteryQrCode.innerHTML = "";
 
     if (typeof QRCode !== "undefined") {
-        new QRCode(lotteryQrCode, {
-            text: payload,
-            width: 132,
-            height: 132,
-            colorDark: "#1f2937",
-            colorLight: "#ffffff",
-            correctLevel: QRCode.CorrectLevel.M
-        });
-        return;
+        try {
+            new QRCode(lotteryQrCode, {
+                text: escapeQrPayloadUnicode(payload),
+                width: 132,
+                height: 132,
+                colorDark: "#1f2937",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.M
+            });
+            return;
+        } catch (error) {
+            console.warn("本機 QR Code 產生失敗，改用備援服務", error);
+            lotteryQrCode.innerHTML = "";
+        }
     }
 
     const fallbackImage = document.createElement("img");
@@ -189,8 +265,18 @@ function renderPrizeQrCode(payload) {
     lotteryQrCode.appendChild(fallbackImage);
 }
 
-function showPrizeResult(prize) {
-    const payload = buildPrizePayload(prize);
+function clearPrizeQrCode() {
+    if (lotteryQrCode) {
+        lotteryQrCode.innerHTML = "";
+    }
+
+    if (lotteryQrWrap) {
+        lotteryQrWrap.hidden = true;
+    }
+}
+
+function showPrizeResult(prize, qrCodeUrl = null) {
+    const payload = qrCodeUrl || buildPrizePayload(prize);
 
     if (lotteryPrizeName) {
         lotteryPrizeName.textContent = prize.name;
@@ -202,8 +288,69 @@ function showPrizeResult(prize) {
 
     renderPrizeQrCode(payload);
 
+    if (lotteryQrWrap) {
+        lotteryQrWrap.hidden = false;
+    }
+
     if (lotteryPrizeCard) {
         lotteryPrizeCard.hidden = false;
+    }
+}
+
+function handleLotteryResult(result) {
+    if (!result || !result.prize) {
+        throw new Error(result && result.message ? result.message : "伺服器未回傳有效獎項");
+    }
+
+    const prize = result.prize;
+    const prizeName = prize.prize_name || prize.name || prize.prize_code;
+    const canRetry =
+        result.can_retry === true ||
+        result.is_final === false ||
+        prize.prize_type === "retry";
+
+    if (canRetry) {
+        lotteryCompleted = false;
+        clearPrizeQrCode();
+
+        if (lotteryResult) {
+            lotteryResult.textContent = `抽獎結果：${prizeName}。恭喜抽到再抽一次！`;
+        }
+
+        if (lotteryPrizeCard) {
+            lotteryPrizeCard.hidden = true;
+        }
+
+        if (spinButton) {
+            spinButton.disabled = false;
+            spinButton.textContent = "再抽一次";
+        }
+
+        return;
+    }
+
+    const selectedPrize = {
+        ...prize,
+        record_id: result.record_id ?? prize.record_id ?? null,
+        id: prize.id || prize.prize_code,
+        name: prize.name || prize.prize_name
+    };
+
+    lotteryCompleted = true;
+
+    if (lotteryResult) {
+        lotteryResult.textContent = `抽獎結果：${selectedPrize.name}`;
+    }
+
+    showPrizeResult(
+        selectedPrize,
+        result.qr_code_url || prize.qr_code_url || null
+    );
+    launchLotteryConfetti();
+
+    if (spinButton) {
+        spinButton.disabled = true;
+        spinButton.textContent = "已完成抽獎";
     }
 }
 
@@ -357,8 +504,13 @@ if (registerForm) {
                 }
 
                 if (spinButton && lotteryResult) {
-                    spinButton.disabled = false;
-                    lotteryResult.textContent = "註冊完成，可以抽一次迎新獎勵。";
+                    if (memberId) {
+                        spinButton.disabled = false;
+                        lotteryResult.textContent = "註冊完成，可以抽一次迎新獎勵。";
+                    } else {
+                        spinButton.disabled = true;
+                        lotteryResult.textContent = "註冊成功，但找不到會員編號，暫時無法抽獎。";
+                    }
                 }
             })
             .catch(function (error) {
@@ -370,34 +522,96 @@ if (registerForm) {
 }
 
 if (spinButton && spinWheel && lotteryResult) {
-    spinButton.addEventListener("click", function () {
+    spinButton.addEventListener("click", async function () {
+        if (isDrawing) {
+            return;
+        }
+
+        if (lotteryCompleted) {
+            return;
+        }
+
         if (isSpinning || !registerSuccess) {
             return;
         }
 
-        isSpinning = true;
+        const memberId = getRegisteredMemberId();
+
+        if (!memberId) {
+            spinButton.disabled = true;
+            lotteryResult.textContent = "找不到會員編號，請先完成會員註冊";
+            return;
+        }
+
+        isDrawing = true;
         spinButton.disabled = true;
+        spinButton.setAttribute("aria-busy", "true");
+        spinButton.textContent = "抽獎中…";
         lotteryResult.textContent = "抽獎中...";
 
-        spinWheel.style.setProperty("--wheel-text-fix", "0deg");
+        try {
+            const result = await requestLotteryDraw(memberId);
 
-        const prizeIndex = Math.floor(Math.random() * prizes.length);
-        const segmentDegree = 360 / prizes.length;
-        const prizeCenterDegree = prizeIndex * segmentDegree + segmentDegree / 2;
-        const targetDegree = 360 - prizeCenterDegree;
-        const extraSpins = 5 * 360;
-        const finalRotation = currentRotation + extraSpins + targetDegree;
+            if (result.already_completed === true) {
+                lotteryCompleted = true;
+                clearPrizeQrCode();
 
-        spinWheel.style.transform = `rotate(${finalRotation}deg)`;
-        currentRotation = finalRotation;
+                if (lotteryPrizeCard) {
+                    lotteryPrizeCard.hidden = true;
+                }
 
-        window.setTimeout(function () {
+                spinButton.disabled = true;
+                spinButton.textContent = "已完成抽獎";
+                lotteryResult.textContent = result.message || "已完成抽獎";
+                return;
+            }
+
+            if (result.success !== true || !result.prize) {
+                throw new Error(result.message || "抽獎失敗");
+            }
+
+            const prizeIndex = getPrizeIndex(result.prize);
+
+            isSpinning = true;
+
+            spinWheel.style.setProperty("--wheel-text-fix", "0deg");
+
+            const segmentDegree = 360 / prizes.length;
+            const prizeCenterDegree = prizeIndex * segmentDegree + segmentDegree / 2;
+            const targetDegree = 360 - prizeCenterDegree;
+            const extraSpins = 5 * 360;
+            const finalRotation = currentRotation + extraSpins + targetDegree;
+
+            spinWheel.style.transform = `rotate(${finalRotation}deg)`;
+            currentRotation = finalRotation;
+
+            await new Promise(function (resolve) {
+                window.setTimeout(resolve, 4200);
+            });
+
             spinWheel.style.setProperty("--wheel-text-fix", `${finalRotation}deg`);
-            lotteryResult.textContent = `抽獎結果：${prizes[prizeIndex].name}`;
-            showPrizeResult(prizes[prizeIndex]);
-            launchLotteryConfetti();
-            spinButton.disabled = false;
             isSpinning = false;
-        }, 4200);
+            handleLotteryResult(result);
+        } catch (error) {
+            clearPrizeQrCode();
+
+            if (lotteryPrizeCard) {
+                lotteryPrizeCard.hidden = true;
+            }
+
+            lotteryResult.textContent = error.message || "抽獎失敗";
+            isSpinning = false;
+
+            if (!lotteryCompleted) {
+                spinButton.disabled = false;
+                spinButton.textContent = "重新抽獎";
+            } else {
+                spinButton.disabled = true;
+                spinButton.textContent = "已完成抽獎";
+            }
+        } finally {
+            isDrawing = false;
+            spinButton.removeAttribute("aria-busy");
+        }
     });
 }

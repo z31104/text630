@@ -1761,6 +1761,8 @@ body {
 
 .welcome-gift-hero .promo-coupon-row {
     max-width: 930px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .welcome-gift-hero .promo-coupon {
