@@ -3,55 +3,55 @@
 {% block title %}Dashboard｜智慧會員系統{% endblock %}
 
 {% macro display_value(value) -%}
-    {%- if value is undefined or value is none or value == "" -%}
-        -
-    {%- else -%}
-        {{ value }}
-    {%- endif -%}
+{%- if value is undefined or value is none or value == "" -%}
+-
+{%- else -%}
+{{ value }}
+{%- endif -%}
 {%- endmacro %}
 
 {% macro status_badge(value) -%}
-    {%- if value is undefined or value is none or value == "" -%}
-        -
-    {%- elif value in ["left", "failed", "error"] -%}
-        <span class="status inactive">{{ value }}</span>
-    {%- elif value in ["staying", "arrived"] -%}
-        <span class="status staying">{{ value }}</span>
-    {%- elif value in ["pending", "guest"] -%}
-        <span class="status pending">{{ value }}</span>
-    {%- else -%}
-        <span class="status active">{{ value }}</span>
-    {%- endif -%}
+{%- if value is undefined or value is none or value == "" -%}
+-
+{%- elif value in ["left", "failed", "error"] -%}
+<span class="status inactive">{{ value }}</span>
+{%- elif value in ["staying", "arrived"] -%}
+<span class="status staying">{{ value }}</span>
+{%- elif value in ["pending", "guest"] -%}
+<span class="status pending">{{ value }}</span>
+{%- else -%}
+<span class="status active">{{ value }}</span>
+{%- endif -%}
 {%- endmacro %}
 
 {% macro subject_name(row) -%}
-    {%- if row.subject_type == "member" -%}
-        {{ row.name or "未知訪客" }}
-    {%- elif row.subject_type == "visitor" -%}
-        {{ row.name or row.visitor_code or "未知訪客" }}
-    {%- else -%}
-        未知訪客
-    {%- endif -%}
+{%- if row.subject_type == "member" -%}
+{{ row.name or "未知訪客" }}
+{%- elif row.subject_type == "visitor" -%}
+{{ row.name or row.visitor_code or "未知訪客" }}
+{%- else -%}
+未知訪客
+{%- endif -%}
 {%- endmacro %}
 
 {% macro subject_text(row) -%}
-    {%- if row.subject_type == "member" -%}
-        {{ row.member_level_text or "一般會員" }}
-    {%- elif row.subject_type == "visitor" -%}
-        固定散客
-    {%- else -%}
-        未知訪客
-    {%- endif -%}
+{%- if row.subject_type == "member" -%}
+{{ row.member_level_text or "一般會員" }}
+{%- elif row.subject_type == "visitor" -%}
+固定散客
+{%- else -%}
+未知訪客
+{%- endif -%}
 {%- endmacro %}
 
 {% macro subject_badge_class(row) -%}
-    {%- if row.subject_type == "member" and (row.vip or row.member_level == "vip") -%}
-        vip
-    {%- elif row.subject_type == "member" -%}
-        member
-    {%- else -%}
-        normal
-    {%- endif -%}
+{%- if row.subject_type == "member" and (row.vip or row.member_level == "vip") -%}
+vip
+{%- elif row.subject_type == "member" -%}
+member
+{%- else -%}
+normal
+{%- endif -%}
 {%- endmacro %}
 
 {% block content %}
@@ -81,7 +81,7 @@
 
     <div class="dashboard-card">
         <p>散客</p>
-        <h2>{{ summary.visitors|default(0, true) }}</h2>
+        <h2>{{ summary.today_visitors|default(0, true) }}</h2>
         <span>visitors</span>
     </div>
 </section>
@@ -118,45 +118,45 @@
             </thead>
             <tbody>
                 {% for row in recent_recognitions %}
-                    {% set stay_minutes = row.stay_minutes|default(none) %}
-                    {% set stay_seconds = row.stay_seconds|default(none) %}
-                    {% if stay_minutes is none and stay_seconds is not none %}
-                        {% set stay_minutes = (stay_seconds / 60)|round(0, "floor")|int %}
-                    {% endif %}
+                {% set stay_minutes = row.stay_minutes|default(none) %}
+                {% set stay_seconds = row.stay_seconds|default(none) %}
+                {% if stay_minutes is none and stay_seconds is not none %}
+                {% set stay_minutes = (stay_seconds / 60)|round(0, "floor")|int %}
+                {% endif %}
 
-                    <tr>
-                        <td>{{ display_value(row.log_id) }}</td>
-                        <td>{{ subject_name(row) }}</td>
-                        <td><span class="badge {{ subject_badge_class(row) }}">{{ subject_text(row) }}</span></td>
-                        <td>{{ display_value(row.member_id) }}</td>
-                        <td>{{ display_value(row.visitor_id) }}</td>
-                        <td>{{ display_value(row.visitor_code) }}</td>
-                        <td>
-                            {% set vip_value = row.vip|default(none) %}
-                            {% if vip_value is none %}
-                                -
-                            {% elif vip_value %}
-                                true
-                            {% else %}
-                                false
-                            {% endif %}
-                        </td>
-                        <td>{{ display_value(row.visit_time) }}</td>
-                        <td>{{ display_value(row.recognized_at) }}</td>
-                        <td>{{ display_value(row.last_seen_at) }}</td>
-                        <td>{{ display_value(row.leave_time) }}</td>
-                        <td>{{ display_value(row.stay_seconds) }}</td>
-                        <td>{{ display_value(stay_minutes) }}</td>
-                        <td>{{ status_badge(row.recognition_status) }}</td>
-                        <td>{{ status_badge(row.visit_status) }}</td>
-                        <td>{{ display_value(row.camera_location or row.camera_id) }}</td>
-                        <td>{{ display_value(row.confidence) }}</td>
-                        <td>{{ display_value(row.created_at) }}</td>
-                    </tr>
+                <tr>
+                    <td>{{ display_value(row.log_id) }}</td>
+                    <td>{{ subject_name(row) }}</td>
+                    <td><span class="badge {{ subject_badge_class(row) }}">{{ subject_text(row) }}</span></td>
+                    <td>{{ display_value(row.member_id) }}</td>
+                    <td>{{ display_value(row.visitor_id) }}</td>
+                    <td>{{ display_value(row.visitor_code) }}</td>
+                    <td>
+                        {% set vip_value = row.vip|default(none) %}
+                        {% if vip_value is none %}
+                        -
+                        {% elif vip_value %}
+                        true
+                        {% else %}
+                        false
+                        {% endif %}
+                    </td>
+                    <td>{{ display_value(row.visit_time) }}</td>
+                    <td>{{ display_value(row.recognized_at) }}</td>
+                    <td>{{ display_value(row.last_seen_at) }}</td>
+                    <td>{{ display_value(row.leave_time) }}</td>
+                    <td>{{ display_value(row.stay_seconds) }}</td>
+                    <td>{{ display_value(stay_minutes) }}</td>
+                    <td>{{ status_badge(row.recognition_status) }}</td>
+                    <td>{{ status_badge(row.visit_status) }}</td>
+                    <td>{{ display_value(row.camera_location or row.camera_id) }}</td>
+                    <td>{{ display_value(row.confidence) }}</td>
+                    <td>{{ display_value(row.created_at) }}</td>
+                </tr>
                 {% else %}
-                    <tr>
-                        <td colspan="18">目前沒有資料</td>
-                    </tr>
+                <tr>
+                    <td colspan="18">目前沒有資料</td>
+                </tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -187,24 +187,24 @@
             </thead>
             <tbody>
                 {% for row in recent_vip_notifications %}
-                    <tr>
-                        <td>{{ display_value(row.notification_id) }}</td>
-                        <td>{{ display_value(row.member_id) }}</td>
-                        <td>{{ display_value(row.log_id) }}</td>
-                        <td>{{ display_value(row.member_name or row.name) }}</td>
-                        <td><span class="badge vip">{{ row.member_level_text or "VIP 會員" }}</span></td>
-                        <td>{{ display_value(row.line_user_id) }}</td>
-                        <td>{{ display_value(row.message) }}</td>
-                        <td>{{ status_badge(row.status) }}</td>
-                        <td>{{ display_value(row.sent_at) }}</td>
-                        <td>{{ display_value(row.created_at) }}</td>
-                        <td>{{ display_value(row.camera_location or row.camera_id) }}</td>
-                        <td>{{ display_value(row.confidence) }}</td>
-                    </tr>
+                <tr>
+                    <td>{{ display_value(row.notification_id) }}</td>
+                    <td>{{ display_value(row.member_id) }}</td>
+                    <td>{{ display_value(row.log_id) }}</td>
+                    <td>{{ display_value(row.member_name or row.name) }}</td>
+                    <td><span class="badge vip">{{ row.member_level_text or "VIP 會員" }}</span></td>
+                    <td>{{ display_value(row.line_user_id) }}</td>
+                    <td>{{ display_value(row.message) }}</td>
+                    <td>{{ status_badge(row.status) }}</td>
+                    <td>{{ display_value(row.sent_at) }}</td>
+                    <td>{{ display_value(row.created_at) }}</td>
+                    <td>{{ display_value(row.camera_location or row.camera_id) }}</td>
+                    <td>{{ display_value(row.confidence) }}</td>
+                </tr>
                 {% else %}
-                    <tr>
-                        <td colspan="12">目前沒有資料</td>
-                    </tr>
+                <tr>
+                    <td colspan="12">目前沒有資料</td>
+                </tr>
                 {% endfor %}
             </tbody>
         </table>

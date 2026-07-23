@@ -411,7 +411,7 @@ def build_result(member_data=None,visitor_data=None,confidence=0,recognition_sta
         "stay_seconds": 0,
         "notification_sent": False,
         "coupon_sent": False,
-        "lottery_status": "not_joined" if normalized_data.get("member_id") is not None else None,
+        "lottery_status": "not_joined",
         "member_level_text": get_member_level_text(
             normalized_data.get("member_level", "guest")
         )
@@ -881,6 +881,60 @@ def reload_member_faces():
     )
 
     return known_members
+
+def refresh_member(member_id):
+    """
+    只更新指定會員的人臉與會員資料快取。
+    不需要重新載入全部會員。
+    """
+
+    global known_members
+
+    try:
+        # 直接從資料庫取得這位會員最新資料
+        member_data = db_get_member_by_id(member_id)
+
+        if member_data is None:
+            print(f"更新會員快取失敗：找不到 member_id={member_id}")
+            return False
+
+        # 找出原本快取中的會員
+        for index, old_member in enumerate(known_members):
+
+            if old_member.get("member_id") != member_id:
+                continue
+
+            # 保留原本的人臉 encoding
+            old_encoding = old_member.get("encoding")
+
+            # 整理最新會員資料
+            new_member = normalize_member_data(member_data)
+
+            # 把原本的人臉特徵放回去
+            new_member["encoding"] = old_encoding
+
+            # 用最新會員資料取代舊資料
+            known_members[index] = new_member
+
+            print("========== Member Cache Refreshed ==========")
+            print(f"member_id: {member_id}")
+            print(f"name: {new_member.get('name')}")
+            print(f"vip: {new_member.get('vip')}")
+            print(f"member_level: {new_member.get('member_level')}")
+            print("============================================")
+
+            return True
+
+        print(
+            f"更新會員快取失敗："
+            f"known_members 找不到 member_id={member_id}"
+        )
+
+        return False
+
+    except Exception as e:
+        print(f"更新會員快取失敗：{e}")
+        return False
 
 
 def reload_visitor_faces():
@@ -1773,7 +1827,10 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
         "stay_seconds": result.get("stay_seconds", 0),
         "notification_sent": result.get("notification_sent", False),
         "coupon_sent": result.get("coupon_sent", False),
-        "lottery_status": (result.get("lottery_status")or ("not_joined"if result.get("subject_type") == "member"else None)),
+        "lottery_status": (
+            result.get("lottery_status")
+            or "not_joined"
+        ),
         "created_at": now
     }
 

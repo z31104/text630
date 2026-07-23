@@ -40,8 +40,8 @@ def allowed_image(filename):
 from services.face_service import (
     validate_member_face_image,
     reload_member_faces,
+    refresh_member,
 )
-
 
 member_bp = Blueprint("member", __name__)
 
@@ -571,6 +571,8 @@ def edit_member(member_id):
 
          cursor.execute(sql, data)
          conn.commit()
+
+         refresh_member(member_id)
 
          cursor.close()
          conn.close()

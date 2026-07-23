@@ -187,7 +187,8 @@ def _fetch_member_by_line_user_id(line_user_id):
         conn = get_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute(
-            "SELECT member_id, name, phone, birthday, vip, member_level, visit_count, "
+            "SELECT member_id, name, phone, birthday, vip, member_level, "
+            "total_visit_count AS visit_count, "
             "line_user_id, total_amount, favorite_product, face_image, created_at, updated_at "
             "FROM members WHERE line_user_id = %s",
             (line_user_id,)
@@ -207,7 +208,8 @@ def _fetch_member_by_id(member_id):
         conn = get_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute(
-            "SELECT member_id, name, phone, birthday, vip, member_level, visit_count, "
+            "SELECT member_id, name, phone, birthday, vip, member_level, "
+            "total_visit_count AS visit_count, "
             "line_user_id, total_amount, favorite_product, face_image, created_at, updated_at "
             "FROM members WHERE member_id = %s",
             (member_id,)
