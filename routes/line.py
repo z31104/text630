@@ -11,7 +11,7 @@ from linebot.models import (
     TemplateSendMessage, ButtonsTemplate, URIAction,
 )
 
-from database.db import get_connection, register_member_with_face
+from database.db import get_connection, register_member_with_face, draw_lottery_for_member
 from linebot_service.notify import push_message
 from services.face_service import (
     validate_member_face_image,
@@ -441,3 +441,27 @@ def register_from_line():
         "is_new": True,
         "member": member,
     })
+
+
+@line_bp.route("/api/lottery/draw", methods=["POST"])
+def lottery_draw():
+    """
+    抽獎 API，給前端 register.js 呼叫取代原本的 Math.random() 假抽獎。
+    實際抽獎邏輯（權重、庫存扣除、是否已抽過最終獎項）都在
+    database.db.draw_lottery_for_member 裡處理，這裡只負責收請求、轉發、回傳結果。
+    """
+    data = request.get_json(silent=True) or {}
+    member_id = data.get("member_id")
+
+    if not member_id:
+        return jsonify({"success": False, "message": "缺少 member_id"}), 400
+
+    try:
+        result = draw_lottery_for_member(member_id)
+    except ValueError as e:
+        return jsonify({"success": False, "message": str(e)}), 400
+    except Exception as e:
+        print("抽獎失敗：", e)
+        return jsonify({"success": False, "message": "抽獎失敗，請稍後再試"}), 500
+
+    return jsonify(result)
