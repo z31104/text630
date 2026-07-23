@@ -38,9 +38,7 @@ CREATE TABLE IF NOT EXISTS members (
     birthday DATE NULL,
     vip BOOLEAN DEFAULT FALSE,
     member_level VARCHAR(20) DEFAULT 'normal',
-    -- 第三週舊欄位，暫時保留
-    visit_count INT DEFAULT 0,
-
+    
     -- 第四週正式欄位
     last_visit_time DATETIME NULL,
     total_visit_time INT NOT NULL DEFAULT 0,
@@ -91,17 +89,18 @@ CREATE TABLE IF NOT EXISTS visitors (
     visitor_id INT AUTO_INCREMENT PRIMARY KEY,
     visitor_code VARCHAR(50) NOT NULL UNIQUE,
     display_name VARCHAR(50) DEFAULT 'Visitor',
-
-     -- 第三週目前使用的散客到店次數欄位。
-    -- 第四週預計統一為 visitor_visit_count，
-    -- 待 AI 與 Visitors 頁面完成切換後再正式改名。
-    visit_count INT DEFAULT 0,
-
+    visitor_visit_count INT NOT NULL DEFAULT 0,
     first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_seen_at DATETIME NULL,
+    converted_member_id INT NULL,
+    best_face_image VARCHAR(255) NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        ON UPDATE CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (converted_member_id)
+        REFERENCES members(member_id)
+        ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS visitor_faces (
@@ -115,6 +114,17 @@ CREATE TABLE IF NOT EXISTS visitor_faces (
         REFERENCES visitors(visitor_id)
         ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS camera_locations (
+    camera_id VARCHAR(50) PRIMARY KEY,
+    camera_name VARCHAR(100) NOT NULL,
+    camera_location VARCHAR(100) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP
+);
+
 
 CREATE TABLE IF NOT EXISTS recognition_logs (
     log_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -133,21 +143,16 @@ CREATE TABLE IF NOT EXISTS recognition_logs (
     visit_status VARCHAR(30) DEFAULT 'arrived',
 
     recognized_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        visit_time DATETIME,
+    visit_time DATETIME,
     last_seen_at DATETIME NULL,
     leave_time DATETIME NULL,
 
     -- 第四週正式停留時間欄位，統一以秒數儲存
     stay_seconds INT DEFAULT 0,
 
-    -- 第三週相容欄位：
-    -- 待 AI 與 Dashboard 完成切換後移除。
-    -- 前端顯示分鐘時，請由 stay_seconds 換算。
-    stay_minutes DECIMAL(10,2) DEFAULT 0,
-
     notification_sent BOOLEAN NOT NULL DEFAULT FALSE,
     coupon_sent BOOLEAN NOT NULL DEFAULT FALSE,
-    lottery_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    lottery_status VARCHAR(30) NOT NULL DEFAULT 'not_joined',
 
     camera_location VARCHAR(100),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -191,8 +196,14 @@ CREATE TABLE IF NOT EXISTS vip_notifications (
     message TEXT,
     status VARCHAR(20) DEFAULT 'pending',
     sent_at DATETIME DEFAULT NULL,
+
+
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
+    notification_type VARCHAR(30) NOT NULL DEFAULT 'vip',
+    retry_count INT NOT NULL DEFAULT 0,
+    response_message TEXT NULL,
+    
     UNIQUE KEY uq_vip_notifications_log_id (log_id),
 
     FOREIGN KEY (member_id)
@@ -223,13 +234,8 @@ CREATE TABLE IF NOT EXISTS member_coupons (
     source VARCHAR(50),
     status VARCHAR(20) DEFAULT 'unused',
 
-    -- 第三週目前使用名稱。
-    -- 第四週雲端名稱預計統一為 receive_time。
-    issued_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    
-    -- 第三週目前使用名稱。
-    -- 第四週雲端名稱預計統一為 used_time。
-    used_at DATETIME,
+    receive_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    used_time DATETIME NULL,
 
     FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE CASCADE,
     FOREIGN KEY (coupon_id) REFERENCES coupons(coupon_id) ON DELETE CASCADE
@@ -259,6 +265,11 @@ CREATE TABLE IF NOT EXISTS lottery_records (
     member_id INT NOT NULL,
     prize_id INT NOT NULL,
     coupon_id INT NULL,
+
+    lottery_name VARCHAR(100) NOT NULL DEFAULT '新會員抽獎',
+    prize VARCHAR(100) NULL,
+    draw_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(20) NOT NULL DEFAULT '中獎',
 
     prize_name VARCHAR(100) NOT NULL,
     result VARCHAR(100),

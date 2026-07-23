@@ -458,6 +458,30 @@ body {
     font-weight: 700;
 }
 
+.detail-field > label {
+    display: block;
+    margin-bottom: 8px;
+    color: #6b7280;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.detail-input {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 9px;
+    background-color: #ffffff;
+    color: #1f2937;
+    font: inherit;
+}
+
+.detail-input:focus {
+    outline: 3px solid rgba(37, 99, 235, 0.15);
+    border-color: #2563eb;
+}
+
 .detail-field strong {
     color: #1f2937;
     font-size: 18px;
@@ -483,6 +507,75 @@ body {
     color: #6b7280;
     border: 1px dashed #cbd5e1;
     font-weight: 700;
+}
+
+.member-photo-upload-label {
+    display: block;
+    margin: 18px 0 8px;
+    color: #374151;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.member-photo-input {
+    width: 100%;
+    color: #4b5563;
+    font: inherit;
+}
+
+.member-photo-input::file-selector-button {
+    margin-right: 10px;
+    padding: 9px 13px;
+    border: 1px solid #2563eb;
+    border-radius: 8px;
+    background-color: #ffffff;
+    color: #2563eb;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.member-photo-hint {
+    margin: 10px 0 0;
+    color: #6b7280;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.member-detail-actions {
+    display: flex;
+    gap: 12px;
+    margin: 0 0 24px;
+}
+
+.member-detail-actions .primary-btn,
+.member-detail-actions .secondary-btn {
+    margin-right: 0;
+}
+
+.member-save-btn {
+    border: 0;
+    font: inherit;
+    cursor: pointer;
+}
+
+.member-form-message {
+    margin-bottom: 20px;
+    padding: 14px 18px;
+    border: 1px solid;
+    border-radius: 12px;
+    font-weight: 700;
+}
+
+.member-form-message.success {
+    border-color: #86efac;
+    background-color: #f0fdf4;
+    color: #166534;
+}
+
+.member-form-message.error {
+    border-color: #fca5a5;
+    background-color: #fef2f2;
+    color: #991b1b;
 }
 
 .badge,

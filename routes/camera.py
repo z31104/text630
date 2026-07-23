@@ -25,15 +25,20 @@ from services.face_service import (
     log_recognition_result,
     update_recognition_last_seen,
     close_recognition_visit,
-    send_line_notify
+    send_line_notify,
 )
 camera_bp = Blueprint("camera", __name__)
 
-# 同一時間只允許一個攝影機串流持有實體鏡頭。
-# 瀏覽器重新整理時，會先釋放舊串流使用的鏡頭，
-# 再交給新的 /camera/video_feed 使用。
+# 全域共用的攝影機物件
 camera_instance = None
+
+# 保護攝影機物件的建立與釋放，
+# 避免多個執行緒同時修改 camera_instance。
 camera_instance_lock = threading.Lock()
+
+# 同一時間只允許一個 /camera/video_feed 串流執行，
+# 避免重新整理或開啟多個分頁時同時搶用攝影機。
+camera_stream_lock = threading.Lock()
 
 # =============================
 # 攝影機連線狀態
@@ -79,7 +84,13 @@ last_result = {
     "phone": None,
     "vip": False,
     "member_level": "guest",
-    "visit_count": 0,
+    "total_visit_count": 0,
+    "last_visit_time": None,
+    "total_visit_time": 0,
+    "updated_by": None,
+    "visitor_visit_count": 0,
+    "converted_member_id": None,
+    "best_face_image": None,
     "line_user_id": None,
     "registration_source": None,
     "total_amount": 0,
@@ -113,11 +124,13 @@ NO_FACE_CONFIRM_REQUIRED = 5
 
 # 設定參數
 RECOGNITION_INTERVAL = 2       # 每 2 秒做一次人臉比對
+FACE_DETECTION_FRAME_INTERVAL = 4  # HOG 人臉偵測不需要每一幀執行。每 4 幀偵測一次，其餘畫面沿用上一次的人臉位置。
 LAST_SEEN_UPDATE_INTERVAL = 15 # 每 15 秒更新一次資料庫
 GUEST_LOG_INTERVAL = 60        # Guest 每 60 秒最多記錄一次，避免太頻繁
 MIN_CONFIDENCE = 0.5           # 信心值低於 0.5 的會員辨識結果先不記錄
-LEAVE_TIMEOUT = 60           # 超過 60 秒沒再看到同一會員，就先視為離店
-CAMERA_ID = "camera_1"         # 對應 recognition_logs.camera_id
+LEAVE_TIMEOUT = 60             # 超過 60 秒沒再看到同一會員，就先視為離店
+CAMERA_ID = os.getenv("CAMERA_ID", "camera_1")
+CAMERA_LOCATION = os.getenv("CAMERA_LOCATION", "入口")
 
 def update_camera_status(
     connected,
@@ -238,25 +251,21 @@ def acquire_camera():
     """
     取得攝影機。
 
-    若瀏覽器重新整理或重新開啟串流，
-    先釋放上一個串流持有的攝影機，
-    避免同一支實體鏡頭被重複開啟後出現黑畫面。
+    若全域攝影機物件已經成功開啟，
+    直接沿用目前的攝影機，不主動 release()。
+
+    這樣可以避免瀏覽器重新整理或第二個請求進入時，
+    把另一個正在使用攝影機的執行緒強制中斷。
     """
 
     global camera_instance
 
     with camera_instance_lock:
-        if camera_instance is not None:
-            try:
-                camera_instance.release()
-                print("已釋放上一個攝影機串流")
-            except Exception as e:
-                print(f"釋放上一個攝影機串流失敗：{e}")
-
-            camera_instance = None
-
-            # 讓 Windows 有一點時間釋放攝影機裝置
-            time.sleep(0.3)
+        if (
+            camera_instance is not None
+            and camera_instance.isOpened()
+        ):
+            return camera_instance
 
         camera_instance = open_camera(CAMERA_INDEX)
 
@@ -295,7 +304,10 @@ def release_camera(cap):
 
 
 def update_member_visit(result, current_time):
-    """將會員 active visit 流程交由 visit_service 統一處理。"""
+    """將會員或固定散客 active visit 流程交由 visit_service 統一處理。"""
+    result["camera_id"] = CAMERA_ID
+    result["camera_location"] = CAMERA_LOCATION
+
     outcome = handle_recognition(
         result=result,
         current_time=current_time,
@@ -324,7 +336,10 @@ def update_member_visit(result, current_time):
         print("===========================================")
 
     elif action == "created":
-        print("========== Member Visit Started ==========")
+        print("========== Subject Visit Started ==========")
+        print(f"subject_type: {outcome.get('subject_type')}")
+        print(f"member_id: {outcome.get('member_id')}")
+        print(f"visitor_id: {outcome.get('visitor_id')}")
         print(f"member_id: {member_id}")
         print(f"log_id: {log_id}")
         print("==========================================")
@@ -414,28 +429,51 @@ def generate_frames():
     global guest_confirm_count
     global no_face_frame_count
 
-    cap = acquire_camera()
+    # 嘗試取得攝影機串流鎖。
+    # blocking=False 表示若已有串流正在執行，
+    # 不等待，直接結束這次新的串流請求。
+    lock_acquired = camera_stream_lock.acquire(
+        blocking=False
+    )
 
-    # =============================
-    # FPS 計算初始值
-    # =============================
-    # 使用 monotonic() 計時，不受電腦系統時間調整影響。
-    fps_start_time = time.monotonic()
-
-    # 記錄這一秒內成功處理的畫面數量。
-    fps_frame_count = 0
-
-    # 實際顯示在攝影機畫面上的 FPS。
-    current_fps = 0.0
-
-    if cap is None:
-        print("攝影機串流停止：無法取得攝影機")
+    if not lock_acquired:
+        print("已有攝影機串流正在執行")
         return
 
+    # 先設為 None，確保 finally 可以安全判斷與釋放。
+    cap = None
+
     try:
+        cap = acquire_camera()
+
+        if cap is None:
+            print("攝影機串流停止：無法取得攝影機")
+            return
+
+        # =============================
+        # FPS 計算初始值
+        # =============================
+        # 使用 monotonic() 計時，不受電腦系統時間調整影響。
+        fps_start_time = time.monotonic()
+
+        # 記錄這一秒內成功處理的畫面數量。
+        fps_frame_count = 0
+
+        # 實際顯示在攝影機畫面上的 FPS。
+        current_fps = 0.0
+
+        # HOG 偵測幀數控制
+        face_detection_frame_count = 0
+        
+        # 未執行 HOG 的畫面，沿用上一次偵測結果
+        last_detected_faces = []
+
+
+
         while True:
             time.sleep(0.01)
-
+            current_time = time.time()
+            
             success, frame = cap.read()
             
             if not success or frame is None:
@@ -469,8 +507,19 @@ def generate_frames():
                 fps_frame_count = 0
                 fps_start_time = time.monotonic()
 
-            faces = detect_face(frame)
-            current_time = time.time()
+            # 累計目前處理的畫面數量
+            face_detection_frame_count += 1
+            
+            # 每隔指定幀數才執行一次 HOG 人臉偵測
+            if (
+                face_detection_frame_count
+                >= FACE_DETECTION_FRAME_INTERVAL
+            ):
+                last_detected_faces = detect_face(frame)
+                face_detection_frame_count = 0
+            
+            # 其他幀沿用上一次的人臉位置
+            faces = last_detected_faces
             has_face = len(faces) > 0
         
             
@@ -494,7 +543,13 @@ def generate_frames():
                         "phone": None,
                         "vip": False,
                         "member_level": "guest",
-                        "visit_count": 0,
+                        "total_visit_count": 0,
+    "last_visit_time": None,
+    "total_visit_time": 0,
+    "updated_by": None,
+    "visitor_visit_count": 0,
+    "converted_member_id": None,
+    "best_face_image": None,
                         "line_user_id": None,
                         "registration_source": None,
                         "total_amount": 0,
@@ -586,7 +641,13 @@ def generate_frames():
                                 "phone": None,
                                 "vip": False,
                                 "member_level": "guest",
-                                "visit_count": 0,
+                                "total_visit_count": 0,
+    "last_visit_time": None,
+    "total_visit_time": 0,
+    "updated_by": None,
+    "visitor_visit_count": 0,
+    "converted_member_id": None,
+    "best_face_image": None,
                                 "line_user_id": None,
                                 "registration_source": None,
                                 "total_amount": 0,
@@ -663,23 +724,10 @@ def generate_frames():
                 frame = draw_face_boxes(
                     frame,
                     faces,
-                    last_result
+                    last_result,
+                    current_fps=current_fps
                 )
             
-            # =============================
-            # 顯示實際 Camera FPS
-            # ============================
-            # FPS 不屬於資料庫欄位，
-            # 目前只顯示在攝影機即時畫面上。
-            cv2.putText(
-                frame,
-                f"FPS: {current_fps:.1f}",
-                (20, 145),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 255, 0),
-                2
-            )
 
             # 將 OpenCV 畫面轉成 JPEG
             ret, buffer = cv2.imencode(
@@ -715,6 +763,9 @@ def generate_frames():
     finally:
         close_all_active_visits()
         release_camera(cap)
+        
+        if camera_stream_lock.locked():
+            camera_stream_lock.release()
 
 
 @camera_bp.route("/camera")

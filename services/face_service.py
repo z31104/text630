@@ -9,7 +9,12 @@ from datetime import datetime
 
 import cv2
 import numpy as np
-from PIL import Image, ImageOps
+from PIL import (
+    Image,
+    ImageOps,
+    ImageDraw,
+    ImageFont,
+)
 
 try:
     import face_recognition
@@ -48,13 +53,24 @@ except Exception as e:
 
 try:
     from database.db import (
-        update_recognition_last_seen as db_update_recognition_last_seen,
-        close_recognition_visit as db_close_recognition_visit
+        update_recognition_last_seen
+        as db_update_recognition_last_seen,
+
+        close_recognition_visit
+        as db_close_recognition_visit,
+
+        update_recognition_notification_sent
+        as db_update_recognition_notification_sent
     )
+
 except Exception as e:
     db_update_recognition_last_seen = None
     db_close_recognition_visit = None
-    print(f"警告：無法載入 recognition_logs 更新函式：{e}")
+    db_update_recognition_notification_sent = None
+
+    print(
+        f"警告：無法載入 recognition_logs 更新函式：{e}"
+    )
 
 try:
     from database.db import (
@@ -89,6 +105,89 @@ except Exception as e:
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Windows 內建繁體中文字型
+# 用於 Pillow 在 OpenCV 畫面上顯示中文。
+CHINESE_FONT_PATH = r"C:\Windows\Fonts\msjhbd.ttc"
+
+FONT_CACHE = {}
+
+
+def get_cached_font(font_size):
+    """
+    快取 Pillow 字型，避免每一幀都重新從硬碟載入。
+    """
+
+    if font_size not in FONT_CACHE:
+        FONT_CACHE[font_size] = ImageFont.truetype(
+            CHINESE_FONT_PATH,
+            font_size
+        )
+
+    return FONT_CACHE[font_size]
+
+
+def draw_chinese_text(
+    frame,
+    text,
+    position,
+    font_size=28,
+    color=(0, 255, 0)
+):
+    """
+    使用 Pillow 在 OpenCV 畫面上顯示中文。
+
+    frame：OpenCV BGR 畫面
+    text：要顯示的文字
+    position：(x, y)
+    font_size：字體大小
+    color：OpenCV BGR 顏色
+    """
+
+    if frame is None:
+        return frame
+
+    if not os.path.exists(CHINESE_FONT_PATH):
+        print(
+            "找不到中文字型："
+            f"{CHINESE_FONT_PATH}"
+        )
+        return frame
+
+    try:
+        # OpenCV BGR → RGB
+        rgb_frame = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2RGB
+        )
+
+        pil_image = Image.fromarray(rgb_frame)
+        draw = ImageDraw.Draw(pil_image)
+
+        font = get_cached_font(font_size)
+
+        # OpenCV BGR → Pillow RGB
+        b, g, r = color
+        pillow_color = (r, g, b)
+
+        draw.multiline_text(
+            position,
+            str(text),
+            font=font,
+            fill=pillow_color,
+            spacing=6
+        )
+
+        # Pillow RGB → OpenCV BGR
+        return cv2.cvtColor(
+            np.array(pil_image),
+            cv2.COLOR_RGB2BGR
+        )
+
+    except Exception as e:
+        print(f"中文文字繪製失敗：{e}")
+        return frame
+
+
 MEMBER_IMAGE_DIR = os.path.join(
     BASE_DIR,
     "member_images"
@@ -105,11 +204,12 @@ os.makedirs(
     exist_ok=True
 )
 
-DEFAULT_CAMERA_ID = "camera_1"
+DEFAULT_CAMERA_ID = os.getenv("CAMERA_ID", "camera_1")
+DEFAULT_CAMERA_LOCATION = os.getenv("CAMERA_LOCATION", "入口")
 
 # 人臉距離越小代表越相似
-# 正式會員維持原本 0.6
-MEMBER_MATCH_TOLERANCE = 0.6
+# 使用 0.5 降低不同人物被誤認成會員的風險。
+MEMBER_MATCH_TOLERANCE = 0.5
 
 # 散客使用稍嚴格門檻，降低兩位陌生人被當成同一 visitor 的風險
 VISITOR_MATCH_TOLERANCE = 0.55
@@ -178,7 +278,11 @@ def normalize_member_data(member_data):
         "phone": member_data.get("phone"),
         "vip": vip,
         "member_level": member_level,
-        "visit_count": member_data.get("visit_count", 0),
+        # 第四週統一欄位：不再使用 visit_count
+        "total_visit_count": member_data.get("total_visit_count", 0),
+        "last_visit_time": member_data.get("last_visit_time"),
+        "total_visit_time": member_data.get("total_visit_time", 0),
+        "updated_by": member_data.get("updated_by"),
         "line_user_id": member_data.get("line_user_id"),
         "registration_source": member_data.get("registration_source"),
         "total_amount": member_data.get("total_amount", 0),
@@ -217,7 +321,16 @@ def normalize_visitor_data(visitor_data):
         "phone": None,
         "vip": False,
         "member_level": "guest",
-        "visit_count": visitor_data.get("visit_count", 0),
+        "total_visit_count": 0,
+        "last_visit_time": None,
+        "total_visit_time": 0,
+        "updated_by": None,
+        "visitor_visit_count": visitor_data.get("visitor_visit_count", 0),
+        "converted_member_id": visitor_data.get("converted_member_id"),
+        "best_face_image": (
+            visitor_data.get("best_face_image")
+            or visitor_data.get("image_path")
+        ),
         "line_user_id": None,
         "registration_source": None,
         "total_amount": 0,
@@ -267,7 +380,13 @@ def build_result(member_data=None,visitor_data=None,confidence=0,recognition_sta
             "phone": None,
             "vip": False,
             "member_level": "guest",
-            "visit_count": 0,
+            "total_visit_count": 0,
+            "last_visit_time": None,
+            "total_visit_time": 0,
+            "updated_by": None,
+            "visitor_visit_count": 0,
+            "converted_member_id": None,
+            "best_face_image": None,
             "line_user_id": None,
             "registration_source": None,
             "total_amount": 0,
@@ -279,8 +398,20 @@ def build_result(member_data=None,visitor_data=None,confidence=0,recognition_sta
 
     result = {
         **normalized_data,
+        "log_id": None,
+        "camera_id": DEFAULT_CAMERA_ID,
+        "camera_location": DEFAULT_CAMERA_LOCATION,
         "confidence": confidence,
         "recognition_status": recognition_status,
+        "visit_status": None,
+        "recognized_at": None,
+        "visit_time": None,
+        "last_seen_at": normalized_data.get("last_seen_at"),
+        "leave_time": None,
+        "stay_seconds": 0,
+        "notification_sent": False,
+        "coupon_sent": False,
+        "lottery_status": "not_joined" if normalized_data.get("member_id") is not None else None,
         "member_level_text": get_member_level_text(
             normalized_data.get("member_level", "guest")
         )
@@ -573,7 +704,10 @@ def load_member_faces():
                     "phone": row.get("phone"),
                     "vip": bool(row.get("vip", False)),
                     "member_level": row.get("member_level"),
-                    "visit_count": row.get("visit_count", 0),
+                    "total_visit_count": row.get("total_visit_count", 0),
+                    "last_visit_time": row.get("last_visit_time"),
+                    "total_visit_time": row.get("total_visit_time", 0),
+                    "updated_by": row.get("updated_by"),
                     "line_user_id": row.get("line_user_id"),
                     "registration_source": row.get("registration_source"),
                     "total_amount": row.get("total_amount", 0),
@@ -993,7 +1127,9 @@ def register_new_visitor(frame, faces):
                 "visitor_id": visitor_id,
                 "visitor_code": visitor_code,
                 "display_name": visitor_code,
-                "visit_count": 0,
+                "visitor_visit_count": 0,
+                "converted_member_id": None,
+                "best_face_image": image_path,
                 "image_path": image_path,
                 "first_seen_at": datetime.now(),
                 "last_seen_at": datetime.now()
@@ -1139,31 +1275,28 @@ def check_duplicate_face(encoding, tolerance=0.6):
     }
 
 
-face_cascade = cv2.CascadeClassifier(
-    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-)
-
-
 def detect_face(frame):
     """
-    偵測畫面中的人臉。
+    使用 face_recognition 的 HOG 模型偵測人臉。
 
-    為提升攝影機流暢度，先將畫面縮小至 50% 進行偵測，
-    再把人臉座標換算回原始畫面。
+    為提升攝影機流暢度，先將畫面縮小至 50% 偵測，
+    再將座標換算回原始畫面。
+
+    face_recognition.face_locations() 原始格式：
+    (top, right, bottom, left)
+
+    為相容目前 camera.py 與畫框流程，
+    最後仍回傳：
+    (x, y, w, h)
     """
 
     if frame is None:
         return []
 
-    if face_cascade.empty():
-        print("Haar Cascade 載入失敗，無法偵測人臉")
+    if face_recognition is None:
+        print("face_recognition 尚未載入，無法偵測人臉")
         return []
 
-    # =============================
-    # 縮小偵測畫面
-    # =============================
-    # 0.5 代表寬、高各縮小一半，
-    # 整體像素數約剩原本的四分之一。
     detection_scale = 0.5
 
     small_frame = cv2.resize(
@@ -1174,38 +1307,45 @@ def detect_face(frame):
         interpolation=cv2.INTER_LINEAR
     )
 
-    gray = cv2.cvtColor(
+    # OpenCV 為 BGR，face_recognition 需要 RGB。
+    rgb_small_frame = cv2.cvtColor(
         small_frame,
-        cv2.COLOR_BGR2GRAY
+        cv2.COLOR_BGR2RGB
     )
 
-    # 改善光線差異
-    gray = cv2.equalizeHist(gray)
-
-    # 因為畫面縮小一半，
-    # minSize 和 maxSize 也調整為原本的一半。
-    detected_faces = face_cascade.detectMultiScale(
-        gray,
-        scaleFactor=1.15,
-        minNeighbors=5,
-        minSize=(40, 40),
-        maxSize=(225, 225)
-    )
+    try:
+        detected_locations = face_recognition.face_locations(
+            rgb_small_frame,
+            number_of_times_to_upsample=0,
+            model="hog"
+        )
+    except Exception as e:
+        print(f"HOG 人臉偵測失敗：{e}")
+        return []
 
     frame_height, frame_width = frame.shape[:2]
     valid_faces = []
 
-    for small_x, small_y, small_w, small_h in detected_faces:
-        # 將縮小畫面中的座標，
-        # 換算回原始 640 × 480 畫面。
-        x = int(small_x / detection_scale)
-        y = int(small_y / detection_scale)
-        w = int(small_w / detection_scale)
-        h = int(small_h / detection_scale)
+    for (
+        small_top,
+        small_right,
+        small_bottom,
+        small_left
+    ) in detected_locations:
+
+        x = int(small_left / detection_scale)
+        y = int(small_top / detection_scale)
+
+        right = int(small_right / detection_scale)
+        bottom = int(small_bottom / detection_scale)
+
+        w = right - x
+        h = bottom - y
 
         # 防止換算後超出原始畫面範圍。
         x = max(0, x)
         y = max(0, y)
+
         w = min(w, frame_width - x)
         h = min(h, frame_height - y)
 
@@ -1214,14 +1354,14 @@ def detect_face(frame):
 
         aspect_ratio = w / float(h)
 
-        # 一般正面人臉框比例通常接近正方形。
-        if not 0.75 <= aspect_ratio <= 1.30:
+        # 排除明顯不合理的人臉框。
+        if not 0.65 <= aspect_ratio <= 1.45:
             continue
 
         center_x = x + w / 2
         center_y = y + h / 2
 
-        # 排除過度靠近畫面四周的誤判。
+        # 排除過度靠近畫面四周的偵測結果。
         if center_x < frame_width * 0.03:
             continue
 
@@ -1239,7 +1379,7 @@ def detect_face(frame):
         )
 
     # 目前階段只處理單人辨識：
-    # 多個框時只保留面積最大的人臉。
+    # 多個人臉時，只保留面積最大的一張臉。
     if valid_faces:
         largest_face = max(
             valid_faces,
@@ -1249,7 +1389,6 @@ def detect_face(frame):
         return [largest_face]
 
     return []
-
 
 def recognize_face(frame, faces):
     """
@@ -1358,7 +1497,10 @@ def recognize_face(frame, faces):
             f"distance={round(member_best_distance, 4)}"
         )
 
-        if member_best_distance < MEMBER_MATCH_TOLERANCE:
+        if (
+            member_best_distance < MEMBER_MATCH_TOLERANCE
+            and member_confidence >= 0.5
+        ):
             return build_result(
                 member_data=member_best_data,
                 confidence=member_confidence,
@@ -1430,7 +1572,7 @@ def recognize_face(frame, faces):
 # 畫面顯示
 # -----------------------------
 
-def draw_face_boxes(frame, faces, result=None):
+def draw_face_boxes(frame, faces, result=None, current_fps=None):
     """
     在畫面上顯示統一的辨識標籤。
 
@@ -1467,6 +1609,7 @@ def draw_face_boxes(frame, faces, result=None):
         "no_face"
     )
 
+    name = result.get("name") or ""
     member_id = result.get("member_id")
     visitor_id = result.get("visitor_id")
     confidence = result.get("confidence", 0)
@@ -1500,17 +1643,33 @@ def draw_face_boxes(frame, faces, result=None):
         and member_level == "vip"
         and member_id is not None
     ):
-        display_name = f"Member ID: {member_id}"
+        display_name = (
+            name
+            if name
+            else f"Member ID: {member_id}"
+        )
         display_type = "VIP"
-        box_label = "VIP"
+        box_label = (
+            name
+            if name
+            else "VIP"
+        )
 
     elif (
         subject_type == "member"
         and member_id is not None
     ):
-        display_name = f"Member ID: {member_id}"
+        display_name = (
+            name
+            if name
+            else f"Member ID: {member_id}"
+        )
         display_type = "Member"
-        box_label = "Member"
+        box_label = (
+            name
+            if name
+            else "Member"
+        )
 
     else:
         display_name = "Guest"
@@ -1521,34 +1680,20 @@ def draw_face_boxes(frame, faces, result=None):
     # 左上角辨識資訊
     # =============================
 
-    cv2.putText(
-        frame,
-        f"Name: {display_name}",
-        (20, 40),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (0, 255, 0),
-        2
+    info_text = (
+        f"Name: {display_name}\n"
+        f"Type: {display_type}\n"
+        f"Confidence: {confidence}"
     )
+    if current_fps is not None:
+        info_text += f"\nFPS: {current_fps:.1f}"
 
-    cv2.putText(
+    frame = draw_chinese_text(
         frame,
-        f"Type: {display_type}",
-        (20, 75),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (0, 255, 0),
-        2
-    )
-
-    cv2.putText(
-        frame,
-        f"Confidence: {confidence}",
-        (20, 110),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (0, 255, 0),
-        2
+        info_text,
+        (20, 15),
+        font_size=27,
+        color=(0, 255, 0)
     )
 
     # =============================
@@ -1565,18 +1710,16 @@ def draw_face_boxes(frame, faces, result=None):
         )
 
         label_y = max(
-            y - 10,
-            25
+            y - 32,
+            0
         )
 
-        cv2.putText(
+        frame = draw_chinese_text(
             frame,
             box_label,
             (x, label_y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 255, 0),
-            2
+            font_size=24,
+            color=(0, 255, 0)
         )
 
     return frame
@@ -1590,9 +1733,7 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
     """
     將 AI 辨識結果整理成 recognition_logs 資料表格式。
 
-    recognition_logs 欄位：
-    visit_id, member_id, camera_id, confidence, member_level, recognition_status,
-    visit_status, visit_time, leave_time, stay_minutes, created_at
+    recognition_logs 第四週欄位統一使用 stay_seconds；stay_minutes 僅供畫面顯示，不寫入資料庫。
     """
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1614,6 +1755,7 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
         
         # 辨識紀錄
         "camera_id": camera_id,
+        "camera_location": result.get("camera_location", DEFAULT_CAMERA_LOCATION),
         "confidence": result.get("confidence", 0),
         "member_level": result.get(
             "member_level",
@@ -1628,12 +1770,10 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
         "visit_time": visit_time,
         "last_seen_at": result.get("last_seen_at"),
         "leave_time": leave_time,
-        "stay_seconds": 0,
-        "stay_minutes": (
-            stay_minutes
-            if stay_minutes is not None
-            else 0
-        ),
+        "stay_seconds": result.get("stay_seconds", 0),
+        "notification_sent": result.get("notification_sent", False),
+        "coupon_sent": result.get("coupon_sent", False),
+        "lottery_status": (result.get("lottery_status")or ("not_joined"if result.get("subject_type") == "member"else None)),
         "created_at": now
     }
 
@@ -1679,7 +1819,7 @@ def log_recognition_result(result, visit_time=None, leave_time=None, stay_minute
     print(f"visit_status: {recognition_log['visit_status']}")
     print(f"visit_time: {recognition_log['visit_time']}")
     print(f"leave_time: {recognition_log['leave_time']}")
-    print(f"stay_minutes: {recognition_log['stay_minutes']}")
+    print(f"stay_seconds: {recognition_log['stay_seconds']}")
     print(f"created_at: {recognition_log['created_at']}")
     print("=====================================")
 
@@ -1779,8 +1919,7 @@ def close_recognition_visit(
             log_id=log_id,
             last_seen_at=last_seen_at,
             leave_time=leave_time,
-            stay_seconds=stay_seconds,
-            stay_minutes=stay_minutes
+            stay_seconds=stay_seconds
         )
 
         print("========== Recognition Visit Closed ==========")
@@ -1808,73 +1947,169 @@ def send_line_notify(result, log_id=None):
     發送 LINE VIP 到店通知。
 
     正確流程：
-    1. 確認為 VIP
-    2. 確認有 member_id 與 log_id
-    3. 先新增 vip_notifications pending 紀錄
-    4. 同一個 log_id 已存在時，直接略過推播
-    5. 新增成功後才呼叫 LINE
-    6. 根據結果更新 sent / failed
+    1. 必須是正式會員
+    2. 必須成功辨識
+    3. 必須是 VIP 且已綁定 LINE
+    4. 只有 arrived 才發送
+    5. 同一次到店不可重複通知
+    6. 先建立 vip_notifications pending
+    7. 再執行 LINE 推播
+    8. 最後更新 sent 或 failed
     """
 
-    # 只推播 VIP
-    if (
-        result.get("member_level") != "vip"
-        and result.get("vip") is not True
-    ):
+    # -----------------------------------------
+    # 1. 只處理正式會員
+    # -----------------------------------------
+    if result.get("subject_type") != "member":
         return None
 
+    # -----------------------------------------
+    # 2. 必須是成功辨識
+    # -----------------------------------------
+    if result.get("recognition_status") != "recognized":
+        return None
+
+    # -----------------------------------------
+    # 3. 必須有正式會員 ID
+    # -----------------------------------------
     member_id = result.get("member_id")
-    line_user_id = result.get("line_user_id")
-    name = result.get("name", "VIP 會員")
 
     if member_id is None:
         print("LINE 推播略過：member_id 不可為空")
         return None
 
+    # -----------------------------------------
+    # 4. 必須是 VIP 會員
+    # member_level 與 vip 兩個欄位都要成立
+    # -----------------------------------------
+    if result.get("member_level") != "vip":
+        return None
+
+    if result.get("vip") is not True:
+        return None
+
+    # -----------------------------------------
+    # 5. 必須有綁定 LINE 使用者 ID
+    # -----------------------------------------
+    line_user_id = result.get("line_user_id")
+
+    if not line_user_id:
+        print(
+            "LINE 推播略過："
+            f"member_id={member_id} 尚未綁定 line_user_id"
+        )
+        return None
+
+    # -----------------------------------------
+    # 6. 只有第一次到店 arrived 才發送
+    # staying 與 left 都不發送
+    # -----------------------------------------
+    if result.get("visit_status") != "arrived":
+        return None
+
+    # -----------------------------------------
+    # 7. 如果本次紀錄已通知過，不重複發送
+    # -----------------------------------------
+    if result.get("notification_sent") is True:
+        return None
+
+    # -----------------------------------------
+    # 8. 必須有本次到店的 Recognition Log ID
+    # log_id 是函式參數，由 visit_service 傳入
+    # -----------------------------------------
     if log_id is None:
         print("LINE 推播略過：log_id 不可為空")
         return None
 
+    name = result.get("name") or "VIP 會員"
+
     if db_insert_vip_notification is None:
-        print("LINE 推播略過：VIP 通知資料庫函式未成功匯入")
+        print(
+            "LINE 推播略過："
+            "VIP 通知資料庫函式未成功匯入"
+        )
         return None
 
     if notify_vip_recognition is None:
-        print("LINE 推播略過：notify_vip_recognition 尚未成功匯入")
+        print(
+            "LINE 推播略過："
+            "notify_vip_recognition 尚未成功匯入"
+        )
         return None
 
     message = f"VIP會員 {name} 到店了！"
 
     try:
         # 先建立 pending 紀錄。
-        # 若同一個 log_id 已存在，DB 函式會回傳 None。
+        # vip_notifications.log_id 為 UNIQUE，
+        # 同一次到店不會重複建立通知。
         notification_id = db_insert_vip_notification(
             member_id=member_id,
             log_id=log_id,
             line_user_id=line_user_id,
             message=message,
-            status="pending"
+            status="pending",
+            notification_type="vip",
+            retry_count=0,
+            response_message=None
         )
 
         if notification_id is None:
-            print("========== VIP Notification Skipped ==========")
+            print(
+                "========== VIP Notification Skipped =========="
+            )
             print(f"log_id: {log_id}")
             print("原因：同一次到店通知已存在，不重複推播")
-            print("==============================================")
+            print(
+                "=============================================="
+            )
+
+            # 代表這筆到店紀錄已經有通知資料。
+            result["notification_sent"] = True
+
             return "duplicate"
 
-        # 只有成功取得 notification_id 才真正發送 LINE
+        # 真正呼叫 LINE 推播
         status = notify_vip_recognition(result)
 
         sent_at = None
 
         if status == "sent":
             notification_status = "sent"
+
             sent_at = datetime.now().strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
+
+            # 更新 AI 記憶體中的通知狀態
+            result["notification_sent"] = True
+
+            # 更新 recognition_logs.notification_sent
+            if db_update_recognition_notification_sent is not None:
+                try:
+                    updated_rows = (
+                        db_update_recognition_notification_sent(
+                            log_id=log_id,
+                            notification_sent=True
+                        )
+                    )
+
+                    print(
+                        "recognition_logs notification_sent "
+                        f"更新完成：log_id={log_id}，"
+                        f"updated_rows={updated_rows}"
+                    )
+
+                except Exception as e:
+                    print(
+                        "recognition_logs notification_sent "
+                        f"更新失敗：log_id={log_id}，"
+                        f"error={e}"
+                    )
+
         else:
             notification_status = "failed"
+            result["notification_sent"] = False
 
         if db_update_vip_notification_status is not None:
             db_update_vip_notification_status(
@@ -1888,17 +2123,26 @@ def send_line_notify(result, log_id=None):
         print(f"log_id: {log_id}")
         print(f"VIP 會員到店：{name}")
         print(f"member_id: {member_id}")
-        print(f"LINE notify status: {notification_status}")
+        print(
+            f"LINE notify status: "
+            f"{notification_status}"
+        )
         print("=======================================")
 
         return notification_status
 
     except Exception as e:
-        print("========== LINE Notification Failed ==========")
+        result["notification_sent"] = False
+
+        print(
+            "========== LINE Notification Failed =========="
+        )
         print(f"log_id: {log_id}")
         print(f"VIP 會員到店：{name}")
         print(f"member_id: {member_id}")
         print(f"LINE notify error: {e}")
-        print("==============================================")
+        print(
+            "=============================================="
+        )
 
         return "failed"
