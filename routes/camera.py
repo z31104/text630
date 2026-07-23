@@ -61,7 +61,7 @@ def get_int_env(name, default):
 
 # 攝影機編號由 Windows / DirectShow 的裝置順序決定
 # 請透過 .env 的 CAMERA_INDEX 指定目前要使用的鏡頭
-CAMERA_INDEX = get_int_env("CAMERA_INDEX", 1)
+CAMERA_INDEX = get_int_env("CAMERA_INDEX", 0)
 CAMERA_WIDTH = get_int_env("CAMERA_WIDTH", 640)
 CAMERA_HEIGHT = get_int_env("CAMERA_HEIGHT", 480)
 CAMERA_FPS = get_int_env("CAMERA_FPS", 30)
@@ -116,7 +116,7 @@ RECOGNITION_INTERVAL = 2       # 每 2 秒做一次人臉比對
 LAST_SEEN_UPDATE_INTERVAL = 15 # 每 15 秒更新一次資料庫
 GUEST_LOG_INTERVAL = 60        # Guest 每 60 秒最多記錄一次，避免太頻繁
 MIN_CONFIDENCE = 0.5           # 信心值低於 0.5 的會員辨識結果先不記錄
-LEAVE_TIMEOUT = 60             # 超過 60 秒沒再看到同一會員，就先視為離店
+LEAVE_TIMEOUT = 60           # 超過 60 秒沒再看到同一會員，就先視為離店
 CAMERA_ID = "camera_1"         # 對應 recognition_logs.camera_id
 
 def update_camera_status(
@@ -361,6 +361,51 @@ def close_timeout_visits(current_time):
         print(f"stay_seconds: {visit.get('stay_seconds')}")
         print(f"stay_minutes: {visit.get('stay_minutes')}")
         print("========================================")
+
+def close_all_active_visits():
+    """關閉攝影機時，把所有尚未結束的 visit 全部結束。"""
+
+    current_time = time.time()
+    current_time_text = now_text()
+
+    with active_visits_lock:
+        visit_list = list(active_visits.items())
+
+    for subject_key, visit_data in visit_list:
+
+        log_id = visit_data.get("log_id")
+        if log_id is None:
+            continue
+
+        visit_timestamp = visit_data.get(
+            "visit_timestamp",
+            current_time
+        )
+
+        last_seen_at = (
+            visit_data.get("last_seen_at")
+            or current_time_text
+        )
+
+        stay_seconds = max(
+            int(current_time - visit_timestamp),
+            0
+        )
+
+        stay_minutes = round(stay_seconds / 60, 2)
+
+        closed = close_recognition_visit(
+            log_id=log_id,
+            last_seen_at=last_seen_at,
+            leave_time=current_time_text,
+            stay_seconds=stay_seconds,
+            stay_minutes=stay_minutes
+        )
+
+        if closed:
+            with active_visits_lock:
+                active_visits.pop(subject_key, None)
+
 
 def generate_frames():
     global last_recognition_time
@@ -668,6 +713,7 @@ def generate_frames():
         )
 
     finally:
+        close_all_active_visits()
         release_camera(cap)
 
 
