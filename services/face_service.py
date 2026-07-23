@@ -1682,11 +1682,6 @@ def draw_face_boxes(frame, faces, result=None, current_fps=None):
         display_type = "Detecting"
         box_label = "Detecting"
 
-    if recognition_status == "detecting":
-        display_name = "Detecting"
-        display_type = "Detecting"
-        box_label = "Detecting"
-
     elif recognition_status == "failed":
         display_name = "Recognition Failed"
         display_type = "Failed"

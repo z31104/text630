@@ -21,6 +21,8 @@ from services.face_service import (
     detect_face,
     recognize_face,
     register_new_visitor,
+    reload_member_faces,
+    reload_visitor_faces,
     draw_face_boxes,
     log_recognition_result,
     update_recognition_last_seen,
@@ -877,6 +879,34 @@ def get_camera_status():
             "status": camera_status["status"],
             "message": camera_status["message"]
         })
+    
+
+@camera_bp.route("/camera/reload-faces", methods=["POST"])
+def reload_faces():
+    """
+    重新載入正式資料庫的人臉資料
+    """
+    try:
+        members = reload_member_faces()
+        visitors = reload_visitor_faces()
+
+        print("========== Face Reload API ==========")
+        print(f"Member Faces : {len(members)}")
+        print(f"Visitor Faces: {len(visitors)}")
+        print("=====================================")
+
+        return {
+            "success": True,
+            "message": "Face data reloaded successfully.",
+            "member_count": len(members),
+            "visitor_count": len(visitors),
+        }, 200
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+        }, 500
 
 
 @camera_bp.route("/camera/video_feed")
