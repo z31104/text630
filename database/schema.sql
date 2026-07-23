@@ -98,6 +98,8 @@ CREATE TABLE IF NOT EXISTS visitors (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         ON UPDATE CURRENT_TIMESTAMP,
 
+INDEX idx_visitors_converted_member_id (converted_member_id),
+
     FOREIGN KEY (converted_member_id)
         REFERENCES members(member_id)
         ON DELETE SET NULL

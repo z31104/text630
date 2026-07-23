@@ -461,10 +461,10 @@ def save_recognition_log(data):
             "coupon_sent",
             False
         ),
-        lottery_status=data.get(
-            "lottery_status",
-            "not_joined" ),
-        created_at=data.get("created_at")
+        lottery_status=(
+            data.get("lottery_status")
+            or "not_joined"
+        ),
 
     )
 
@@ -1151,6 +1151,8 @@ def register_member_with_face(
         conn.start_transaction()
         cursor = conn.cursor()
 
+
+
         # 第一步：新增會員
         member_sql = """
         INSERT INTO members (
@@ -1240,6 +1242,194 @@ def register_member_with_face(
 
         if conn:
             conn.close()
+
+def convert_visitor_to_member(
+    visitor_id,
+    name,
+    phone=None,
+    birthday=None,
+    vip=False,
+    member_level="normal",
+    line_user_id=None,
+    registration_source="line_visitor_conversion",
+    registration_image_path=None,
+    registration_encoding=None
+):
+    """
+    將既有散客轉成正式會員。
+
+    同一個 transaction 內完成：
+    1. 建立 members
+    2. 複製 visitor_faces 至 face_images
+    3. 寫入本次註冊照片
+    4. 更新 visitors.converted_member_id
+    5. 將尚未離店的 visitor 紀錄切換成 member
+    """
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # 1. 鎖定 visitor，避免重複轉換
+        cursor.execute(
+            """
+            SELECT
+                visitor_id,
+                visitor_code,
+                converted_member_id,
+                visitor_visit_count,
+                last_seen_at
+            FROM visitors
+            WHERE visitor_id = %s
+            FOR UPDATE
+            """,
+            (visitor_id,)
+        )
+
+        visitor = cursor.fetchone()
+
+        if not visitor:
+            raise ValueError("找不到指定的 visitor")
+
+        if visitor.get("converted_member_id") is not None:
+            raise ValueError("此 visitor 已經轉成正式會員")
+
+        # 2. 建立 members
+        cursor.execute(
+            """
+            INSERT INTO members (
+                name,
+                phone,
+                birthday,
+                vip,
+                member_level,
+                total_visit_count,
+                line_user_id,
+                registration_source,
+                last_visit_time
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                name,
+                phone,
+                birthday,
+                bool(vip),
+                member_level,
+                visitor.get("visitor_visit_count") or 0,
+                line_user_id,
+                registration_source,
+                visitor.get("last_seen_at")
+            )
+        )
+
+        member_id = cursor.lastrowid
+
+        # 3. 將既有散客人臉特徵複製到會員人臉表
+        cursor.execute(
+            """
+            INSERT INTO face_images (
+                member_id,
+                image_path,
+                encoding_data
+            )
+            SELECT
+                %s,
+                image_path,
+                encoding_data
+            FROM visitor_faces
+            WHERE visitor_id = %s
+            """,
+            (member_id, visitor_id)
+        )
+
+        copied_face_count = cursor.rowcount
+
+        # 4. 儲存本次註冊時上傳的人臉
+        if registration_encoding is not None:
+            cursor.execute(
+                """
+                INSERT INTO face_images (
+                    member_id,
+                    image_path,
+                    encoding_data
+                )
+                VALUES (%s, %s, %s)
+                """,
+                (
+                    member_id,
+                    registration_image_path,
+                    registration_encoding
+                )
+            )
+
+        # 5. 標記 visitor 已轉會員
+        cursor.execute(
+            """
+            UPDATE visitors
+            SET
+                converted_member_id = %s,
+                updated_at = NOW()
+            WHERE visitor_id = %s
+              AND converted_member_id IS NULL
+            """,
+            (member_id, visitor_id)
+        )
+
+        if cursor.rowcount != 1:
+            raise ValueError("visitor 轉會員失敗或已被其他流程轉換")
+
+        # 6. 將目前尚未離店的紀錄改成會員
+        cursor.execute(
+            """
+            UPDATE recognition_logs
+            SET
+                subject_type = 'member',
+                member_id = %s,
+                name = %s,
+                vip = %s,
+                line_user_id = %s,
+                member_level = %s,
+                recognition_status = 'recognized'
+            WHERE visitor_id = %s
+              AND leave_time IS NULL
+              AND visit_status IN ('arrived', 'staying')
+            """,
+            (
+                member_id,
+                name,
+                bool(vip),
+                line_user_id,
+                member_level,
+                visitor_id
+            )
+        )
+
+        conn.commit()
+
+        return {
+            "success": True,
+            "converted": True,
+            "member_id": member_id,
+            "visitor_id": visitor_id,
+            "visitor_code": visitor.get("visitor_code"),
+            "copied_face_count": copied_face_count
+        }
+
+    except Exception:
+        if conn:
+            conn.rollback()
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 
 
 def get_all_member_faces():
@@ -1674,9 +1864,10 @@ def get_all_visitor_faces():
         JOIN visitors v
             ON vf.visitor_id = v.visitor_id
         WHERE vf.encoding_data IS NOT NULL
-          AND vf.encoding_data <> ''
+        AND vf.encoding_data <> ''
+        AND v.converted_member_id IS NULL
         ORDER BY vf.visitor_face_id ASC
-        """
+                """
 
         cursor.execute(sql)
         rows = cursor.fetchall()
