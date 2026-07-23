@@ -298,6 +298,47 @@ CREATE TABLE IF NOT EXISTS lottery_records (
         ON DELETE SET NULL
 );
 
+
+CREATE TABLE IF NOT EXISTS member_prizes (
+    member_prize_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+
+    member_id INT NOT NULL,
+    prize_id INT NOT NULL,
+
+    campaign_code VARCHAR(50) NOT NULL,
+    prize_code VARCHAR(50) NOT NULL,
+
+    redeem_token VARCHAR(128) NOT NULL UNIQUE,
+
+    status VARCHAR(20) NOT NULL DEFAULT 'unused',
+
+    issued_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NULL,
+    redeemed_at DATETIME NULL,
+    redeemed_by VARCHAR(100) NULL,
+
+    UNIQUE KEY uq_member_campaign (
+        member_id,
+        campaign_code
+    ),
+
+    INDEX idx_member_prizes_status (
+        status
+    ),
+
+    INDEX idx_member_prizes_expires_at (
+        expires_at
+    ),
+
+    FOREIGN KEY (member_id)
+        REFERENCES members(member_id)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (prize_id)
+        REFERENCES lottery_prizes(prize_id)
+        ON DELETE RESTRICT
+);
+
 INSERT IGNORE INTO lottery_prizes (
     prize_code,
     prize_name,
@@ -309,7 +350,7 @@ INSERT IGNORE INTO lottery_prizes (
 )
 VALUES
     (
-        'cash_50',
+        'WELCOME_50',
         '$50',
         'coupon',
         50,
@@ -318,7 +359,7 @@ VALUES
         'active'
     ),
     (
-        'discount_90',
+        'WELCOME_10_OFF',
         '9折',
         'discount',
         0.90,
@@ -327,7 +368,7 @@ VALUES
         'active'
     ),
     (
-        'cash_200',
+        'WELCOME_200',
         '$200',
         'coupon',
         200,
@@ -336,7 +377,7 @@ VALUES
         'active'
     ),
     (
-        'gift',
+        'WELCOME_GIFT',
         '小禮品',
         'gift',
         0,
@@ -345,7 +386,7 @@ VALUES
         'active'
     ),
     (
-        'free_shipping',
+        'WELCOME_FREE_SHIP',
         '免運',
         'free_shipping',
         0,
@@ -353,17 +394,15 @@ VALUES
         NULL,
         'active'
     ),
-    
     (
-        'retry_once',
+        'WELCOME_RETRY',
         '再抽一次',
         'retry',
         0,
         1,
         NULL,
         'active'
-    
-);
+    );
 
 CREATE TABLE IF NOT EXISTS member_preferences (
     preference_id INT AUTO_INCREMENT PRIMARY KEY,

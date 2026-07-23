@@ -1,8 +1,10 @@
 import os
-import mysql.connector
 import json
 import random
+import secrets
 from datetime import datetime
+
+import mysql.connector
 from dotenv import load_dotenv
 
 
@@ -32,6 +34,15 @@ def get_member_level_text(member_level):
 
     return level_text_map.get(member_level, "未知")
 
+
+# 抽獎活動設定
+LOTTERY_CAMPAIGN_CODE = "WELCOME_2026"
+
+REDEMPTION_BASE_URL = os.getenv(
+    "REDEMPTION_BASE_URL",
+    "http://127.0.0.1:5000"
+)
+
 # VIP 通知狀態
 NOTIFICATION_STATUS_PENDING = "pending"
 NOTIFICATION_STATUS_SENT = "sent"
@@ -43,8 +54,71 @@ def clean_env(value):
         return None
     return value.replace('"', '').replace("'", "")
 
+def to_bool(value):
+    """
+    將前端、LINE 或 API 傳來的值安全轉成布林值。
+    """
 
+    if isinstance(value, bool):
+        return value
 
+    if value is None:
+        return False
+
+    if isinstance(value, str):
+        return value.strip().lower() in {
+            "true",
+            "1",
+            "yes",
+            "on"
+        }
+
+    return bool(value)
+
+def normalize_encoding_data(encoding_data):
+    """
+    將人臉 encoding 統一轉成合法的 128 維 JSON 字串。
+    """
+
+    if encoding_data is None:
+        raise ValueError("encoding_data 不可為空")
+
+    if hasattr(encoding_data, "tolist"):
+        encoding_data = encoding_data.tolist()
+
+    if isinstance(encoding_data, str):
+        try:
+            encoding_data = json.loads(encoding_data)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                "encoding_data 不是合法 JSON"
+            ) from e
+
+    if not isinstance(encoding_data, (list, tuple)):
+        raise ValueError(
+            "encoding_data 必須是 list、tuple、NumPy array 或 JSON 字串"
+        )
+
+    if len(encoding_data) != 128:
+        raise ValueError(
+            f"encoding_data 必須是 128 維，"
+            f"目前為 {len(encoding_data)} 維"
+        )
+
+    try:
+        encoding_data = [
+            float(value)
+            for value in encoding_data
+        ]
+    except (TypeError, ValueError) as e:
+        raise ValueError(
+            "encoding_data 的每一項都必須是數字"
+        ) from e
+
+    return json.dumps(
+        encoding_data,
+        ensure_ascii=False
+    )
 
 def get_connection():
     # Cloud Run
@@ -212,6 +286,7 @@ def insert_recognition_log(
                 )
 
             member_id = None
+            line_user_id = None
             vip = False
             member_level = "guest"
 
@@ -222,6 +297,7 @@ def insert_recognition_log(
             member_id = None
             visitor_id = None
             visitor_code = None
+            line_user_id = None
             vip = False
             member_level = "guest"
 
@@ -254,6 +330,11 @@ def insert_recognition_log(
         if visit_status not in valid_visit_statuses:
             raise ValueError(
                 f"不支援的 visit_status：{visit_status}"
+            )
+        
+        if recognition_status == RECOGNITION_STATUS_NO_FACE:
+            raise ValueError(
+                "no_face 不應建立 recognition_logs 到店紀錄"
             )
 
         # 3. 沒有傳時間時，自動補現在時間
@@ -318,8 +399,8 @@ def insert_recognition_log(
             last_seen_at,
             leave_time,
             stay_seconds,
-            bool(notification_sent),
-            bool(coupon_sent),
+            to_bool(notification_sent),
+            to_bool(coupon_sent),
             lottery_status,
             recognized_at,
             created_at,
@@ -724,7 +805,7 @@ def update_recognition_notification_sent(
         cursor.execute(
             sql,
             (
-                bool(notification_sent),
+                to_bool(notification_sent),
                 log_id
             )
         )
@@ -762,8 +843,22 @@ def close_recognition_visit(
     cursor = None
 
     try:
+        if log_id is None:
+            raise ValueError("log_id 不可為空")
+
+        if last_seen_at is None:
+            raise ValueError("last_seen_at 不可為空")
+
+        if leave_time is None:
+            raise ValueError("leave_time 不可為空")
+
+        stay_seconds = max(
+            0,
+            int(stay_seconds or 0)
+        )
+
         conn = get_connection()
-        cursor = conn.cursor()
+
 
         sql = """
         UPDATE recognition_logs
@@ -894,10 +989,11 @@ def insert_member(
     cursor = None
 
     try:
-        vip = bool(vip)
+        vip = to_bool(vip)
+        member_level = "vip" if vip else "normal"
 
-        if member_level not in {"vip", "normal"}:    
-            member_level = "vip" if vip else "normal"
+        total_visit_count = int(total_visit_count or 0)
+        total_amount = float(total_amount or 0)
 
         conn = get_connection()
         cursor = conn.cursor()
@@ -962,25 +1058,10 @@ def insert_face_image(member_id, image_path, encoding_data):
         if member_id is None:
             raise ValueError("member_id 不可為空")
 
-        if encoding_data is None:
-            raise ValueError("encoding_data 不可為空")
-
-        # 支援 NumPy array
-        if hasattr(encoding_data, "tolist"):
-            encoding_data = encoding_data.tolist()
-
-        # 如果是 Python list，先檢查是否為 128 維
-        if isinstance(encoding_data, (list, tuple)):
-            if len(encoding_data) != 128:
-                raise ValueError(
-                    f"encoding_data 必須是 128 維，目前為 {len(encoding_data)} 維"
-                )
-
-            encoding_data = json.dumps(
-                list(encoding_data),
-                ensure_ascii=False
-            )
-
+        encoding_data = normalize_encoding_data(
+    encoding_data
+        )
+        
         conn = get_connection()
         cursor = conn.cursor()
 
@@ -1050,33 +1131,19 @@ def register_member_with_face(
         if encoding_data is None:
             raise ValueError("encoding_data 不可為空")
 
-        vip = bool(vip)
+        vip = to_bool(vip)
+        member_level = "vip" if vip else "normal"
 
-        # 外部有傳合法等級時予以保留。
-        # 只有傳入不合法內容時，才依照 vip 自動修正。
-
-        if member_level not in {"vip", "normal"}:
-            member_level = "vip" if vip else "normal"
-        
         total_visit_count = int(total_visit_count or 0)
         total_visit_time = int(total_visit_time or 0)
-        total_amount = total_amount or 0
-        # NumPy array 轉成 Python list
-        if hasattr(encoding_data, "tolist"):
-            encoding_data = encoding_data.tolist()
+        total_amount = float(total_amount or 0)
 
-        # 檢查人臉特徵是否為 128 維
-        if isinstance(encoding_data, (list, tuple)):
-            if len(encoding_data) != 128:
-                raise ValueError(
-                   f"encoding_data 必須是 128 維，"
-                   f"目前為 {len(encoding_data)} 維"
-                )
+        encoding_data = normalize_encoding_data(
+            encoding_data
+        )
 
-            encoding_data = json.dumps(
-                list(encoding_data),
-                ensure_ascii=False
-            )
+        if not face_image:
+            face_image = image_path
         if not face_image:
             face_image = image_path
 
@@ -1369,23 +1436,9 @@ def insert_visitor_face(
         if visitor_id is None:
             raise ValueError("visitor_id 不可為空")
 
-        if encoding_data is None:
-            raise ValueError("encoding_data 不可為空")
-
-        if hasattr(encoding_data, "tolist"):
-            encoding_data = encoding_data.tolist()
-
-        if isinstance(encoding_data, (list, tuple)):
-            if len(encoding_data) != 128:
-                raise ValueError(
-                    f"encoding_data 必須是 128 維，目前為 "
-                    f"{len(encoding_data)} 維"
-                )
-
-            encoding_data = json.dumps(
-                list(encoding_data),
-                ensure_ascii=False
-            )
+        encoding_data = normalize_encoding_data(
+            encoding_data
+        )
 
         conn = get_connection()
         cursor = conn.cursor()
@@ -2074,7 +2127,7 @@ def insert_lottery_record(
                 coupon_id,
                 prize_name,
                 result,
-                bool(is_final)
+                to_bool(is_final)
             )
         )
 
@@ -2163,27 +2216,28 @@ def draw_lottery_for_member(member_id):
     conn = None
     cursor = None
 
+
     try:
-        if member_id is None:
-            raise ValueError("member_id 不可為空")
+            if member_id is None:
+                raise ValueError("member_id 不可為空")
 
-        member_id = int(member_id)
+            member_id = int(member_id)
 
-        conn = get_connection()
+            conn = get_connection()
 
-        # 明確關閉自動提交，
-        # 讓下面所有 SQL 都在同一個 transaction 裡
-        conn.autocommit = False
+            # 明確關閉自動提交，
+            # 讓下面所有 SQL 都在同一個 transaction 裡
+            conn.autocommit = False
 
-        cursor = conn.cursor(dictionary=True)
+            cursor = conn.cursor(dictionary=True)
 
-        # -------------------------------------------------
-        # 第 1 步：鎖定這一位會員
-        # -------------------------------------------------
-        # FOR UPDATE 的意思：
-        # 如果同一位會員快速按兩次，
-        # 第二個請求必須等待第一個請求結束。
-        cursor.execute(
+            # -------------------------------------------------
+            # 第 1 步：鎖定這一位會員
+            # -------------------------------------------------
+            # FOR UPDATE 的意思：
+            # 如果同一位會員快速按兩次，
+            # 第二個請求必須等待第一個請求結束。
+            cursor.execute(
             """
             SELECT
                 member_id,
@@ -2206,21 +2260,31 @@ def draw_lottery_for_member(member_id):
         cursor.execute(
             """
             SELECT
-                lottery_id,
-                member_id,
-                prize_id,
-                prize_name,
-                result,
-                is_final,
-                created_at
-            FROM lottery_records
-            WHERE member_id = %s
-              AND is_final = TRUE
-            ORDER BY created_at DESC,
-                     lottery_id DESC
+                mp.member_prize_id,
+                mp.member_id,
+                mp.prize_id,
+                mp.campaign_code,
+                mp.prize_code,
+                mp.redeem_token,
+                mp.status,
+                mp.issued_at,
+                mp.expires_at,
+                mp.redeemed_at,
+                mp.redeemed_by,
+                lp.prize_name,
+                lp.prize_type,
+                lp.prize_value
+            FROM member_prizes mp
+            JOIN lottery_prizes lp
+                ON mp.prize_id = lp.prize_id
+            WHERE mp.member_id = %s
+              AND mp.campaign_code = %s
             LIMIT 1
             """,
-            (member_id,)
+            (
+                member_id,
+                LOTTERY_CAMPAIGN_CODE
+            )
         )
 
         completed_record = cursor.fetchone()
@@ -2228,13 +2292,34 @@ def draw_lottery_for_member(member_id):
         if completed_record is not None:
             conn.rollback()
 
+            qr_value = (
+                f"{REDEMPTION_BASE_URL}/redeem/"
+                f"{completed_record['redeem_token']}"
+            )
+
             return {
-                "success": False,
+                "success": True,
                 "message": "這位會員已經完成抽獎",
                 "already_completed": True,
-                "record": completed_record
+                "is_final": True,
+                "can_retry": False,
+                "prize": {
+                    "prize_id": completed_record["prize_id"],
+                    "prize_code": completed_record["prize_code"],
+                    "prize_name": completed_record["prize_name"],
+                    "prize_type": completed_record["prize_type"],
+                    "prize_value": completed_record["prize_value"]
+                },
+                "redemption": {
+                    "member_prize_id": completed_record[
+                        "member_prize_id"
+                    ],
+                    "token": completed_record["redeem_token"],
+                    "qr_value": qr_value,
+                    "status": completed_record["status"],
+                    "expires_at": completed_record["expires_at"]
+                }
             }
-
         # -------------------------------------------------
         # 第 3 步：查詢目前可以抽的獎品
         # -------------------------------------------------
@@ -2346,52 +2431,27 @@ def draw_lottery_for_member(member_id):
                 "中獎" if is_final else "未完成",
                 prize_name,
                 prize_name,
-                bool(is_final)
+                to_bool(is_final)
             )
         )
 
         lottery_id = cursor.lastrowid
 
+        conn.commit()
         # -------------------------------------------------
         # 第 7 步：全部成功後才 commit
         # -------------------------------------------------
-        conn.commit()
 
         return {
-            "success": True,
-            "message": "抽獎成功",
-            "already_completed": False,
-            "lottery_id": lottery_id,
-            "is_final": bool(is_final),
-            "prize": selected_prize
-        }
+                "success": True,
+                "message": "抽獎成功",
+                "already_completed": False,
+                "lottery_id": lottery_id,
+                "is_final": to_bool(is_final),
+                "prize": selected_prize
+            }
 
-    except (TypeError, ValueError) as e:
-        if conn:
-            conn.rollback()
-
-        print("抽獎失敗：", e)
-
-        return {
-            "success": False,
-            "message": str(e),
-            "already_completed": False
-        }
-
-    except Exception as e:
-        if conn:
-            conn.rollback()
-
-        print("抽獎處理失敗：", e)
-        raise
-
-    finally:
-        if cursor:
-            cursor.close()
-
-        if conn and conn.is_connected():
-            conn.close()
-
+       
 def get_all_visitors(limit=100):
     """
     取得散客列表。
