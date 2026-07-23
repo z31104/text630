@@ -1,6 +1,7 @@
 import json
 import os
 import uuid
+import requests
 from flask import Blueprint, request, abort, jsonify
 
 from linebot import LineBotApi, WebhookHandler
@@ -43,6 +44,12 @@ else:
 
 # LIFF App ID，前端 register.js 用來呼叫 liff.init()
 LIFF_ID = os.getenv("LIFF_ID", "")
+
+# LIFF ID 格式固定是「{LINE Login channel id}-{liff app id}」，
+# 驗證 ID Token 的 aud/client_id 要用前半段的 channel id，不需要另外設定新的環境變數
+LIFF_CHANNEL_ID = LIFF_ID.split("-")[0] if LIFF_ID else ""
+
+LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify"
 
 # 店員用 LINE 官方帳號，用來接收 VIP 到店通知
 STAFF_LINE_CHANNEL_ACCESS_TOKEN = os.getenv("STAFF_LINE_CHANNEL_ACCESS_TOKEN")
@@ -265,6 +272,46 @@ def _insert_member_preferences(member_id, preferences):
             conn.close()
 
 
+def _verify_line_id_token(id_token, expected_line_user_id):
+    """
+    向 LINE 官方驗證前端傳來的 ID Token，確認註冊請求真的來自 LIFF 登入，
+    而不是有人直接偽造/竄改 hidden input 或網址上的 line_user_id。
+
+    回傳 (是否驗證成功, 失敗訊息或 None)。
+    """
+    if not id_token:
+        return False, "缺少 LINE 登入憑證，請從 LINE 官方帳號的註冊連結重新開啟"
+
+    if not LIFF_CHANNEL_ID:
+        return False, "LIFF_ID 尚未設定，請聯絡管理員設定後再試"
+
+    try:
+        resp = requests.post(
+            LINE_VERIFY_URL,
+            data={"id_token": id_token, "client_id": LIFF_CHANNEL_ID},
+            timeout=5,
+        )
+    except requests.RequestException as e:
+        print("LINE ID Token 驗證服務呼叫失敗：", e)
+        return False, "LINE 登入驗證服務暫時無法使用，請稍後再試"
+
+    if resp.status_code != 200:
+        print("LINE ID Token 驗證失敗：", resp.status_code, resp.text)
+        return False, "LINE 登入已過期或無效，請重新登入後再試"
+
+    payload = resp.json()
+
+    if payload.get("aud") != LIFF_CHANNEL_ID:
+        print("LINE ID Token aud 不符：", payload.get("aud"))
+        return False, "LINE 登入驗證失敗，請重新登入後再試"
+
+    if payload.get("sub") != expected_line_user_id:
+        print("LINE ID Token sub 與送出的 line_user_id 不一致：", payload.get("sub"), expected_line_user_id)
+        return False, "LINE 使用者身分驗證失敗，請重新登入後再試"
+
+    return True, None
+
+
 @line_bp.route("/line/register", methods=["POST"])
 def register_from_line():
     """
@@ -295,6 +342,15 @@ def register_from_line():
 
     if not line_user_id:
         return jsonify({"success": False, "message": "缺少 LINE 使用者資訊，請從 LINE 官方帳號的註冊連結進入此頁面"}), 400
+
+    # 正式模式下，line_user_id 不能只靠前端傳來的 hidden input／網址參數，
+    # 一律要求前端一併送出 LIFF ID Token，由後端向 LINE 驗證身分後才放行。
+    # 測試模式（未設定 LINE_CHANNEL_ACCESS_TOKEN/SECRET）維持不驗證，方便本機開發。
+    if LINE_ENABLED:
+        id_token = (request.form.get("id_token") or "").strip()
+        token_ok, token_error = _verify_line_id_token(id_token, line_user_id)
+        if not token_ok:
+            return jsonify({"success": False, "message": token_error}), 401
 
     try:
         member = _fetch_member_by_line_user_id(line_user_id)
