@@ -1329,6 +1329,179 @@ def check_duplicate_face(encoding, tolerance=0.6):
     }
 
 
+def find_matching_visitor(
+    encoding,
+    tolerance=VISITOR_MATCH_TOLERANCE
+):
+    """
+    將會員註冊照片的人臉 encoding，
+    與目前尚未轉成會員的 known_visitors 比對。
+
+    用途：
+    Visitor → Member 散客轉正式會員。
+
+    回傳格式：
+    {
+        "matched": bool,
+        "visitor_id": int | None,
+        "visitor_code": str | None,
+        "distance": float | None,
+        "confidence": float
+    }
+    """
+
+    default_result = {
+        "matched": False,
+        "visitor_id": None,
+        "visitor_code": None,
+        "distance": None,
+        "confidence": 0
+    }
+
+    if face_recognition is None:
+        print(
+            "散客轉會員比對失敗："
+            "face_recognition 尚未載入"
+        )
+        return default_result
+
+    if encoding is None:
+        print(
+            "散客轉會員比對失敗："
+            "註冊照片 encoding 為空"
+        )
+        return default_result
+
+    try:
+        encoding = np.array(
+            encoding,
+            dtype=float
+        )
+
+    except (TypeError, ValueError) as e:
+        print(
+            "散客轉會員比對失敗："
+            f"encoding 格式錯誤，原因：{e}"
+        )
+        return default_result
+
+    if encoding.shape != (128,):
+        print(
+            "散客轉會員比對失敗："
+            f"encoding 維度錯誤，目前為 {encoding.shape}"
+        )
+        return default_result
+
+    closest_visitor = None
+    closest_distance = None
+
+    for visitor in known_visitors:
+        # 正常情況下，資料庫查詢已排除已轉會員散客。
+        # 此處再補一層保護，避免快取中殘留舊資料。
+        if visitor.get("converted_member_id") is not None:
+            continue
+
+        known_encoding = visitor.get("encoding")
+
+        if known_encoding is None:
+            continue
+
+        try:
+            known_encoding = np.array(
+                known_encoding,
+                dtype=float
+            )
+        except (TypeError, ValueError):
+            continue
+
+        if known_encoding.shape != (128,):
+            continue
+
+        distance = float(
+            face_recognition.face_distance(
+                [known_encoding],
+                encoding
+            )[0]
+        )
+
+        if (
+            closest_distance is None
+            or distance < closest_distance
+        ):
+            closest_distance = distance
+            closest_visitor = visitor
+
+    if (
+        closest_visitor is not None
+        and closest_distance is not None
+        and closest_distance < tolerance
+    ):
+        confidence = max(
+            0,
+            min(1, 1 - closest_distance)
+        )
+
+        result = {
+            "matched": True,
+            "visitor_id": closest_visitor.get(
+                "visitor_id"
+            ),
+            "visitor_code": closest_visitor.get(
+                "visitor_code"
+            ),
+            "distance": round(
+                closest_distance,
+                4
+            ),
+            "confidence": round(
+                confidence,
+                4
+            )
+        }
+
+        print(
+            "========== Visitor Match Found =========="
+        )
+        print(
+            "visitor_id:",
+            result.get("visitor_id")
+        )
+        print(
+            "visitor_code:",
+            result.get("visitor_code")
+        )
+        print(
+            "distance:",
+            result.get("distance")
+        )
+        print(
+            "tolerance:",
+            tolerance
+        )
+        print(
+            "========================================="
+        )
+
+        return result
+
+    result = {
+        **default_result,
+        "distance": (
+            round(closest_distance, 4)
+            if closest_distance is not None
+            else None
+        )
+    }
+
+    print(
+        "未找到符合的既有散客，"
+        f"最近距離={result.get('distance')}，"
+        f"門檻={tolerance}"
+    )
+
+    return result
+
+
 def detect_face(frame):
     """
     使用 face_recognition 的 HOG 模型偵測人臉。
