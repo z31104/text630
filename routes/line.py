@@ -1,6 +1,8 @@
 import json
 import os
 import uuid
+from datetime import datetime, timedelta
+
 import requests
 from flask import Blueprint, request, abort, jsonify
 
@@ -16,6 +18,7 @@ from database.db import (
     register_member_with_face,
     convert_visitor_to_member,
     draw_lottery_for_member,
+    get_member_coupons,
 )
 from linebot_service.notify import push_message, notify_lottery_result
 from services.face_service import (
@@ -279,18 +282,20 @@ def _insert_member_preferences(member_id, preferences):
             conn.close()
 
 
-def _verify_line_id_token(id_token, expected_line_user_id):
+def _decode_line_id_token(id_token):
     """
-    向 LINE 官方驗證前端傳來的 ID Token，確認註冊請求真的來自 LIFF 登入，
-    而不是有人直接偽造/竄改 hidden input 或網址上的 line_user_id。
+    向 LINE 官方驗證 ID Token 是否有效，成功時回傳 token 本身認證出的 line_user_id
+    （payload 的 sub 欄位）。呼叫端不需要、也不應該自己另外傳一個 line_user_id 來比對，
+    直接信任 token 解出來的 sub，才能保證查到的一定是「這支 token 的真正主人」，
+    不會被竄改網址/參數影響（例如 /api/coupons/me 用這個查自己的優惠券）。
 
-    回傳 (是否驗證成功, 失敗訊息或 None)。
+    回傳 (line_user_id 或 None, 失敗訊息或 None)。
     """
     if not id_token:
-        return False, "缺少 LINE 登入憑證，請從 LINE 官方帳號的註冊連結重新開啟"
+        return None, "缺少 LINE 登入憑證，請從 LINE 官方帳號重新開啟頁面"
 
     if not LIFF_CHANNEL_ID:
-        return False, "LIFF_ID 尚未設定，請聯絡管理員設定後再試"
+        return None, "LIFF_ID 尚未設定，請聯絡管理員設定後再試"
 
     try:
         resp = requests.post(
@@ -300,20 +305,39 @@ def _verify_line_id_token(id_token, expected_line_user_id):
         )
     except requests.RequestException as e:
         print("LINE ID Token 驗證服務呼叫失敗：", e)
-        return False, "LINE 登入驗證服務暫時無法使用，請稍後再試"
+        return None, "LINE 登入驗證服務暫時無法使用，請稍後再試"
 
     if resp.status_code != 200:
         print("LINE ID Token 驗證失敗：", resp.status_code, resp.text)
-        return False, "LINE 登入已過期或無效，請重新登入後再試"
+        return None, "LINE 登入已過期或無效，請重新登入後再試"
 
     payload = resp.json()
 
     if payload.get("aud") != LIFF_CHANNEL_ID:
         print("LINE ID Token aud 不符：", payload.get("aud"))
-        return False, "LINE 登入驗證失敗，請重新登入後再試"
+        return None, "LINE 登入驗證失敗，請重新登入後再試"
 
-    if payload.get("sub") != expected_line_user_id:
-        print("LINE ID Token sub 與送出的 line_user_id 不一致：", payload.get("sub"), expected_line_user_id)
+    line_user_id = payload.get("sub")
+    if not line_user_id:
+        return None, "LINE 登入驗證失敗，請重新登入後再試"
+
+    return line_user_id, None
+
+
+def _verify_line_id_token(id_token, expected_line_user_id):
+    """
+    向 LINE 官方驗證前端傳來的 ID Token，確認註冊請求真的來自 LIFF 登入，
+    而不是有人直接偽造/竄改 hidden input 或網址上的 line_user_id。
+
+    回傳 (是否驗證成功, 失敗訊息或 None)。
+    """
+    line_user_id, error = _decode_line_id_token(id_token)
+
+    if error:
+        return False, error
+
+    if line_user_id != expected_line_user_id:
+        print("LINE ID Token sub 與送出的 line_user_id 不一致：", line_user_id, expected_line_user_id)
         return False, "LINE 使用者身分驗證失敗，請重新登入後再試"
 
     return True, None
@@ -531,8 +555,70 @@ def lottery_draw():
     if result.get("success"):
         member = _fetch_member_by_id(member_id)
         if member:
-            # TODO：等 DB 組加上發券函式後，這裡要先呼叫它把 coupon 寫進
-            # member_coupons，再把發出的優惠券資訊一起傳給 notify_lottery_result。
             notify_lottery_result(member.get("line_user_id"), member.get("name"), result)
 
     return jsonify(result)
+
+
+COUPON_EXPIRING_SOON_DAYS = 7
+
+
+@line_bp.route("/api/coupons/me", methods=["POST"])
+def get_my_coupon_summary():
+    """
+    優惠券頁面（/coupons）用：依 LIFF ID Token 驗證出真正的 line_user_id，
+    再查「這個 LINE 使用者自己」的優惠券統計。
+
+    刻意不接受前端直接傳 member_id 或 line_user_id 當參數——一律從已驗證的
+    id_token 解出 line_user_id，避免有人竄改請求內容看到別人的優惠券資料。
+    """
+    data = request.get_json(silent=True) or {}
+    id_token = (data.get("id_token") or "").strip()
+
+    line_user_id, error = _decode_line_id_token(id_token)
+
+    if error:
+        return jsonify({"success": False, "message": error}), 401
+
+    try:
+        member = _fetch_member_by_line_user_id(line_user_id)
+    except Exception as e:
+        print("查詢會員失敗：", e)
+        return jsonify({"success": False, "message": "查詢失敗，請稍後再試"}), 500
+
+    if member is None:
+        return jsonify({
+            "success": True,
+            "bound": False,
+            "message": "此 LINE 帳號尚未綁定會員，請先完成會員註冊",
+        })
+
+    try:
+        coupons = get_member_coupons(member_id=member["member_id"], limit=500)
+    except Exception as e:
+        print("查詢會員優惠券失敗：", e)
+        return jsonify({"success": False, "message": "查詢失敗，請稍後再試"}), 500
+
+    now = datetime.now()
+    soon = now + timedelta(days=COUPON_EXPIRING_SOON_DAYS)
+
+    usable = 0
+    expiring_soon = 0
+
+    for coupon in coupons:
+        if coupon.get("status") != "unused":
+            continue
+
+        usable += 1
+
+        end_at = coupon.get("end_at")
+        if end_at and now <= end_at <= soon:
+            expiring_soon += 1
+
+    return jsonify({
+        "success": True,
+        "bound": True,
+        "total": len(coupons),
+        "usable": usable,
+        "expiring_soon": expiring_soon,
+    })
