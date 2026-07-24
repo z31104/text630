@@ -2050,7 +2050,6 @@ def build_recognition_log(result, visit_time=None, leave_time=None, stay_minutes
         "stay_seconds": result.get("stay_seconds", 0),
         "notification_sent": result.get("notification_sent", False),
         "coupon_sent": result.get("coupon_sent", False),
-        "coupon_sent": result.get("coupon_sent", False),
         "lottery_status": (
             result.get("lottery_status")
             or "not_joined"
