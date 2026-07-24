@@ -1998,8 +1998,19 @@ def get_dashboard_summary():
                 SELECT COUNT(*)
                 FROM members
                 WHERE DATE(created_at) = CURDATE()
-            ) AS today_new_members
-        """
+            ) AS today_new_members,
+            (
+            SELECT COALESCE(
+                ROUND(AVG(stay_seconds) / 60, 1),
+                0
+            )
+            FROM recognition_logs
+            WHERE DATE(visit_time) = CURDATE()
+            AND leave_time IS NOT NULL
+            AND stay_seconds IS NOT NULL
+            AND stay_seconds > 0
+            ) AS average_stay_minutes
+            """
 
         cursor.execute(sql)
         summary = cursor.fetchone()
@@ -2014,6 +2025,10 @@ def get_dashboard_summary():
             "today_new_members",
         ):
             summary[key] = int(summary.get(key) or 0)
+
+        summary["average_stay_minutes"] = float(
+            summary.get("average_stay_minutes") or 0
+        )
 
         # 保留現有 dashboard.html 的舊欄位，避免前端未同步時白畫面。
         summary["today_visits"] = summary["today_visit_count"]
