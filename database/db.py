@@ -43,6 +43,13 @@ REDEMPTION_BASE_URL = os.getenv(
     "http://127.0.0.1:5000"
 )
 
+LOTTERY_REDEMPTION_DAYS = int(
+    os.getenv(
+        "LOTTERY_REDEMPTION_DAYS",
+        "30"
+    )
+)
+
 # VIP 通知狀態
 NOTIFICATION_STATUS_PENDING = "pending"
 NOTIFICATION_STATUS_SENT = "sent"
@@ -2666,6 +2673,14 @@ def draw_lottery_for_member(member_id):
         # retry 獎不建立這筆資料，因此前端可安全地再抽一次。
         if is_final:
             redeem_token = secrets.token_urlsafe(24)
+
+            expires_at = (
+                datetime.now()
+                + timedelta(
+                    days=LOTTERY_REDEMPTION_DAYS
+                )
+            )
+
             cursor.execute(
                 """
                 INSERT INTO member_prizes (
@@ -2674,7 +2689,8 @@ def draw_lottery_for_member(member_id):
                     campaign_code,
                     prize_code,
                     redeem_token,
-                    status
+                    status,
+                    expires_at
                 )
                 VALUES (%s, %s, %s, %s, %s, 'unused')
                 """,
@@ -2683,13 +2699,18 @@ def draw_lottery_for_member(member_id):
                     prize_id,
                     LOTTERY_CAMPAIGN_CODE,
                     selected_prize["prize_code"],
-                    redeem_token
+                    redeem_token,
+                    expires_at
                 )
             )
             redemption = {
                 "token": redeem_token,
-                "qr_value": f"{REDEMPTION_BASE_URL}/redeem/{redeem_token}",
-                "status": "unused"
+                "qr_value": (
+                    f"{REDEMPTION_BASE_URL}/redeem/"
+                    f"{redeem_token}"
+                ),
+                "status": "unused",
+                "expires_at": expires_at
             }
 
         conn.commit()

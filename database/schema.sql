@@ -334,6 +334,15 @@ CREATE TABLE IF NOT EXISTS member_prizes (
         expires_at
     ),
 
+    CONSTRAINT chk_member_prizes_status
+    CHECK (
+        status IN (
+            'unused',
+            'redeemed',
+            'expired'
+        )
+    ),
+
     FOREIGN KEY (member_id)
         REFERENCES members(member_id)
         ON DELETE CASCADE,
