@@ -7,6 +7,7 @@ const registerForm = document.getElementById("registerForm");
 const registerButton = document.getElementById("registerButton");
 const registerResult = document.getElementById("registerResult");
 const lineUserIdInput = document.getElementById("line_user_id");
+const idTokenInput = document.getElementById("id_token");
 const lineHint = document.getElementById("lineHint");
 const faceImageInput = document.getElementById("face_image");
 const facePreview = document.getElementById("facePreview");
@@ -91,12 +92,16 @@ function setLineUserIdFromQuery() {
 }
 
 function initLiffProfile() {
-    if (setLineUserIdFromQuery()) {
-        return;
-    }
+    // 注意：line_user_id 有值不代表已經拿得到 LIFF ID Token，
+    // 官方帳號的註冊連結本身就會帶 line_user_id 這個查詢參數，
+    // 所以這裡即使已經帶入 line_user_id，還是要繼續往下走 LIFF 登入流程，
+    // 否則後端 _verify_line_id_token() 會因為缺少 id_token 一律擋下註冊。
+    const hasQueryLineUserId = setLineUserIdFromQuery();
 
     if (typeof liff === "undefined") {
-        setLineHint("目前不是從 LINE LIFF 開啟，請從 LINE 註冊連結進入。", "warning");
+        if (!hasQueryLineUserId) {
+            setLineHint("目前不是從 LINE LIFF 開啟，請從 LINE 註冊連結進入。", "warning");
+        }
         return;
     }
 
@@ -118,6 +123,10 @@ function initLiffProfile() {
             if (!liff.isLoggedIn()) {
                 liff.login({ redirectUri: window.location.href });
                 return null;
+            }
+
+            if (idTokenInput) {
+                idTokenInput.value = liff.getIDToken() || "";
             }
 
             return liff.getProfile();
@@ -460,6 +469,7 @@ if (registerForm) {
         formData.append("phone", phone);
         formData.append("birthday", birthday);
         formData.append("line_user_id", lineUserId);
+        formData.append("id_token", idTokenInput ? idTokenInput.value : "");
         formData.append("preferences", JSON.stringify(getSelectedPreferences()));
         formData.append("favorite_product", getSelectedPreferences()[0] || "");
         formData.append("registration_source", "line");
