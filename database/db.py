@@ -2407,28 +2407,27 @@ def draw_lottery_for_member(member_id):
     conn = None
     cursor = None
 
-
     try:
-            if member_id is None:
-                raise ValueError("member_id 不可為空")
+        if member_id is None:
+            raise ValueError("member_id 不可為空")
 
-            member_id = int(member_id)
+        member_id = int(member_id)
 
-            conn = get_connection()
+        conn = get_connection()
 
-            # 明確關閉自動提交，
-            # 讓下面所有 SQL 都在同一個 transaction 裡
-            conn.autocommit = False
+        # 明確關閉自動提交，
+        # 讓下面所有 SQL 都在同一個 transaction 裡
+        conn.autocommit = False
 
-            cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(dictionary=True)
 
-            # -------------------------------------------------
-            # 第 1 步：鎖定這一位會員
-            # -------------------------------------------------
-            # FOR UPDATE 的意思：
-            # 如果同一位會員快速按兩次，
-            # 第二個請求必須等待第一個請求結束。
-            cursor.execute(
+        # -------------------------------------------------
+        # 第 1 步：鎖定這一位會員
+        # -------------------------------------------------
+        # FOR UPDATE 的意思：
+        # 如果同一位會員快速按兩次，
+        # 第二個請求必須等待第一個請求結束。
+        cursor.execute(
             """
             SELECT
                 member_id,
@@ -2634,13 +2633,25 @@ def draw_lottery_for_member(member_id):
         # -------------------------------------------------
 
         return {
-                "success": True,
-                "message": "抽獎成功",
-                "already_completed": False,
-                "lottery_id": lottery_id,
-                "is_final": to_bool(is_final),
-                "prize": selected_prize
-            }
+            "success": True,
+            "message": "抽獎成功",
+            "already_completed": False,
+            "lottery_id": lottery_id,
+            "is_final": to_bool(is_final),
+            "prize": selected_prize
+        }
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
 
        
 def get_all_visitors(limit=100):
