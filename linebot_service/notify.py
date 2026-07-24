@@ -114,6 +114,35 @@ def notify_vip_upgrade(member):
     return push_message(line_user_id, message)
 
 
+def notify_lottery_result(line_user_id, name, draw_result):
+    """
+    觸發時機④：會員完成抽獎後呼叫（由 routes/line.py 的 POST /api/lottery/draw 呼叫）。
+    draw_result 是 database.db.draw_lottery_for_member() 的原始回傳值。
+
+    只有「這次是新抽的、而且不是再抽一次」才推播，避免同一位會員
+    重複查詢已完成的抽獎結果時被重複通知。
+
+    TODO：等 DB 組補上「發券寫入 member_coupons」的函式後，這裡要在推播前
+    先取得實際發出的 coupon 資訊，並把兌換方式一併放進訊息裡；
+    目前 draw_lottery_for_member() 還不會真的發券，訊息先用通用措辭。
+    """
+    if not line_user_id:
+        return None
+
+    if draw_result.get("already_completed"):
+        return None
+
+    prize = draw_result.get("prize") or {}
+    prize_type = prize.get("prize_type")
+
+    if prize_type == "retry":
+        return None
+
+    prize_name = prize.get("prize_name") or "獎品"
+    message = f"{name} 恭喜您抽中「{prize_name}」！請至門市出示此訊息兌換 🎉"
+    return push_message(line_user_id, message)
+
+
 def notify_new_friend(line_user_id):
     """
     觸發時機③：使用者加入 LINE 好友的瞬間呼叫（此時應為非會員，由 routes/line.py 呼叫）。

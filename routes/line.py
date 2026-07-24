@@ -11,12 +11,19 @@ from linebot.models import (
     TemplateSendMessage, ButtonsTemplate, URIAction,
 )
 
-from database.db import get_connection, register_member_with_face, draw_lottery_for_member
-from linebot_service.notify import push_message
+from database.db import (
+    get_connection,
+    register_member_with_face,
+    convert_visitor_to_member,
+    draw_lottery_for_member,
+)
+from linebot_service.notify import push_message, notify_lottery_result
 from services.face_service import (
     validate_member_face_image,
     check_duplicate_face,
+    find_matching_visitor,
     reload_member_faces,
+    reload_visitor_faces,
     MEMBER_IMAGE_DIR,
 )
 
@@ -405,6 +412,57 @@ def register_from_line():
             "duplicate_member_id": duplicate_result.get("member_id"),
         }), 409
 
+    # 先比對是否為既有散客，命中的話走轉換流程，避免把老客人當成全新會員重建
+    visitor_match = find_matching_visitor(face_check.get("encoding"))
+
+    if visitor_match.get("matched"):
+        try:
+            convert_result = convert_visitor_to_member(
+                visitor_id=visitor_match["visitor_id"],
+                name=name,
+                phone=phone,
+                birthday=birthday,
+                line_user_id=line_user_id,
+                registration_source="line_visitor_conversion",
+                registration_image_path=image_path,
+                registration_encoding=face_check.get("encoding"),
+            )
+        except ValueError as e:
+            if os.path.exists(image_path):
+                os.remove(image_path)
+            print("散客轉會員失敗：", e)
+            return jsonify({"success": False, "message": str(e)}), 409
+        except Exception as e:
+            if os.path.exists(image_path):
+                os.remove(image_path)
+            print("散客轉會員失敗：", e)
+            return jsonify({"success": False, "message": "註冊失敗，請稍後再試"}), 500
+
+        member_id = convert_result["member_id"]
+        reload_member_faces()
+        reload_visitor_faces()
+
+        if preferences:
+            _insert_member_preferences(member_id, preferences)
+
+        member = _fetch_member_by_id(member_id)
+
+        push_message(
+            line_user_id,
+            f"{name} 您好，歡迎加入會員！記得下次到店讓我們認出您 😊"
+        )
+
+        return jsonify({
+            "success": True,
+            "message": "散客已成功轉為正式會員",
+            "is_new": True,
+            "converted_from_visitor": True,
+            "visitor_id": visitor_match.get("visitor_id"),
+            "visitor_code": visitor_match.get("visitor_code"),
+            "member_id": member_id,
+            "member": member,
+        })
+
     try:
         register_result = register_member_with_face(
             name=name,
@@ -418,9 +476,15 @@ def register_from_line():
             encoding_data=face_check.get("encoding"),
         )
     except Exception as e:
-        os.remove(image_path)
+        if os.path.exists(image_path):
+            os.remove(image_path)
+
         print("會員與人臉註冊失敗：", e)
-        return jsonify({"success": False, "message": "註冊失敗，請稍後再試"}), 500
+
+        return jsonify({
+            "success": False,
+            "message": "註冊失敗，請稍後再試"
+        }), 500
 
     member_id = register_result["member_id"]
     reload_member_faces()
@@ -463,5 +527,12 @@ def lottery_draw():
     except Exception as e:
         print("抽獎失敗：", e)
         return jsonify({"success": False, "message": "抽獎失敗，請稍後再試"}), 500
+
+    if result.get("success"):
+        member = _fetch_member_by_id(member_id)
+        if member:
+            # TODO：等 DB 組加上發券函式後，這裡要先呼叫它把 coupon 寫進
+            # member_coupons，再把發出的優惠券資訊一起傳給 notify_lottery_result。
+            notify_lottery_result(member.get("line_user_id"), member.get("name"), result)
 
     return jsonify(result)
