@@ -277,6 +277,8 @@ CREATE TABLE IF NOT EXISTS lottery_records (
     result VARCHAR(100),
 
     is_final BOOLEAN NOT NULL DEFAULT TRUE,
+    -- retry 類獎項不會結束抽獎流程；前端依此決定是否可再次呼叫抽獎 API。
+    can_retry BOOLEAN NOT NULL DEFAULT FALSE,
     redeemed BOOLEAN NOT NULL DEFAULT FALSE,
     redeemed_at DATETIME NULL,
 

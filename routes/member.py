@@ -381,16 +381,13 @@ def add_member_page():
                 birthday=request.form.get("birthday") or None,
                 vip=vip,
                 member_level=member_level,
-                total_visit_count=int(
-                    request.form.get("total_visit_count") or 0
-                ),
+                # 累積到店數只能由離店流程更新，不能由管理頁手動輸入。
+                total_visit_count=0,
                 last_visit_time=None,
                 total_visit_time=0,
                 updated_by="backend",
                 line_user_id=request.form.get("line_user_id"),
-                total_amount=int(
-                    request.form.get("total_amount") or 0
-                ),
+                total_amount=request.form.get("total_amount") or 0,
                 favorite_product=request.form.get(
                     "favorite_product"
                 ),
@@ -440,11 +437,6 @@ def add_member_page():
         <p>
             LINE User ID：
             <input type="text" name="line_user_id">
-        </p>
-
-        <p>
-            來店次數：
-            <input type="number" name="total_visit_count" value="0">
         </p>
 
         <p>
@@ -547,11 +539,10 @@ def edit_member(member_id):
             birthday = %s,
             vip = %s,
             member_level = %s,
-            total_visit_count = %s,
             line_user_id = %s,
             total_amount = %s,
             favorite_product = %s,
-            face_image = %s
+            updated_by = 'backend'
         WHERE member_id = %s
         """
 
@@ -561,11 +552,9 @@ def edit_member(member_id):
             request.form.get("birthday") or None,
             vip,
             member_level,
-            int(request.form.get("total_visit_count") or 0),
             request.form.get("line_user_id"),
-            int(request.form.get("total_amount") or 0),
+            request.form.get("total_amount") or 0,
             request.form.get("favorite_product"),
-            request.form.get("face_image"),
             member_id
         )
 
@@ -594,10 +583,10 @@ def edit_member(member_id):
         <p>電話：<input type="text" name="phone" value="{target_member['phone'] or ''}"></p>
         <p>生日：<input type="date" name="birthday" value="{target_member['birthday'] or ''}"></p>
         <p>LINE User ID：<input type="text" name="line_user_id" value="{target_member['line_user_id'] or ''}"></p>
-        <p>來店次數：<input type="number" name="total_visit_count" value="{target_member['total_visit_count'] or 0}"></p>
+        <p>累積到店次數（系統自動計算）：{target_member['total_visit_count'] or 0}</p>
         <p>累積消費：<input type="number" name="total_amount" value="{target_member['total_amount'] or 0}"></p>
         <p>偏好商品：<input type="text" name="favorite_product" value="{target_member['favorite_product'] or ''}"></p>
-        <p>人臉圖片路徑：<input type="text" name="face_image" value="{target_member['face_image'] or ''}"></p>
+        <p>人臉圖片：{target_member['face_image'] or '尚未設定'}</p>
         <p>是否 VIP：
             <select name="vip">
                 <option value="0" {normal_selected}>一般會員</option>

@@ -2,7 +2,7 @@ import os
 import json
 import random
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import mysql.connector
 from dotenv import load_dotenv
@@ -858,7 +858,7 @@ def close_recognition_visit(
         )
 
         conn = get_connection()
-
+        cursor = conn.cursor()
 
         sql = """
         UPDATE recognition_logs
@@ -1144,8 +1144,6 @@ def register_member_with_face(
 
         if not face_image:
             face_image = image_path
-        if not face_image:
-            face_image = image_path
 
         conn = get_connection()
         conn.start_transaction()
@@ -1265,6 +1263,19 @@ def convert_visitor_to_member(
     4. 更新 visitors.converted_member_id
     5. 將尚未離店的 visitor 紀錄切換成 member
     """
+    normalized_registration_encoding = None
+
+    if registration_encoding is not None:
+        normalized_registration_encoding = normalize_encoding_data(
+            registration_encoding
+        )
+
+    registration_face_filename = None
+
+    if registration_image_path:
+        registration_face_filename = os.path.basename(
+            registration_image_path
+        )
 
     conn = None
     cursor = None
@@ -1309,9 +1320,13 @@ def convert_visitor_to_member(
                 total_visit_count,
                 line_user_id,
                 registration_source,
-                last_visit_time
+                last_visit_time,
+                face_image
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s
+            )
             """,
             (
                 name,
@@ -1322,7 +1337,8 @@ def convert_visitor_to_member(
                 visitor.get("visitor_visit_count") or 0,
                 line_user_id,
                 registration_source,
-                visitor.get("last_seen_at")
+                visitor.get("last_seen_at"),
+                registration_face_filename
             )
         )
 
@@ -1349,7 +1365,7 @@ def convert_visitor_to_member(
         copied_face_count = cursor.rowcount
 
         # 4. 儲存本次註冊時上傳的人臉
-        if registration_encoding is not None:
+        if normalized_registration_encoding is not None:
             cursor.execute(
                 """
                 INSERT INTO face_images (
@@ -1362,7 +1378,7 @@ def convert_visitor_to_member(
                 (
                     member_id,
                     registration_image_path,
-                    registration_encoding
+                    normalized_registration_encoding
                 )
             )
 
@@ -1914,7 +1930,14 @@ def get_all_visitor_faces():
 
 def get_dashboard_summary():
     """
-    查詢 Dashboard 今日統計資料。
+    查詢第四週 Dashboard 統計資料。
+
+    定義：
+    - today_visitors：同一位正式會員或固定散客一天只算一次。
+    - today_visit_count：每一筆 arrived 到店紀錄都算一次。
+    - today_vip：今天成功辨識到的 VIP 會員（不重複）。
+    - today_visitors_fixed：今天成功辨識到的固定散客（不重複）。
+    - current_people：所有尚未離店的人數，不侷限當日。
     """
 
     conn = None
@@ -1926,93 +1949,69 @@ def get_dashboard_summary():
 
         sql = """
         SELECT
-            COUNT(*) AS today_visits,
-
-            COALESCE(
-                SUM(
-                    CASE
-                        WHEN subject_type = 'member'
-                         AND vip = TRUE
-                        THEN 1
-                        ELSE 0
-                    END
-                ),
-                0
-            ) AS today_vip,
-
-            COALESCE(
-                SUM(
-                    CASE
-                        WHEN subject_type = 'member'
-                         AND vip = FALSE
-                        THEN 1
-                        ELSE 0
-                    END
-                ),
-                0
-            ) AS today_normal_members,
-
-            COALESCE(
-                SUM(
-                    CASE
-                        WHEN subject_type = 'visitor'
-                        THEN 1
-                        ELSE 0
-                    END
-                ),
-                0
+            (
+                SELECT COUNT(*)
+                FROM recognition_logs
+                WHERE DATE(visit_time) = CURDATE()
+                  AND visit_status = 'arrived'
+                  AND subject_type IN ('member', 'visitor')
+            ) AS today_visit_count,
+            (
+                SELECT COUNT(DISTINCT CONCAT(subject_type, ':',
+                       CASE WHEN subject_type = 'member' THEN member_id ELSE visitor_id END))
+                FROM recognition_logs
+                WHERE DATE(visit_time) = CURDATE()
+                  AND subject_type IN ('member', 'visitor')
+                  AND recognition_status = 'recognized'
             ) AS today_visitors,
-
-            COALESCE(
-                SUM(
-                    CASE
-                        WHEN leave_time IS NULL
-                         AND visit_status IN ('arrived', 'staying')
-                        THEN 1
-                        ELSE 0
-                    END
-                ),
-                0
-            ) AS current_in_store,
-
-            COALESCE(
-                ROUND(
-                    AVG(
-                        CASE
-                            WHEN visit_status = 'left'
-                            THEN stay_seconds / 60.0
-                            ELSE NULL
-                        END
-                    ),
-                    2
-                ),
-                0
-            ) AS average_stay_minutes,
-
+            (
+                SELECT COUNT(DISTINCT member_id)
+                FROM recognition_logs
+                WHERE DATE(visit_time) = CURDATE()
+                  AND subject_type = 'member'
+                  AND recognition_status = 'recognized'
+                  AND vip = TRUE
+            ) AS today_vip,
+            (
+                SELECT COUNT(DISTINCT visitor_id)
+                FROM recognition_logs
+                WHERE DATE(visit_time) = CURDATE()
+                  AND subject_type = 'visitor'
+                  AND recognition_status = 'recognized'
+            ) AS today_visitors_fixed,
+            (
+                SELECT COUNT(DISTINCT CONCAT(subject_type, ':',
+                       CASE WHEN subject_type = 'member' THEN member_id ELSE visitor_id END))
+                FROM recognition_logs
+                WHERE subject_type IN ('member', 'visitor')
+                  AND leave_time IS NULL
+                  AND visit_status IN ('arrived', 'staying')
+            ) AS current_people,
             (
                 SELECT COUNT(*)
                 FROM members
                 WHERE DATE(created_at) = CURDATE()
-            ) AS new_members
-
-        FROM recognition_logs
-        WHERE DATE(visit_time) = CURDATE()
+            ) AS today_new_members
         """
 
         cursor.execute(sql)
         summary = cursor.fetchone()
 
-        if summary is None:
-            return {
-                "today_visits": 0,
-                "today_vip": 0,
-                "today_normal_members": 0,
-                "today_visitors": 0,
-                "current_in_store": 0,
-                "average_stay_minutes": 0,
-                "new_members": 0
-            }
+        summary = summary or {}
+        for key in (
+            "today_visit_count",
+            "today_visitors",
+            "today_vip",
+            "today_visitors_fixed",
+            "current_people",
+            "today_new_members",
+        ):
+            summary[key] = int(summary.get(key) or 0)
 
+        # 保留現有 dashboard.html 的舊欄位，避免前端未同步時白畫面。
+        summary["today_visits"] = summary["today_visit_count"]
+        summary["new_members"] = summary["today_new_members"]
+        summary["current_in_store"] = summary["current_people"]
         return summary
 
     except Exception as e:
@@ -2023,6 +2022,33 @@ def get_dashboard_summary():
         if cursor:
             cursor.close()
 
+        if conn and conn.is_connected():
+            conn.close()
+
+
+def get_recent_members(limit=10):
+    """回傳 Dashboard 新會員列表所需的標準欄位。"""
+    limit = max(1, min(int(limit), 100))
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT member_id, name, phone, registration_source,
+                   member_level, created_at
+            FROM members
+            ORDER BY created_at DESC, member_id DESC
+            LIMIT %s
+            """,
+            (limit,)
+        )
+        return cursor.fetchall()
+    finally:
+        if cursor:
+            cursor.close()
         if conn and conn.is_connected():
             conn.close()
 
@@ -2274,7 +2300,8 @@ def insert_lottery_record(
     prize_name,
     result=None,
     coupon_id=None,
-    is_final=True
+    is_final=True,
+    can_retry=False
 ):
     """
     儲存會員抽獎結果。
@@ -2304,10 +2331,11 @@ def insert_lottery_record(
             prize_name,
             result,
             is_final,
+            can_retry,
             redeemed,
             redeemed_at
         )
-        VALUES (%s, %s, %s, %s, %s, %s, FALSE, NULL)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, FALSE, NULL)
         """
 
         cursor.execute(
@@ -2318,7 +2346,8 @@ def insert_lottery_record(
                 coupon_id,
                 prize_name,
                 result,
-                to_bool(is_final)
+                to_bool(is_final),
+                to_bool(can_retry)
             )
         )
 
@@ -2361,6 +2390,7 @@ def get_member_lottery_records(member_id):
             lr.prize_name,
             lr.result,
             lr.is_final,
+            lr.can_retry,
             lr.redeemed,
             lr.redeemed_at,
             lr.created_at,
@@ -2595,6 +2625,7 @@ def draw_lottery_for_member(member_id):
                 prize_name,
                 result,
                 is_final,
+                can_retry,
                 redeemed,
                 redeemed_at
             )
@@ -2605,6 +2636,7 @@ def draw_lottery_for_member(member_id):
                 %s,
                 %s,
                 NOW(),
+                %s,
                 %s,
                 %s,
                 %s,
@@ -2621,11 +2653,44 @@ def draw_lottery_for_member(member_id):
                 "中獎" if is_final else "未完成",
                 prize_name,
                 prize_name,
-                to_bool(is_final)
+                to_bool(is_final),
+                to_bool(not is_final)
             )
         )
 
         lottery_id = cursor.lastrowid
+
+        redemption = None
+
+        # 只有最終獎才建立 member_prizes，下一次抽獎才會被視為已完成。
+        # retry 獎不建立這筆資料，因此前端可安全地再抽一次。
+        if is_final:
+            redeem_token = secrets.token_urlsafe(24)
+            cursor.execute(
+                """
+                INSERT INTO member_prizes (
+                    member_id,
+                    prize_id,
+                    campaign_code,
+                    prize_code,
+                    redeem_token,
+                    status
+                )
+                VALUES (%s, %s, %s, %s, %s, 'unused')
+                """,
+                (
+                    member_id,
+                    prize_id,
+                    LOTTERY_CAMPAIGN_CODE,
+                    selected_prize["prize_code"],
+                    redeem_token
+                )
+            )
+            redemption = {
+                "token": redeem_token,
+                "qr_value": f"{REDEMPTION_BASE_URL}/redeem/{redeem_token}",
+                "status": "unused"
+            }
 
         conn.commit()
         # -------------------------------------------------
@@ -2638,6 +2703,8 @@ def draw_lottery_for_member(member_id):
             "already_completed": False,
             "lottery_id": lottery_id,
             "is_final": to_bool(is_final),
+            "can_retry": to_bool(not is_final),
+            "redemption": redemption,
             "prize": selected_prize
         }
 
@@ -2653,7 +2720,160 @@ def draw_lottery_for_member(member_id):
         if conn and conn.is_connected():
             conn.close()
 
-       
+def get_redemption_by_token(redeem_token):
+    """
+    根據 QR token 查詢會員中獎與兌換資料。
+    """
+
+    conn = None
+    cursor = None
+
+    try:
+        if not redeem_token:
+            return None
+
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        sql = """
+        SELECT
+            mp.member_prize_id,
+            mp.member_id,
+            mp.prize_id,
+            mp.campaign_code,
+            mp.prize_code,
+            mp.redeem_token,
+            mp.status,
+            mp.issued_at,
+            mp.expires_at,
+            mp.redeemed_at,
+            mp.redeemed_by,
+
+            m.name AS member_name,
+            m.phone AS member_phone,
+
+            lp.prize_name,
+            lp.prize_type,
+            lp.prize_value
+        FROM member_prizes mp
+        JOIN members m
+            ON mp.member_id = m.member_id
+        JOIN lottery_prizes lp
+            ON mp.prize_id = lp.prize_id
+        WHERE mp.redeem_token = %s
+        LIMIT 1
+        """
+
+        cursor.execute(sql, (redeem_token,))
+        return cursor.fetchone()
+
+    except Exception as e:
+        print("查詢兌換資料失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
+
+def redeem_member_prize(redeem_token, redeemed_by):
+    """
+    核銷會員獎品。
+
+    只有狀態為 unused 且尚未過期時才能成功。
+    """
+
+    conn = None
+    cursor = None
+
+    try:
+        if not redeem_token:
+            raise ValueError("redeem_token 不可為空")
+
+        if not redeemed_by:
+            raise ValueError("redeemed_by 不可為空")
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        sql = """
+        UPDATE member_prizes
+        SET
+            status = 'redeemed',
+            redeemed_at = CURRENT_TIMESTAMP,
+            redeemed_by = %s
+        WHERE redeem_token = %s
+          AND status = 'unused'
+          AND (
+                expires_at IS NULL
+                OR expires_at > CURRENT_TIMESTAMP
+              )
+        """
+
+        cursor.execute(
+            sql,
+            (
+                redeemed_by,
+                redeem_token
+            )
+        )
+
+        success = cursor.rowcount == 1
+
+        if success:
+            conn.commit()
+
+            return {
+                "success": True,
+                "message": "獎品核銷成功"
+            }
+
+        conn.rollback()
+
+        # 更新失敗後再查詢原因
+        redemption = get_redemption_by_token(redeem_token)
+
+        if redemption is None:
+            message = "找不到這張兌換 QR Code"
+
+        elif redemption["status"] == "redeemed":
+            message = "此獎品已經兌換過"
+
+        elif redemption["status"] == "expired":
+            message = "此獎品已過期"
+
+        elif (
+            redemption["expires_at"] is not None
+            and redemption["expires_at"] <= datetime.now()
+        ):
+            message = "此獎品已過期"
+
+        else:
+            message = "此獎品目前無法核銷"
+
+        return {
+            "success": False,
+            "message": message
+        }
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+
+        print("核銷獎品失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
+
+
+
 def get_all_visitors(limit=100):
     """
     取得散客列表。
