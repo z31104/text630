@@ -140,7 +140,9 @@ function initLiffProfile() {
             setLineHint("已取得 LINE User ID，可以完成註冊。", "success");
         })
         .catch(function (error) {
-            console.error("LIFF 初始化失敗", error);
+            if (LIFF_ID) {
+                console.warn("LIFF 初始化未完成", error);
+            }
             if (LIFF_ID && (!lineUserIdInput || !lineUserIdInput.value.trim())) {
                 setLineHint("無法取得 LINE User ID，請從 LINE 官方帳號的註冊連結重新開啟。", "error");
             }

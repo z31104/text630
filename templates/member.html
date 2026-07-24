@@ -16,7 +16,7 @@
         <p>顯示目前資料庫中的會員資料。</p>
     </div>
 
-    <a href="/member/add" class="primary-btn">新增會員</a>
+    <a href="{{ url_for('member.add_member_page') }}" class="primary-btn">新增會員</a>
 </section>
 
 <section class="search-box">
@@ -32,8 +32,14 @@
 </section>
 
 <section class="member-table-card">
+    {% if load_error %}
+        <div class="page-message error" role="alert">
+            {{ load_error }}
+        </div>
+    {% endif %}
+
     {% if request.args.get("delete_error") %}
-        <div class="alert alert-danger" role="alert">
+        <div class="page-message error" role="alert">
             刪除會員失敗，請稍後再試或確認相關資料狀態。
         </div>
     {% endif %}
@@ -69,10 +75,10 @@
                             <span class="badge normal">一般會員</span>
                         {% endif %}
                     </td>
-                    <td>{{ member.get("updated_at", "") or "-" }}</td>
+                    <td>{{ member.get("last_visit_time", "") or "-" }}</td>
                     <td>
                         <a
-                            href="/member/{{ member_id }}"
+                            href="{{ url_for('member.member_detail', member_id=member_id) }}"
                             class="secondary-btn"
                         >
                             會員詳細資料

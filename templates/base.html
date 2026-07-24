@@ -8,19 +8,18 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 
-<body>
+<body class="{% block body_class %}{% endblock %}">
 
     <header class="navbar">
-        <div class="logo">
+        <a class="logo" href="{{ url_for('home.home') }}">
             智慧會員系統
-        </div>
+        </a>
 
-        <nav class="nav-links">
-           <a href="/">首頁</a>
-           <a href="/dashboard">Dashboard</a>
-           <a href="/camera">攝影機</a>
-           <a href="/member">會員資料</a>
-           <a href="/line">LINE 測試</a>    
+        <nav class="nav-links" aria-label="主要導覽">
+            <a href="{{ url_for('home.home') }}" {% if request.endpoint == "home.home" %}aria-current="page"{% endif %}>首頁</a>
+            <a href="{{ url_for('home.dashboard') }}" {% if request.endpoint == "home.dashboard" %}aria-current="page"{% endif %}>Dashboard</a>
+            <a href="{{ url_for('camera.camera') }}" {% if request.endpoint == "camera.camera" %}aria-current="page"{% endif %}>Camera</a>
+            <a href="{{ url_for('member.member') }}" {% if request.endpoint and request.endpoint.startswith("member.") %}aria-current="page"{% endif %}>會員管理</a>
         </nav>
     </header>
 

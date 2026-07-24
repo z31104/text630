@@ -6,8 +6,7 @@
     <p class="tag">LINE Bot Notification</p>
     <h1>LINE 通知測試頁面</h1>
     <p>
-        此頁面為前端靜態畫面，後續將串接 LINE Bot，
-        用於顯示 VIP 會員到店通知狀態與通知紀錄。
+        顯示 LINE Bot 整合狀態與 VIP 通知紀錄；實際狀態需由 LINE 組路由提供。
     </p>
 </section>
 
@@ -18,27 +17,27 @@
 
         <div class="status-row">
             <span>連線狀態</span>
-            <span class="status active">待串接</span>
+            <span class="status pending">等待後端狀態</span>
         </div>
 
         <div class="status-row">
             <span>Channel Token</span>
-            <span class="status inactive">未設定</span>
+            <span class="status pending">不在前端顯示</span>
         </div>
 
         <div class="status-row">
             <span>通知功能</span>
-            <span class="status inactive">尚未啟用</span>
+            <span class="status pending">等待後端狀態</span>
         </div>
     </div>
 
     <div class="line-test-card">
         <h2>測試通知</h2>
         <p>
-            目前按鈕僅為前端畫面，尚未實際發送 LINE 訊息。
+            尚未提供安全的測試通知 API，前端不會假裝已送出訊息。
         </p>
 
-        <button class="primary-btn">發送測試通知</button>
+        <button class="primary-btn button-reset" disabled>發送測試通知（待串接）</button>
     </div>
 
 </section>
@@ -59,19 +58,7 @@
 
         <tbody>
             <tr>
-                <td>2026-07-02 19:30:00</td>
-                <td>王小明</td>
-                <td><span class="badge vip">true</span></td>
-                <td>U123456789</td>
-                <td><span class="status active">已通知</span></td>
-            </tr>
-
-            <tr>
-                <td>2026-07-03 14:20:00</td>
-                <td>訪客</td>
-                <td><span class="badge normal">false</span></td>
-                <td>null</td>
-                <td><span class="status inactive">未通知</span></td>
+                <td colspan="5">目前沒有可顯示的通知紀錄。</td>
             </tr>
         </tbody>
     </table>

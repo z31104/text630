@@ -1,52 +1,77 @@
 {% extends "base.html" %}
 
-{% block content %}
+{% block title %}Camera｜智慧會員系統{% endblock %}
 
-<section class="page-header">
-    <p class="tag">Camera Recognition</p>
-    <h1>攝影機辨識頁面</h1>
-    <p>
-        此頁面為前端靜態畫面，依照 AI 回傳資料中的 name 與 vip 欄位顯示會員身分。
-    </p>
+{% block content %}
+<section class="page-header camera-page-header">
+    <div>
+        <p class="tag">CAMERA RECOGNITION</p>
+        <h1>攝影機辨識</h1>
+        <p>顯示既有辨識串流與攝影機連線狀態，不在前端建立假會員資料。</p>
+    </div>
+    <span class="camera-status-badge is-loading" id="cameraStatusBadge" aria-live="polite">
+        連線確認中
+    </span>
 </section>
 
-<section class="camera-layout">
-
-    <div class="camera-preview">
-        <div class="camera-placeholder">
-            攝影機畫面預覽區
+<section
+    class="camera-layout camera-live-layout"
+    id="cameraApp"
+    data-status-url="{{ url_for('camera.get_camera_status') }}"
+    data-stream-url="{{ url_for('camera.video_feed') }}"
+    data-reload-url="{{ url_for('camera.reload_faces') }}"
+>
+    <article class="camera-preview">
+        <div class="camera-stream-frame">
+            <div class="camera-stream-state" id="cameraStreamState">
+                <strong>攝影機載入中</strong>
+                <span>正在等待影像串流。</span>
+            </div>
+            <img
+                id="cameraStream"
+                class="camera-stream-image"
+                src="{{ url_for('camera.video_feed') }}"
+                alt="即時攝影機辨識串流"
+            >
         </div>
 
         <div class="camera-actions">
-            <button class="primary-btn">開啟攝影機</button>
-            <button class="secondary-btn">偵測人臉</button>
+            <button type="button" class="secondary-btn button-reset" id="retryCameraButton">
+                重新連線串流
+            </button>
+            <button type="button" class="primary-btn button-reset" id="reloadFacesButton">
+                重新載入人臉
+            </button>
         </div>
-    </div>
+    </article>
 
-    <div class="recognition-panel">
-        <h2>辨識結果</h2>
+    <aside class="recognition-panel camera-control-panel">
+        <h2>系統狀態</h2>
 
         <div class="result-card">
-            <p class="result-label">name</p>
-            <p class="result-value">王小明</p>
+            <p class="result-label">Camera Status</p>
+            <p class="result-value" id="cameraStatusText">Connecting</p>
         </div>
 
         <div class="result-card">
-            <p class="result-label">vip</p>
-            <p class="result-value">true</p>
+            <p class="result-label">狀態說明</p>
+            <p class="result-value result-value-small" id="cameraStatusMessage">
+                正在確認攝影機狀態。
+            </p>
         </div>
 
-        <div class="member-display vip-member">
-            王小明 VIP會員
-        </div>
+        <div class="camera-feedback" id="cameraFeedback" role="status" aria-live="polite" hidden></div>
 
         <div class="rule-note">
-            <p>顯示規則：</p>
-            <p>vip = true：顯示「姓名 + VIP會員」</p>
-            <p>vip = false：顯示「訪客」</p>
+            <p><strong>既有 API</strong></p>
+            <p>串流：<code>/camera/video_feed</code></p>
+            <p>狀態：<code>/camera/status</code></p>
+            <p>人臉重載：<code>/camera/reload-faces</code></p>
         </div>
-    </div>
-
+    </aside>
 </section>
+{% endblock %}
 
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/camera.js') }}"></script>
 {% endblock %}

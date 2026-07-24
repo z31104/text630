@@ -13,31 +13,32 @@
     </p>
 
     <div class="hero-actions">
-        <a class="primary-btn" href="/camera">開始辨識</a>
-        <a class="secondary-btn" href="/member">查看會員</a>
+        <a class="primary-btn" href="{{ url_for('camera.camera') }}">開始辨識</a>
+        <a class="secondary-btn" href="{{ url_for('home.dashboard') }}">查看 Dashboard</a>
     </div>
 </section>
 
 <section class="section-title">
     <h2>系統主要功能</h2>
-    <p>前端先建立操作流程畫面，後續再串接 AI、資料庫與 LINE 功能。</p>
+    <p>整合會員辨識、到店紀錄、VIP 通知與互動行銷管理。</p>
 </section>
 
-<section class="cards">
-    <div class="card">
+<section class="cards home-feature-grid">
+    <a class="card feature-card-link" href="{{ url_for('camera.camera') }}">
         <h3>攝影機辨識</h3>
-        <p>顯示即時攝影機畫面、辨識狀態與會員資訊。</p>
-    </div>
+        <p>查看即時串流、連線狀態並重新載入人臉資料。</p>
+    </a>
 
-    <div class="card">
+    <a class="card feature-card-link" href="{{ url_for('member.member') }}">
         <h3>會員資料管理</h3>
         <p>提供會員列表、會員等級、聯絡資訊與顧客資料展示。</p>
-    </div>
+    </a>
 
-    <div class="card">
-        <h3>VIP 到店通知</h3>
-        <p>當 VIP 會員到店時，可顯示通知狀態與紀錄。</p>
-    </div>
+    <a class="card feature-card-link" href="{{ url_for('home.dashboard') }}">
+        <h3>Dashboard</h3>
+        <p>追蹤今日到店、店內人數與 VIP 通知紀錄。</p>
+    </a>
+
 </section>
 
 {% endblock %}

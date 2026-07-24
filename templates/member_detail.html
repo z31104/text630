@@ -6,9 +6,9 @@
 {% set is_vip = member.get("vip") if member else false %}
 {% set latest_record = records[0] if records else {} %}
 {% set latest_visit_time = (
-    latest_record.get("visit_time")
+    member.get("last_visit_time")
+    or latest_record.get("visit_time")
     or latest_record.get("recognized_at")
-    or member.get("updated_at", "")
     if member else ""
 ) %}
 
@@ -36,6 +36,12 @@
     action="{{ url_for('member.edit_member', member_id=member.get('member_id')) }}"
     enctype="multipart/form-data"
 >
+    <input type="hidden" name="total_visit_count" value="{{ member.get('total_visit_count', 0) or 0 }}">
+    <input type="hidden" name="line_user_id" value="{{ member.get('line_user_id', '') or '' }}">
+    <input type="hidden" name="total_amount" value="{{ member.get('total_amount', 0) or 0 }}">
+    <input type="hidden" name="favorite_product" value="{{ member.get('favorite_product', '') or '' }}">
+    <input type="hidden" name="face_image" value="{{ member.get('face_image', '') or '' }}">
+
     <section class="member-detail-layout">
         <div class="member-detail-card">
             <h2>基本資料</h2>
@@ -135,7 +141,7 @@
 
     <div class="member-detail-actions">
         <button type="submit" class="primary-btn member-save-btn">儲存修改</button>
-        <a href="/member" class="secondary-btn">返回列表</a>
+        <a href="{{ url_for('member.member') }}" class="secondary-btn">返回列表</a>
     </div>
 </form>
 

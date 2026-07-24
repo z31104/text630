@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的會員｜優惠券</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body class="customer-page member-coupon-page">
+    <main class="member-coupon-container">
+        <header class="member-portal-header">
+            <a class="member-portal-brand" href="{{ url_for('home.coupons') }}">
+                智慧會員
+            </a>
+        </header>
+
+        <section class="member-coupon-hero">
+            <p class="promo-tag">MY MEMBERSHIP</p>
+            <h1>{% if selected_member_id %}我的優惠券{% else %}會員優惠券{% endif %}</h1>
+            <p>
+                {% if selected_member_id %}
+                查看目前持有、可使用及即將到期的優惠券數量。
+                {% else %}
+                查看優惠券活動總覽；從 LINE「我的會員」進入後可顯示個人優惠券。
+                {% endif %}
+            </p>
+        </section>
+
+        {% if load_error %}
+        <div class="page-message error member-coupon-message" role="alert">
+            優惠券資料載入失敗，請稍後再試。
+        </div>
+        {% endif %}
+
+        <section class="member-coupon-panel" aria-labelledby="couponSummaryTitle">
+            <div class="member-coupon-heading">
+                <div>
+                    <p class="tag">{% if selected_member_id %}MY COUPONS{% else %}COUPON OVERVIEW{% endif %}</p>
+                    <h2 id="couponSummaryTitle">
+                        {% if selected_member_id %}會員優惠券摘要{% else %}優惠券活動摘要{% endif %}
+                    </h2>
+                </div>
+                {% if selected_member_id %}
+                <span class="member-id-chip">會員 #{{ selected_member_id }}</span>
+                {% endif %}
+            </div>
+
+            {% if selected_member_id %}
+                {% set coupon_stats = [
+                    ("優惠券總數", member_coupon_summary.get("total_coupons") if member_coupon_summary else none, "目前持有"),
+                    ("可使用", member_coupon_summary.get("available_coupons") if member_coupon_summary else none, "尚未使用"),
+                    ("即將過期", member_coupon_summary.get("expiring_soon") if member_coupon_summary else none, "7 日內到期")
+                ] %}
+            {% else %}
+                {% set coupon_stats = [
+                    ("優惠券總數", summary.get("total_coupons"), "所有優惠券"),
+                    ("進行中活動", summary.get("active_coupons"), "目前有效"),
+                    ("累積發放", summary.get("total_issued"), "歷史領取紀錄")
+                ] %}
+            {% endif %}
+
+            <div class="member-coupon-stat-grid">
+                {% for label, value, note in coupon_stats %}
+                <article class="member-coupon-stat{% if load_error %} is-placeholder{% endif %}">
+                    <p>{{ label }}</p>
+                    <strong>{{ value if value is not none and not load_error else "—" }}</strong>
+                    <span>{{ note }}</span>
+                </article>
+                {% endfor %}
+            </div>
+
+            {% if not selected_member_id %}
+            <div class="member-coupon-empty" role="status">
+                <strong>尚未取得會員身分</strong>
+                <p>
+                    個人「優惠券總數、可使用、即將過期」需由 LINE LIFF 驗證會員後顯示，
+                    不會在未登入時載入其他會員的優惠券資料。
+                </p>
+            </div>
+            {% endif %}
+        </section>
+    </main>
+</body>
+</html>

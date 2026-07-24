@@ -1,36 +1,77 @@
 {% extends "base.html" %}
 
 {% block title %}Dashboard｜智慧會員系統{% endblock %}
+{% block body_class %}dashboard-page{% endblock %}
 
-{% macro display_value(value) -%}
+{% macro display_value(value, suffix="") -%}
 {%- if value is undefined or value is none or value == "" -%}
--
+—
 {%- else -%}
-{{ value }}
+{{ value }}{{ suffix }}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro format_datetime(value) -%}
+{%- if value is undefined or value is none or value == "" -%}
+—
+{%- else -%}
+{{ (value|string)|replace("T", " ") }}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro confidence_value(value) -%}
+{%- if value is undefined or value is none or value == "" -%}
+—
+{%- elif value|float <= 1 -%}
+{{ ((value|float) * 100)|round(1) }}%
+{%- else -%}
+{{ (value|float)|round(1) }}%
 {%- endif -%}
 {%- endmacro %}
 
 {% macro status_badge(value) -%}
+{%- set labels = {
+    "arrived": "已到店",
+    "staying": "店內",
+    "left": "已離店",
+    "recognized": "已辨識",
+    "guest": "訪客",
+    "pending": "等待中",
+    "sent": "已送出",
+    "failed": "失敗",
+    "error": "錯誤",
+    "success": "成功"
+} -%}
 {%- if value is undefined or value is none or value == "" -%}
--
+—
 {%- elif value in ["left", "failed", "error"] -%}
-<span class="status inactive">{{ value }}</span>
+<span class="status inactive">{{ labels.get(value, value) }}</span>
 {%- elif value in ["staying", "arrived"] -%}
-<span class="status staying">{{ value }}</span>
+<span class="status staying">{{ labels.get(value, value) }}</span>
 {%- elif value in ["pending", "guest"] -%}
-<span class="status pending">{{ value }}</span>
+<span class="status pending">{{ labels.get(value, value) }}</span>
 {%- else -%}
-<span class="status active">{{ value }}</span>
+<span class="status active">{{ labels.get(value, value) }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro vip_badge(value) -%}
+{%- if value is undefined or value is none -%}
+—
+{%- elif value -%}
+<span class="badge vip">VIP</span>
+{%- else -%}
+<span class="badge normal">一般</span>
 {%- endif -%}
 {%- endmacro %}
 
 {% macro subject_name(row) -%}
 {%- if row.subject_type == "member" -%}
-{{ row.name or "未知訪客" }}
+{{ row.name or "未提供姓名" }}
 {%- elif row.subject_type == "visitor" -%}
-{{ row.name or row.visitor_code or "未知訪客" }}
+{{ row.name or row.visitor_code or "未命名散客" }}
 {%- else -%}
-未知訪客
+未知身分
 {%- endif -%}
 {%- endmacro %}
 
@@ -40,7 +81,7 @@
 {%- elif row.subject_type == "visitor" -%}
 固定散客
 {%- else -%}
-未知訪客
+未知身分
 {%- endif -%}
 {%- endmacro %}
 
@@ -56,159 +97,177 @@ normal
 
 {% block content %}
 <section class="dashboard-header">
-    <h1>管理後台 Dashboard</h1>
-    <p>追蹤今日到店、會員辨識、VIP 通知與店內即時狀態。</p>
+    <div>
+        <p class="tag">LIVE OPERATIONS</p>
+        <h1>管理後台 Dashboard</h1>
+        <p>追蹤今日到店、會員與散客辨識及店內狀態。</p>
+    </div>
+    <div class="dashboard-header-actions">
+        <button type="button" class="secondary-btn button-reset" id="dashboardRefreshButton">
+            重新整理
+        </button>
+        <small id="dashboardUpdatedAt" aria-live="polite"></small>
+    </div>
 </section>
 
-<section class="dashboard-stats">
-    <div class="dashboard-card">
-        <p>今日到店</p>
-        <h2>{{ summary.today_visits|default(0, true) }}</h2>
-        <span>today_visits</span>
-    </div>
+{% if dashboard_errors.summary or dashboard_errors.recognitions %}
+<div class="page-message error" role="alert">
+    部分 Dashboard 資料載入失敗。本頁以「—」或空狀態顯示，沒有將錯誤資料假裝成 0。
+</div>
+{% endif %}
 
-    <div class="dashboard-card highlight">
-        <p>今日 VIP</p>
-        <h2>{{ summary.today_vip|default(0, true) }}</h2>
-        <span>today_vip</span>
-    </div>
+{% if not dashboard_contract_ready and not dashboard_errors.summary %}
+<div class="page-message warning" role="status">
+    <strong>Dashboard 欄位尚待 DB／整合組凍結。</strong>
+    目前後端仍使用
+    <code>today_visits → today_visit_count</code>、
+    <code>new_members → today_new_members</code>、
+    <code>current_in_store → current_people</code>。
+    現有 <code>today_visitors</code> 是 Visitor 到店紀錄數，不能當成「今日不重複來客」。
+</div>
+{% endif %}
 
-    <div class="dashboard-card">
-        <p>新會員</p>
-        <h2>{{ summary.new_members|default(0, true) }}</h2>
-        <span>new_members</span>
-    </div>
+<section class="dashboard-stats" aria-label="今日統計">
+    {% if dashboard_contract_ready %}
+        {% set stat_cards = [
+            ("今日不重複來客", summary.today_visitors, "today_visitors", false),
+            ("今日進店次數", summary.today_visit_count, "today_visit_count", false),
+            ("今日 VIP", summary.today_vip, "today_vip", true),
+            ("今日新會員", summary.today_new_members, "today_new_members", false),
+            ("今日固定散客", summary.today_visitors_fixed, "today_visitors_fixed", false),
+            ("目前店內人數", summary.current_people, "current_people", false),
+            ("平均停留時間", summary.average_stay_minutes, "average_stay_minutes", false)
+        ] %}
+    {% else %}
+        {% set stat_cards = [
+            ("今日不重複來客", none, "BLOCKED：等待 today_visitors 新規格", false),
+            ("今日進店次數", summary.get("today_visits"), "today_visits（待更名）", false),
+            ("今日 VIP 辨識", summary.get("today_vip"), "today_vip", true),
+            ("今日新會員", summary.get("new_members"), "new_members（待更名）", false),
+            ("今日固定散客", none, "BLOCKED：等待 today_visitors_fixed", false),
+            ("目前店內人數", summary.get("current_in_store"), "current_in_store（待更名）", false),
+            ("平均停留時間", summary.get("average_stay_minutes"), "average_stay_minutes", false)
+        ] %}
+    {% endif %}
 
-    <div class="dashboard-card">
-        <p>散客</p>
-        <h2>{{ summary.today_visitors|default(0, true) }}</h2>
-        <span>visitors</span>
-    </div>
+    {% for label, value, field_name, highlight in stat_cards %}
+    <article class="dashboard-card{% if highlight %} highlight{% endif %}{% if value is none %} is-placeholder{% endif %}">
+        <p>{{ label }}</p>
+        <h2>
+            {% if dashboard_errors.summary %}
+            —
+            {% elif label == "平均停留時間" and value is not none %}
+            {{ display_value(value, " 分") }}
+            {% else %}
+            {{ display_value(value) }}
+            {% endif %}
+        </h2>
+        <span>{{ field_name }}</span>
+    </article>
+    {% endfor %}
 </section>
 
 <section class="dashboard-main dashboard-main-wide">
-    <div class="recognition-log-card">
+    <article class="recognition-log-card">
         <div class="table-header">
-            <h2>最近辨識紀錄</h2>
-            <span>recent_recognitions</span>
+            <div>
+                <h2>最近辨識紀錄</h2>
+                <p class="section-note">完整載入最多 500 筆紀錄並依到店時間由新到舊顯示；身分類型只影響目前畫面篩選。</p>
+            </div>
         </div>
 
-        <table class="dashboard-table">
-            <thead>
-                <tr>
-                    <th>Log ID</th>
-                    <th>訪客</th>
-                    <th>身分</th>
-                    <th>會員 ID</th>
-                    <th>散客 ID</th>
-                    <th>散客代碼</th>
-                    <th>VIP</th>
-                    <th>本次到店開始</th>
-                    <th>辨識紀錄建立</th>
-                    <th>最後辨識時間</th>
-                    <th>離店時間</th>
-                    <th>停留秒數</th>
-                    <th>停留分鐘</th>
-                    <th>辨識狀態</th>
-                    <th>到店狀態</th>
-                    <th>攝影機</th>
-                    <th>信心分數</th>
-                    <th>建立時間</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in recent_recognitions %}
-                {% set stay_minutes = row.stay_minutes|default(none) %}
-                {% set stay_seconds = row.stay_seconds|default(none) %}
-                {% if stay_minutes is none and stay_seconds is not none %}
-                {% set stay_minutes = (stay_seconds / 60)|round(0, "floor")|int %}
-                {% endif %}
+        <form class="filter-toolbar dashboard-identity-filter" id="dashboardFilters" autocomplete="off">
+            <label class="filter-grow">
+                身分類型
+                <select id="dashboardSubjectFilter">
+                    <option value="">全部</option>
+                    <option value="member">會員</option>
+                    <option value="visitor">散客</option>
+                    <option value="vip">VIP</option>
+                </select>
+            </label>
+        </form>
 
-                <tr>
-                    <td>{{ display_value(row.log_id) }}</td>
-                    <td>{{ subject_name(row) }}</td>
-                    <td><span class="badge {{ subject_badge_class(row) }}">{{ subject_text(row) }}</span></td>
-                    <td>{{ display_value(row.member_id) }}</td>
-                    <td>{{ display_value(row.visitor_id) }}</td>
-                    <td>{{ display_value(row.visitor_code) }}</td>
-                    <td>
-                        {% set vip_value = row.vip|default(none) %}
-                        {% if vip_value is none %}
-                        -
-                        {% elif vip_value %}
-                        true
-                        {% else %}
-                        false
-                        {% endif %}
-                    </td>
-                    <td>{{ display_value(row.visit_time) }}</td>
-                    <td>{{ display_value(row.recognized_at) }}</td>
-                    <td>{{ display_value(row.last_seen_at) }}</td>
-                    <td>{{ display_value(row.leave_time) }}</td>
-                    <td>{{ display_value(row.stay_seconds) }}</td>
-                    <td>{{ display_value(stay_minutes) }}</td>
-                    <td>{{ status_badge(row.recognition_status) }}</td>
-                    <td>{{ status_badge(row.visit_status) }}</td>
-                    <td>{{ display_value(row.camera_location or row.camera_id) }}</td>
-                    <td>{{ display_value(row.confidence) }}</td>
-                    <td>{{ display_value(row.created_at) }}</td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="18">目前沒有資料</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-
-    <div class="vip-alert-card">
-        <div class="table-header">
-            <h2>VIP 通知紀錄</h2>
-            <span>recent_vip_notifications</span>
+        <div class="responsive-table-wrap">
+            <table class="dashboard-table responsive-data-table">
+                <thead>
+                    <tr>
+                        <th>Log ID</th>
+                        <th>訪客</th>
+                        <th>身分</th>
+                        <th>會員 ID</th>
+                        <th>散客 ID</th>
+                        <th>散客代碼</th>
+                        <th>VIP</th>
+                        <th>本次到店開始</th>
+                        <th>辨識紀錄建立</th>
+                        <th>最後辨識時間</th>
+                        <th>離店時間</th>
+                        <th>停留秒數</th>
+                        <th>停留分鐘</th>
+                        <th>辨識狀態</th>
+                        <th>到店狀態</th>
+                        <th>攝影機</th>
+                        <th>信心分數</th>
+                        <th>建立時間</th>
+                    </tr>
+                </thead>
+                <tbody id="dashboardRecognitionBody">
+                    {% for row in recent_recognitions %}
+                    {% set stay_minutes = row.stay_minutes|default(none) %}
+                    {% set stay_seconds = row.stay_seconds|default(none) %}
+                    {% if stay_minutes is none and stay_seconds is not none %}
+                    {% set stay_minutes = (stay_seconds / 60)|round(2) %}
+                    {% endif %}
+                    <tr
+                        data-dashboard-row
+                        data-identity="{% if row.vip or row.member_level == 'vip' %}vip{% elif row.subject_type == 'member' %}member{% else %}visitor{% endif %}"
+                    >
+                        <td data-label="Log ID">{{ display_value(row.log_id) }}</td>
+                        <td data-label="訪客">{{ subject_name(row) }}</td>
+                        <td data-label="身分"><span class="badge {{ subject_badge_class(row) }}">{{ subject_text(row) }}</span></td>
+                        <td data-label="會員 ID">{{ display_value(row.member_id) }}</td>
+                        <td data-label="散客 ID">{{ display_value(row.visitor_id) }}</td>
+                        <td data-label="散客代碼">{{ display_value(row.visitor_code) }}</td>
+                        <td data-label="VIP">{{ vip_badge(row.vip|default(none)) }}</td>
+                        <td data-label="本次到店開始">{{ format_datetime(row.visit_time) }}</td>
+                        <td data-label="辨識紀錄建立">{{ format_datetime(row.recognized_at) }}</td>
+                        <td data-label="最後辨識時間">{{ format_datetime(row.last_seen_at) }}</td>
+                        <td data-label="離店時間">{{ format_datetime(row.leave_time) }}</td>
+                        <td data-label="停留秒數">{{ display_value(row.stay_seconds) }}</td>
+                        <td data-label="停留分鐘">{{ display_value(stay_minutes) }}</td>
+                        <td data-label="辨識狀態">{{ status_badge(row.recognition_status) }}</td>
+                        <td data-label="到店狀態">{{ status_badge(row.visit_status) }}</td>
+                        <td data-label="攝影機">{{ display_value(row.camera_location or row.camera_id) }}</td>
+                        <td data-label="信心分數">{{ confidence_value(row.confidence) }}</td>
+                        <td data-label="建立時間">{{ format_datetime(row.created_at) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr class="table-empty-row">
+                        <td colspan="18">
+                            {% if dashboard_errors.recognitions %}
+                            辨識紀錄載入失敗，請稍後重新整理。
+                            {% else %}
+                            目前沒有辨識紀錄。
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
 
-        <table class="dashboard-table">
-            <thead>
-                <tr>
-                    <th>通知 ID</th>
-                    <th>會員 ID</th>
-                    <th>Log ID</th>
-                    <th>會員姓名</th>
-                    <th>會員等級</th>
-                    <th>店員 LINE User ID</th>
-                    <th>推播內容</th>
-                    <th>推播狀態</th>
-                    <th>送出時間</th>
-                    <th>建立時間</th>
-                    <th>攝影機</th>
-                    <th>信心分數</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in recent_vip_notifications %}
-                <tr>
-                    <td>{{ display_value(row.notification_id) }}</td>
-                    <td>{{ display_value(row.member_id) }}</td>
-                    <td>{{ display_value(row.log_id) }}</td>
-                    <td>{{ display_value(row.member_name or row.name) }}</td>
-                    <td><span class="badge vip">{{ row.member_level_text or "VIP 會員" }}</span></td>
-                    <td>{{ display_value(row.line_user_id) }}</td>
-                    <td>{{ display_value(row.message) }}</td>
-                    <td>{{ status_badge(row.status) }}</td>
-                    <td>{{ display_value(row.sent_at) }}</td>
-                    <td>{{ display_value(row.created_at) }}</td>
-                    <td>{{ display_value(row.camera_location or row.camera_id) }}</td>
-                    <td>{{ display_value(row.confidence) }}</td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="12">目前沒有資料</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+        <div class="empty-state compact" id="dashboardFilterEmpty" hidden>
+            沒有符合目前篩選條件的辨識紀錄。
+        </div>
+        <div class="table-actions">
+            <span id="dashboardResultCount" aria-live="polite"></span>
+        </div>
+    </article>
+
 </section>
+{% endblock %}
 
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}
