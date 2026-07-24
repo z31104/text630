@@ -1,10 +1,8 @@
 import os
+import mysql.connector
 import json
 import random
-import secrets
 from datetime import datetime
-
-import mysql.connector
 from dotenv import load_dotenv
 
 
@@ -34,15 +32,6 @@ def get_member_level_text(member_level):
 
     return level_text_map.get(member_level, "未知")
 
-
-# 抽獎活動設定
-LOTTERY_CAMPAIGN_CODE = "WELCOME_2026"
-
-REDEMPTION_BASE_URL = os.getenv(
-    "REDEMPTION_BASE_URL",
-    "http://127.0.0.1:5000"
-)
-
 # VIP 通知狀態
 NOTIFICATION_STATUS_PENDING = "pending"
 NOTIFICATION_STATUS_SENT = "sent"
@@ -54,71 +43,8 @@ def clean_env(value):
         return None
     return value.replace('"', '').replace("'", "")
 
-def to_bool(value):
-    """
-    將前端、LINE 或 API 傳來的值安全轉成布林值。
-    """
 
-    if isinstance(value, bool):
-        return value
 
-    if value is None:
-        return False
-
-    if isinstance(value, str):
-        return value.strip().lower() in {
-            "true",
-            "1",
-            "yes",
-            "on"
-        }
-
-    return bool(value)
-
-def normalize_encoding_data(encoding_data):
-    """
-    將人臉 encoding 統一轉成合法的 128 維 JSON 字串。
-    """
-
-    if encoding_data is None:
-        raise ValueError("encoding_data 不可為空")
-
-    if hasattr(encoding_data, "tolist"):
-        encoding_data = encoding_data.tolist()
-
-    if isinstance(encoding_data, str):
-        try:
-            encoding_data = json.loads(encoding_data)
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                "encoding_data 不是合法 JSON"
-            ) from e
-
-    if not isinstance(encoding_data, (list, tuple)):
-        raise ValueError(
-            "encoding_data 必須是 list、tuple、NumPy array 或 JSON 字串"
-        )
-
-    if len(encoding_data) != 128:
-        raise ValueError(
-            f"encoding_data 必須是 128 維，"
-            f"目前為 {len(encoding_data)} 維"
-        )
-
-    try:
-        encoding_data = [
-            float(value)
-            for value in encoding_data
-        ]
-    except (TypeError, ValueError) as e:
-        raise ValueError(
-            "encoding_data 的每一項都必須是數字"
-        ) from e
-
-    return json.dumps(
-        encoding_data,
-        ensure_ascii=False
-    )
 
 def get_connection():
     # Cloud Run
@@ -209,7 +135,6 @@ def get_member_by_id(member_id):
     )
 
     member = cursor.fetchone()
-
     if member:
         member["member_level_text"] = get_member_level_text(
             member.get("member_level")
@@ -240,12 +165,8 @@ def insert_recognition_log(
     last_seen_at=None,
     leave_time=None,
     stay_seconds=0,
-    notification_sent=False,
-    coupon_sent=False,
-    lottery_status="not_joined",
     created_at=None
 ):
-
     conn = None
     cursor = None
 
@@ -286,7 +207,6 @@ def insert_recognition_log(
                 )
 
             member_id = None
-            line_user_id = None
             vip = False
             member_level = "guest"
 
@@ -297,7 +217,6 @@ def insert_recognition_log(
             member_id = None
             visitor_id = None
             visitor_code = None
-            line_user_id = None
             vip = False
             member_level = "guest"
 
@@ -312,7 +231,7 @@ def insert_recognition_log(
             RECOGNITION_STATUS_RECOGNIZED,
             RECOGNITION_STATUS_GUEST,
             RECOGNITION_STATUS_FAILED,
-            RECOGNITION_STATUS_NO_FACE
+            RECOGNITION_STATUS_NO_FACE,
         }
 
         # 2. 檢查 visit_status 是否合法
@@ -327,14 +246,9 @@ def insert_recognition_log(
                 f"不支援的 recognition_status：{recognition_status}"
             )
 
-        if visit_status not in valid_visit_statuses:
+        if visit_status is not None and visit_status not in valid_visit_statuses:
             raise ValueError(
                 f"不支援的 visit_status：{visit_status}"
-            )
-        
-        if recognition_status == RECOGNITION_STATUS_NO_FACE:
-            raise ValueError(
-                "no_face 不應建立 recognition_logs 到店紀錄"
             )
 
         # 3. 沒有傳時間時，自動補現在時間
@@ -346,9 +260,6 @@ def insert_recognition_log(
 
         if visit_time is None:
             visit_time = recognized_at
-
-        if last_seen_at is None:
-            last_seen_at = visit_time
 
         # 4. 檢查通過後，才連線資料庫
         conn = get_connection()
@@ -372,14 +283,11 @@ def insert_recognition_log(
             last_seen_at,
             leave_time,
             stay_seconds,
-            notification_sent,
-            coupon_sent,
-            lottery_status,
             recognized_at,
             created_at,
             camera_location
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         data = (
@@ -399,9 +307,6 @@ def insert_recognition_log(
             last_seen_at,
             leave_time,
             stay_seconds,
-            to_bool(notification_sent),
-            to_bool(coupon_sent),
-            lottery_status,
             recognized_at,
             created_at,
             camera_location
@@ -427,6 +332,24 @@ def insert_recognition_log(
 
 
 def save_recognition_log(data):
+    recognition_status = (
+        data.get("recognition_status")
+        or RECOGNITION_STATUS_RECOGNIZED
+    )
+
+    # "no_face" is an in-memory camera state, not a visit event.
+    if recognition_status == RECOGNITION_STATUS_NO_FACE:
+        return None
+
+    visit_status = data.get("visit_status")
+    if recognition_status in (
+        RECOGNITION_STATUS_FAILED,
+        RECOGNITION_STATUS_NO_FACE,
+    ):
+        visit_status = None
+    elif visit_status is None:
+        visit_status = VISIT_STATUS_ARRIVED
+
     return insert_recognition_log(
         subject_type=data.get("subject_type"),
         member_id=data.get("member_id"),
@@ -441,33 +364,14 @@ def save_recognition_log(data):
 
         camera_id=data.get("camera_id"),
         member_level=data.get("member_level"),
-        recognition_status=(
-            data.get("recognition_status")
-            or RECOGNITION_STATUS_RECOGNIZED
-        ),
-        visit_status=(
-            data.get("visit_status")
-            or VISIT_STATUS_ARRIVED
-        ),
-        visit_time=data.get("visit_time" ),
+        recognition_status=recognition_status,
+        visit_status=visit_status,
+        visit_time=data.get("visit_time"),
         last_seen_at=data.get("last_seen_at"),
         leave_time=data.get("leave_time"),
         stay_seconds=data.get("stay_seconds", 0),
-        notification_sent=data.get(
-            "notification_sent",
-            False
-        ),
-        coupon_sent=data.get(
-            "coupon_sent",
-            False
-        ),
-        lottery_status=(
-            data.get("lottery_status")
-            or "not_joined"
-        ),
-
+        created_at=data.get("created_at")
     )
-
 
 def insert_vip_notification(
     member_id,
@@ -476,8 +380,7 @@ def insert_vip_notification(
     message,
     status="pending",
     notification_type="vip",
-    retry_count=0,
-    response_message=None
+    response_message=None,
 ):
     conn = None
     cursor = None
@@ -491,25 +394,22 @@ def insert_vip_notification(
             member_id,
             log_id,
             line_user_id,
+            notification_type,
             message,
             status,
-            notification_type,
-            retry_count,
             response_message
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
 
         data = (
             member_id,
             log_id,
             line_user_id,
+            notification_type,
             message,
             status,
-            notification_type,
-            retry_count,
-            response_message
-            
+            response_message,
         )
 
         cursor.execute(sql, data)
@@ -548,7 +448,9 @@ def insert_vip_notification(
 def update_vip_notification_status(
     notification_id,
     status,
-    sent_at=None
+    sent_at=None,
+    response_message=None,
+    increment_retry=False,
 ):
     """
     更新 VIP 通知結果。
@@ -582,7 +484,9 @@ def update_vip_notification_status(
         UPDATE vip_notifications
         SET
             status = %s,
-            sent_at = %s
+            sent_at = %s,
+            response_message = %s,
+            retry_count = retry_count + %s
         WHERE notification_id = %s
         """
 
@@ -591,6 +495,8 @@ def update_vip_notification_status(
             (
                 status,
                 sent_at,
+                response_message,
+                1 if increment_retry else 0,
                 notification_id
             )
         )
@@ -680,7 +586,8 @@ def get_active_visit(
             visit_time,
             last_seen_at,
             leave_time,
-            stay_seconds,    
+            stay_seconds,
+            ROUND(stay_seconds / 60.0, 2) AS stay_minutes,
             camera_location,
             created_at
         FROM recognition_logs
@@ -774,61 +681,37 @@ def update_recognition_last_seen(log_id, last_seen_at):
         if conn:
             conn.close()
 
-def update_recognition_notification_sent(
-    log_id,
-    notification_sent=True
-):
-    """
-    更新 recognition_logs 的 VIP 通知發送狀態。
 
-    notification_sent:
-    - True：LINE 通知已成功發送
-    - False：LINE 通知尚未成功發送
-    """
-
+def update_recognition_notification_sent(log_id, notification_sent=True):
+    """Mark whether the recognition event has already triggered a notification."""
     conn = None
     cursor = None
 
     try:
         if log_id is None:
-            raise ValueError("log_id 不可為空")
+            raise ValueError("log_id is required")
 
         conn = get_connection()
         cursor = conn.cursor()
-
-        sql = """
-        UPDATE recognition_logs
-        SET notification_sent = %s
-        WHERE log_id = %s
-        """
-
         cursor.execute(
-            sql,
-            (
-                to_bool(notification_sent),
-                log_id
-            )
+            """
+            UPDATE recognition_logs
+            SET notification_sent = %s
+            WHERE log_id = %s
+            """,
+            (bool(notification_sent), log_id),
         )
-
         conn.commit()
-
         return cursor.rowcount
 
-    except Exception as e:
+    except Exception:
         if conn:
             conn.rollback()
-
-        print(
-            "更新 recognition_logs.notification_sent 失敗：",
-            e
-        )
-
         raise
 
     finally:
         if cursor:
             cursor.close()
-
         if conn and conn.is_connected():
             conn.close()
 
@@ -838,27 +721,14 @@ def close_recognition_visit(
     last_seen_at,
     leave_time,
     stay_seconds,
+    stay_minutes=None,
 ):
     conn = None
     cursor = None
 
     try:
-        if log_id is None:
-            raise ValueError("log_id 不可為空")
-
-        if last_seen_at is None:
-            raise ValueError("last_seen_at 不可為空")
-
-        if leave_time is None:
-            raise ValueError("leave_time 不可為空")
-
-        stay_seconds = max(
-            0,
-            int(stay_seconds or 0)
-        )
-
         conn = get_connection()
-
+        cursor = conn.cursor()
 
         sql = """
         UPDATE recognition_logs
@@ -894,11 +764,17 @@ def close_recognition_visit(
                 """
                 SELECT
                     subject_type,
-                    member_id,                
+                    member_id,
+                
                     visitor_id
+                
                 FROM recognition_logs
+               
                  WHERE log_id = %s
+
                 """,
+
+
                 (log_id,)
             )
 
@@ -920,10 +796,14 @@ def close_recognition_visit(
                         SET
                             total_visit_count =
                                 COALESCE(total_visit_count, 0) + 1,
+
                             total_visit_time =
                                 COALESCE(total_visit_time, 0) + %s,
+
                             last_visit_time = %s,
+
                             updated_by = 'system'
+
                         WHERE member_id = %s
                         """,
                         (
@@ -942,7 +822,8 @@ def close_recognition_visit(
                         UPDATE visitors
                         SET
                             visitor_visit_count =
-                                COALESCE(visitor_visit_count, 0) + 1,                           
+                                COALESCE(visitor_visit_count, 0) + 1,
+
                             last_seen_at = %s
                         WHERE visitor_id = %s
                         """,
@@ -954,7 +835,6 @@ def close_recognition_visit(
 
         conn.commit()
         return closed_count
-
 
 
     except Exception as e:
@@ -989,17 +869,32 @@ def insert_member(
     cursor = None
 
     try:
-        vip = to_bool(vip)
+        vip = bool(vip)
         member_level = "vip" if vip else "normal"
-
-        total_visit_count = int(total_visit_count or 0)
-        total_amount = float(total_amount or 0)
 
         conn = get_connection()
         cursor = conn.cursor()
 
         sql = """
-    INSERT INTO members (
+INSERT INTO members (
+    name,
+    phone,
+    birthday,
+    vip,
+    member_level,
+    total_visit_count,
+    line_user_id,
+    total_amount,
+    favorite_product,
+    face_image,
+    registration_source
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+"""
+
+        cursor.execute(
+    sql,
+    (
         name,
         phone,
         birthday,
@@ -1012,25 +907,7 @@ def insert_member(
         face_image,
         registration_source
     )
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """
-
-        cursor.execute(
-            sql,
-            (
-                name,
-                phone,
-                birthday,
-                vip,
-                member_level,
-                total_visit_count,
-                line_user_id,
-                total_amount,
-                favorite_product,
-                face_image,
-                registration_source
-            )
-        )
+)
 
         conn.commit()
         return cursor.lastrowid
@@ -1058,10 +935,25 @@ def insert_face_image(member_id, image_path, encoding_data):
         if member_id is None:
             raise ValueError("member_id 不可為空")
 
-        encoding_data = normalize_encoding_data(
-    encoding_data
-        )
-        
+        if encoding_data is None:
+            raise ValueError("encoding_data 不可為空")
+
+        # 支援 NumPy array
+        if hasattr(encoding_data, "tolist"):
+            encoding_data = encoding_data.tolist()
+
+        # 如果是 Python list，先檢查是否為 128 維
+        if isinstance(encoding_data, (list, tuple)):
+            if len(encoding_data) != 128:
+                raise ValueError(
+                    f"encoding_data 必須是 128 維，目前為 {len(encoding_data)} 維"
+                )
+
+            encoding_data = json.dumps(
+                list(encoding_data),
+                ensure_ascii=False
+            )
+
         conn = get_connection()
         cursor = conn.cursor()
 
@@ -1106,13 +998,7 @@ def register_member_with_face(
     birthday=None,
     vip=False,
     member_level="normal",
-    total_visit_count=0,
-    last_visit_time=None,
-    total_visit_time=0,
-    updated_by="system",
     line_user_id=None,
-    total_amount=0,
-    favorite_product=None,
     face_image=None,
     registration_source="line",
     image_path=None,
@@ -1131,27 +1017,30 @@ def register_member_with_face(
         if encoding_data is None:
             raise ValueError("encoding_data 不可為空")
 
-        vip = to_bool(vip)
+        vip = bool(vip)
         member_level = "vip" if vip else "normal"
+              
+        # NumPy array 轉成 Python list
+        if hasattr(encoding_data, "tolist"):
+            encoding_data = encoding_data.tolist()
 
-        total_visit_count = int(total_visit_count or 0)
-        total_visit_time = int(total_visit_time or 0)
-        total_amount = float(total_amount or 0)
+        # 檢查人臉特徵是否為 128 維
+        if isinstance(encoding_data, (list, tuple)):
+            if len(encoding_data) != 128:
+                raise ValueError(
+                    f"encoding_data 必須是 128 維，目前為 {len(encoding_data)} 維"
+                )
 
-        encoding_data = normalize_encoding_data(
-            encoding_data
-        )
-
-        if not face_image:
-            face_image = image_path
+            encoding_data = json.dumps(
+                list(encoding_data),
+                ensure_ascii=False
+            )
         if not face_image:
             face_image = image_path
 
         conn = get_connection()
         conn.start_transaction()
         cursor = conn.cursor()
-
-
 
         # 第一步：新增會員
         member_sql = """
@@ -1161,17 +1050,11 @@ def register_member_with_face(
             birthday,
             vip,
             member_level,
-            total_visit_count,
-            last_visit_time,
-            total_visit_time,
-            updated_by,
             line_user_id,
-            total_amount,
-            favorite_product,
             face_image,
             registration_source
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """
 
         cursor.execute(
@@ -1179,16 +1062,10 @@ def register_member_with_face(
             (
                 name,
                 phone,
-                birthday,
+                birthday,  
                 vip,
                 member_level,
-                total_visit_count,
-                last_visit_time,
-                total_visit_time,
-                updated_by,
                 line_user_id,
-                total_amount,
-                favorite_product,
                 face_image,
                 registration_source
             )
@@ -1217,10 +1094,7 @@ def register_member_with_face(
 
         face_id = cursor.lastrowid
 
-        if face_id is None:
-            raise RuntimeError("新增人臉資料後未取得 face_id")
-
-        # 會員與人臉都成功，才一起提交
+        # 兩個都成功才提交
         conn.commit()
 
         return {
@@ -1242,194 +1116,6 @@ def register_member_with_face(
 
         if conn:
             conn.close()
-
-def convert_visitor_to_member(
-    visitor_id,
-    name,
-    phone=None,
-    birthday=None,
-    vip=False,
-    member_level="normal",
-    line_user_id=None,
-    registration_source="line_visitor_conversion",
-    registration_image_path=None,
-    registration_encoding=None
-):
-    """
-    將既有散客轉成正式會員。
-
-    同一個 transaction 內完成：
-    1. 建立 members
-    2. 複製 visitor_faces 至 face_images
-    3. 寫入本次註冊照片
-    4. 更新 visitors.converted_member_id
-    5. 將尚未離店的 visitor 紀錄切換成 member
-    """
-
-    conn = None
-    cursor = None
-
-    try:
-        conn = get_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        # 1. 鎖定 visitor，避免重複轉換
-        cursor.execute(
-            """
-            SELECT
-                visitor_id,
-                visitor_code,
-                converted_member_id,
-                visitor_visit_count,
-                last_seen_at
-            FROM visitors
-            WHERE visitor_id = %s
-            FOR UPDATE
-            """,
-            (visitor_id,)
-        )
-
-        visitor = cursor.fetchone()
-
-        if not visitor:
-            raise ValueError("找不到指定的 visitor")
-
-        if visitor.get("converted_member_id") is not None:
-            raise ValueError("此 visitor 已經轉成正式會員")
-
-        # 2. 建立 members
-        cursor.execute(
-            """
-            INSERT INTO members (
-                name,
-                phone,
-                birthday,
-                vip,
-                member_level,
-                total_visit_count,
-                line_user_id,
-                registration_source,
-                last_visit_time
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                name,
-                phone,
-                birthday,
-                bool(vip),
-                member_level,
-                visitor.get("visitor_visit_count") or 0,
-                line_user_id,
-                registration_source,
-                visitor.get("last_seen_at")
-            )
-        )
-
-        member_id = cursor.lastrowid
-
-        # 3. 將既有散客人臉特徵複製到會員人臉表
-        cursor.execute(
-            """
-            INSERT INTO face_images (
-                member_id,
-                image_path,
-                encoding_data
-            )
-            SELECT
-                %s,
-                image_path,
-                encoding_data
-            FROM visitor_faces
-            WHERE visitor_id = %s
-            """,
-            (member_id, visitor_id)
-        )
-
-        copied_face_count = cursor.rowcount
-
-        # 4. 儲存本次註冊時上傳的人臉
-        if registration_encoding is not None:
-            cursor.execute(
-                """
-                INSERT INTO face_images (
-                    member_id,
-                    image_path,
-                    encoding_data
-                )
-                VALUES (%s, %s, %s)
-                """,
-                (
-                    member_id,
-                    registration_image_path,
-                    registration_encoding
-                )
-            )
-
-        # 5. 標記 visitor 已轉會員
-        cursor.execute(
-            """
-            UPDATE visitors
-            SET
-                converted_member_id = %s,
-                updated_at = NOW()
-            WHERE visitor_id = %s
-              AND converted_member_id IS NULL
-            """,
-            (member_id, visitor_id)
-        )
-
-        if cursor.rowcount != 1:
-            raise ValueError("visitor 轉會員失敗或已被其他流程轉換")
-
-        # 6. 將目前尚未離店的紀錄改成會員
-        cursor.execute(
-            """
-            UPDATE recognition_logs
-            SET
-                subject_type = 'member',
-                member_id = %s,
-                name = %s,
-                vip = %s,
-                line_user_id = %s,
-                member_level = %s,
-                recognition_status = 'recognized'
-            WHERE visitor_id = %s
-              AND leave_time IS NULL
-              AND visit_status IN ('arrived', 'staying')
-            """,
-            (
-                member_id,
-                name,
-                bool(vip),
-                line_user_id,
-                member_level,
-                visitor_id
-            )
-        )
-
-        conn.commit()
-
-        return {
-            "success": True,
-            "converted": True,
-            "member_id": member_id,
-            "visitor_id": visitor_id,
-            "visitor_code": visitor.get("visitor_code"),
-            "copied_face_count": copied_face_count
-        }
-
-    except Exception:
-        if conn:
-            conn.rollback()
-        raise
-
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-
 
 
 def get_all_member_faces():
@@ -1453,9 +1139,6 @@ def get_all_member_faces():
             m.vip,
             m.member_level,
             m.total_visit_count,
-            m.last_visit_time,
-            m.total_visit_time,
-            m.updated_by,
             m.line_user_id,
             m.total_amount,
             m.favorite_product,
@@ -1591,8 +1274,6 @@ def get_visitor_by_id(visitor_id):
             visitor_visit_count,
             first_seen_at,
             last_seen_at,
-            converted_member_id,
-            best_face_image,
             created_at,
             updated_at
         FROM visitors
@@ -1626,9 +1307,23 @@ def insert_visitor_face(
         if visitor_id is None:
             raise ValueError("visitor_id 不可為空")
 
-        encoding_data = normalize_encoding_data(
-            encoding_data
-        )
+        if encoding_data is None:
+            raise ValueError("encoding_data 不可為空")
+
+        if hasattr(encoding_data, "tolist"):
+            encoding_data = encoding_data.tolist()
+
+        if isinstance(encoding_data, (list, tuple)):
+            if len(encoding_data) != 128:
+                raise ValueError(
+                    f"encoding_data 必須是 128 維，目前為 "
+                    f"{len(encoding_data)} 維"
+                )
+
+            encoding_data = json.dumps(
+                list(encoding_data),
+                ensure_ascii=False
+            )
 
         conn = get_connection()
         cursor = conn.cursor()
@@ -1751,10 +1446,9 @@ def register_visitor_with_face(
             display_name,
             visitor_visit_count,
             first_seen_at,
-            last_seen_at,
-            best_face_image
+            last_seen_at
         )
-        VALUES (%s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s)
         """
 
         cursor.execute(
@@ -1764,8 +1458,7 @@ def register_visitor_with_face(
                 display_name,
                 0,
                 first_seen_at,
-                last_seen_at,
-                image_path
+                last_seen_at
             )
         )
 
@@ -1856,18 +1549,15 @@ def get_all_visitor_faces():
             v.visitor_visit_count,
             v.first_seen_at,
             v.last_seen_at,
-            v.converted_member_id,
-            v.best_face_image,
             v.created_at AS visitor_created_at,
             v.updated_at AS visitor_updated_at
         FROM visitor_faces vf
         JOIN visitors v
             ON vf.visitor_id = v.visitor_id
         WHERE vf.encoding_data IS NOT NULL
-        AND vf.encoding_data <> ''
-        AND v.converted_member_id IS NULL
+          AND vf.encoding_data <> ''
         ORDER BY vf.visitor_face_id ASC
-                """
+        """
 
         cursor.execute(sql)
         rows = cursor.fetchall()
@@ -1914,7 +1604,7 @@ def get_all_visitor_faces():
 
 def get_dashboard_summary():
     """
-    查詢 Dashboard 今日統計資料。
+    查詢 Dashboard 統計資料。
     """
 
     conn = None
@@ -1926,7 +1616,17 @@ def get_dashboard_summary():
 
         sql = """
         SELECT
-            COUNT(*) AS today_visits,
+            (
+                SELECT COUNT(*)
+                FROM members
+            ) AS total_members,
+
+            (
+                SELECT COUNT(*)
+                FROM visitors
+            ) AS total_visitors,
+
+            COUNT(*) AS today_recognitions,
 
             COALESCE(
                 SUM(
@@ -1973,7 +1673,7 @@ def get_dashboard_summary():
                     END
                 ),
                 0
-            ) AS current_in_store,
+            ) AS active_visits,
 
             COALESCE(
                 ROUND(
@@ -1991,9 +1691,9 @@ def get_dashboard_summary():
 
             (
                 SELECT COUNT(*)
-                FROM members
+                FROM vip_notifications
                 WHERE DATE(created_at) = CURDATE()
-            ) AS new_members
+            ) AS today_vip_notifications
 
         FROM recognition_logs
         WHERE DATE(visit_time) = CURDATE()
@@ -2004,13 +1704,15 @@ def get_dashboard_summary():
 
         if summary is None:
             return {
-                "today_visits": 0,
+                "total_members": 0,
+                "total_visitors": 0,
+                "today_recognitions": 0,
                 "today_vip": 0,
                 "today_normal_members": 0,
                 "today_visitors": 0,
-                "current_in_store": 0,
+                "active_visits": 0,
                 "average_stay_minutes": 0,
-                "new_members": 0
+                "today_vip_notifications": 0
             }
 
         return summary
@@ -2025,7 +1727,6 @@ def get_dashboard_summary():
 
         if conn and conn.is_connected():
             conn.close()
-
 def get_recent_recognitions(limit=10):
     """
     取得最近的辨識紀錄。
@@ -2318,7 +2019,7 @@ def insert_lottery_record(
                 coupon_id,
                 prize_name,
                 result,
-                to_bool(is_final)
+                bool(is_final)
             )
         )
 
@@ -2407,28 +2108,27 @@ def draw_lottery_for_member(member_id):
     conn = None
     cursor = None
 
-
     try:
-            if member_id is None:
-                raise ValueError("member_id 不可為空")
+        if member_id is None:
+            raise ValueError("member_id 不可為空")
 
-            member_id = int(member_id)
+        member_id = int(member_id)
 
-            conn = get_connection()
+        conn = get_connection()
 
-            # 明確關閉自動提交，
-            # 讓下面所有 SQL 都在同一個 transaction 裡
-            conn.autocommit = False
+        # 明確關閉自動提交，
+        # 讓下面所有 SQL 都在同一個 transaction 裡
+        conn.autocommit = False
 
-            cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(dictionary=True)
 
-            # -------------------------------------------------
-            # 第 1 步：鎖定這一位會員
-            # -------------------------------------------------
-            # FOR UPDATE 的意思：
-            # 如果同一位會員快速按兩次，
-            # 第二個請求必須等待第一個請求結束。
-            cursor.execute(
+        # -------------------------------------------------
+        # 第 1 步：鎖定這一位會員
+        # -------------------------------------------------
+        # FOR UPDATE 的意思：
+        # 如果同一位會員快速按兩次，
+        # 第二個請求必須等待第一個請求結束。
+        cursor.execute(
             """
             SELECT
                 member_id,
@@ -2451,31 +2151,21 @@ def draw_lottery_for_member(member_id):
         cursor.execute(
             """
             SELECT
-                mp.member_prize_id,
-                mp.member_id,
-                mp.prize_id,
-                mp.campaign_code,
-                mp.prize_code,
-                mp.redeem_token,
-                mp.status,
-                mp.issued_at,
-                mp.expires_at,
-                mp.redeemed_at,
-                mp.redeemed_by,
-                lp.prize_name,
-                lp.prize_type,
-                lp.prize_value
-            FROM member_prizes mp
-            JOIN lottery_prizes lp
-                ON mp.prize_id = lp.prize_id
-            WHERE mp.member_id = %s
-              AND mp.campaign_code = %s
+                lottery_id,
+                member_id,
+                prize_id,
+                prize_name,
+                result,
+                is_final,
+                created_at
+            FROM lottery_records
+            WHERE member_id = %s
+              AND is_final = TRUE
+            ORDER BY created_at DESC,
+                     lottery_id DESC
             LIMIT 1
             """,
-            (
-                member_id,
-                LOTTERY_CAMPAIGN_CODE
-            )
+            (member_id,)
         )
 
         completed_record = cursor.fetchone()
@@ -2483,34 +2173,13 @@ def draw_lottery_for_member(member_id):
         if completed_record is not None:
             conn.rollback()
 
-            qr_value = (
-                f"{REDEMPTION_BASE_URL}/redeem/"
-                f"{completed_record['redeem_token']}"
-            )
-
             return {
-                "success": True,
+                "success": False,
                 "message": "這位會員已經完成抽獎",
                 "already_completed": True,
-                "is_final": True,
-                "can_retry": False,
-                "prize": {
-                    "prize_id": completed_record["prize_id"],
-                    "prize_code": completed_record["prize_code"],
-                    "prize_name": completed_record["prize_name"],
-                    "prize_type": completed_record["prize_type"],
-                    "prize_value": completed_record["prize_value"]
-                },
-                "redemption": {
-                    "member_prize_id": completed_record[
-                        "member_prize_id"
-                    ],
-                    "token": completed_record["redeem_token"],
-                    "qr_value": qr_value,
-                    "status": completed_record["status"],
-                    "expires_at": completed_record["expires_at"]
-                }
+                "record": completed_record
             }
+
         # -------------------------------------------------
         # 第 3 步：查詢目前可以抽的獎品
         # -------------------------------------------------
@@ -2589,24 +2258,16 @@ def draw_lottery_for_member(member_id):
                 member_id,
                 prize_id,
                 coupon_id,
-                lottery_name,
-                prize,
-                draw_time,
-                status,
                 prize_name,
                 result,
                 is_final,
                 redeemed,
                 redeemed_at
             )
-             VALUES (
+            VALUES (
                 %s,
                 %s,
                 NULL,
-                %s,
-                %s,
-                NOW(),
-                %s,
                 %s,
                 %s,
                 %s,
@@ -2617,552 +2278,45 @@ def draw_lottery_for_member(member_id):
             (
                 member_id,
                 prize_id,
-                "新會員抽獎",
-                prize_name,
-                "中獎" if is_final else "未完成",
                 prize_name,
                 prize_name,
-                to_bool(is_final)
+                bool(is_final)
             )
         )
 
         lottery_id = cursor.lastrowid
 
-        conn.commit()
         # -------------------------------------------------
         # 第 7 步：全部成功後才 commit
         # -------------------------------------------------
+        conn.commit()
 
         return {
-                "success": True,
-                "message": "抽獎成功",
-                "already_completed": False,
-                "lottery_id": lottery_id,
-                "is_final": to_bool(is_final),
-                "prize": selected_prize
-            }
+            "success": True,
+            "message": "抽獎成功",
+            "already_completed": False,
+            "lottery_id": lottery_id,
+            "is_final": bool(is_final),
+            "prize": selected_prize
+        }
 
-       
-def get_all_visitors(limit=100):
-    """
-    取得散客列表。
-    """
-    conn = None
-    cursor = None
+    except (TypeError, ValueError) as e:
+        if conn:
+            conn.rollback()
 
-    try:
-        limit = int(limit)
+        print("抽獎失敗：", e)
 
-        if limit <= 0:
-            limit = 100
-
-        if limit > 500:
-            limit = 500
-
-        conn = get_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        sql = """
-        SELECT
-            visitor_id,
-            visitor_code,
-            display_name,
-            visitor_visit_count,
-            first_seen_at,
-            last_seen_at,
-            converted_member_id,
-            best_face_image,
-            created_at,
-            updated_at
-        FROM visitors
-        ORDER BY last_seen_at DESC,
-                 visitor_id DESC
-        LIMIT %s
-        """
-
-        cursor.execute(sql, (limit,))
-        return cursor.fetchall()
-
-    except (TypeError, ValueError):
-        print("取得散客列表失敗：limit 必須是整數")
-        raise
-
-    except Exception as e:
-        print("取得散客列表失敗：", e)
-        raise
-
-    finally:
-        if cursor:
-            cursor.close()
-
-        if conn and conn.is_connected():
-            conn.close() 
-
-def get_recognition_logs(
-    limit=100,
-    subject_type=None,
-    visit_status=None,
-    member_id=None,
-    visitor_id=None,
-    start_date=None,
-    end_date=None
-):
-    """
-    查詢辨識紀錄，提供 Recognition Logs 頁面使用。
-    """
-    conn = None
-    cursor = None
-
-    try:
-        limit = int(limit)
-
-        if limit <= 0:
-            limit = 100
-
-        if limit > 500:
-            limit = 500
-
-        conn = get_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        sql = """
-        SELECT
-            log_id,
-            subject_type,
-            member_id,
-            visitor_id,
-            visitor_code,
-            camera_id,
-            camera_location,
-            name,
-            vip,
-            line_user_id,
-            confidence,
-            member_level,
-            recognition_status,
-            visit_status,
-            visit_time,
-            recognized_at,
-            last_seen_at,
-            leave_time,
-            stay_seconds,
-            ROUND(stay_seconds / 60.0, 2) AS stay_minutes,
-            created_at
-        FROM recognition_logs
-        WHERE 1 = 1
-        """
-
-        params = []
-
-        if subject_type:
-            sql += " AND subject_type = %s"
-            params.append(subject_type)
-
-        if visit_status:
-            sql += " AND visit_status = %s"
-            params.append(visit_status)
-
-        if member_id is not None:
-            sql += " AND member_id = %s"
-            params.append(member_id)
-
-        if visitor_id is not None:
-            sql += " AND visitor_id = %s"
-            params.append(visitor_id)
-
-        if start_date:
-            sql += " AND DATE(visit_time) >= %s"
-            params.append(start_date)
-
-        if end_date:
-            sql += " AND DATE(visit_time) <= %s"
-            params.append(end_date)
-
-        sql += """
-        ORDER BY visit_time DESC, log_id DESC
-        LIMIT %s
-        """
-        params.append(limit)
-
-        cursor.execute(sql, tuple(params))
-        rows = cursor.fetchall()
-
-        for row in rows:
-            row["member_level_text"] = get_member_level_text(
-                row.get("member_level")
-            )
-
-        return rows
-
-    except (TypeError, ValueError):
-        print("取得辨識紀錄失敗：limit 必須是整數")
-        raise
-
-    except Exception as e:
-        print("取得辨識紀錄失敗：", e)
-        raise
-
-    finally:
-        if cursor:
-            cursor.close()
-
-        if conn and conn.is_connected():
-            conn.close()
-
-
-def get_member_coupons(member_id=None, status=None, limit=100):
-    """
-    查詢會員優惠券資料。
-    """
-    conn = None
-    cursor = None
-
-    try:
-        limit = int(limit)
-
-        if limit <= 0:
-            limit = 100
-
-        if limit > 500:
-            limit = 500
-
-        conn = get_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        sql = """
-        SELECT
-            mc.member_coupon_id,
-            mc.member_id,
-            m.name AS member_name,
-            mc.coupon_id,
-            c.coupon_name,
-            c.description,
-            c.discount_type,
-            c.discount_value,
-            c.start_at,
-            c.end_at,
-            c.status AS coupon_status,
-            mc.source,
-            mc.status,
-            mc.receive_time,
-            mc.used_time
-        FROM member_coupons mc
-        JOIN members m
-            ON mc.member_id = m.member_id
-        JOIN coupons c
-            ON mc.coupon_id = c.coupon_id
-        WHERE 1 = 1
-        """
-
-        params = []
-
-        if member_id is not None:
-            sql += " AND mc.member_id = %s"
-            params.append(member_id)
-
-        if status:
-            sql += " AND mc.status = %s"
-            params.append(status)
-
-        sql += """
-        ORDER BY mc.receive_time DESC,
-                 mc.member_coupon_id DESC
-        LIMIT %s
-        """
-        params.append(limit)
-
-        cursor.execute(sql, tuple(params))
-        return cursor.fetchall()
-
-    except (TypeError, ValueError):
-        print("取得會員優惠券失敗：limit 必須是整數")
-        raise
-
-    except Exception as e:
-        print("取得會員優惠券失敗：", e)
-        raise
-
-    finally:
-        if cursor:
-            cursor.close()
-
-        if conn and conn.is_connected():
-            conn.close()
-
-
-def get_coupon_summary():
-    """
-    取得優惠券統計資料。
-    """
-    conn = None
-    cursor = None
-
-    try:
-        conn = get_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        sql = """
-        SELECT
-            (SELECT COUNT(*) FROM coupons) AS total_coupons,
-
-            (
-                SELECT COUNT(*)
-                FROM coupons
-                WHERE status = 'active'
-                  AND (start_at IS NULL OR start_at <= NOW())
-                  AND (end_at IS NULL OR end_at >= NOW())
-            ) AS active_coupons,
-
-            (SELECT COUNT(*) FROM member_coupons) AS total_issued,
-
-            (
-                SELECT COUNT(*)
-                FROM member_coupons
-                WHERE status = 'unused'
-            ) AS unused_count,
-
-            (
-                SELECT COUNT(*)
-                FROM member_coupons
-                WHERE status = 'used'
-            ) AS used_count,
-
-            (
-                SELECT COUNT(*)
-                FROM member_coupons
-                WHERE status = 'expired'
-            ) AS expired_count
-        """
-
-        cursor.execute(sql)
-        summary = cursor.fetchone()
-
-        return summary or {
-            "total_coupons": 0,
-            "active_coupons": 0,
-            "total_issued": 0,
-            "unused_count": 0,
-            "used_count": 0,
-            "expired_count": 0
+        return {
+            "success": False,
+            "message": str(e),
+            "already_completed": False
         }
 
     except Exception as e:
-        print("取得優惠券統計失敗：", e)
-        raise
+        if conn:
+            conn.rollback()
 
-    finally:
-        if cursor:
-            cursor.close()
-
-        if conn and conn.is_connected():
-            conn.close()
-
-
-def get_seven_day_visit_trend():
-    """
-    取得最近 7 天到店趨勢。
-    """
-    conn = None
-    cursor = None
-
-    try:
-        conn = get_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        sql = """
-        SELECT
-            DATE(visit_time) AS visit_date,
-            COUNT(*) AS total_visits,
-            SUM(CASE WHEN subject_type = 'member' THEN 1 ELSE 0 END)
-                AS member_visits,
-            SUM(CASE WHEN subject_type = 'visitor' THEN 1 ELSE 0 END)
-                AS visitor_visits
-        FROM recognition_logs
-        WHERE visit_time >= CURDATE() - INTERVAL 6 DAY
-          AND visit_time < CURDATE() + INTERVAL 1 DAY
-        GROUP BY DATE(visit_time)
-        ORDER BY visit_date ASC
-        """
-
-        cursor.execute(sql)
-        return cursor.fetchall()
-
-    except Exception as e:
-        print("取得最近 7 天到店趨勢失敗：", e)
-        raise
-
-    finally:
-        if cursor:
-            cursor.close()
-
-        if conn and conn.is_connected():
-            conn.close()
-
-
-def get_visit_hour_distribution():
-    """
-    取得到店時段分布。
-    """
-    conn = None
-    cursor = None
-
-    try:
-        conn = get_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        sql = """
-        SELECT
-            HOUR(visit_time) AS visit_hour,
-            COUNT(*) AS total_visits,
-            SUM(CASE WHEN subject_type = 'member' THEN 1 ELSE 0 END)
-                AS member_visits,
-            SUM(CASE WHEN subject_type = 'visitor' THEN 1 ELSE 0 END)
-                AS visitor_visits
-        FROM recognition_logs
-        WHERE visit_time IS NOT NULL
-        GROUP BY HOUR(visit_time)
-        ORDER BY visit_hour ASC
-        """
-
-        cursor.execute(sql)
-        return cursor.fetchall()
-
-    except Exception as e:
-        print("取得到店時段分布失敗：", e)
-        raise
-
-    finally:
-        if cursor:
-            cursor.close()
-
-        if conn and conn.is_connected():
-            conn.close()
-
-
-def get_top_visitors(limit=10):
-    """
-    取得來店次數最多的散客排行。
-    """
-    conn = None
-    cursor = None
-
-    try:
-        limit = int(limit)
-
-        if limit <= 0:
-            limit = 10
-
-        if limit > 100:
-            limit = 100
-
-        conn = get_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        sql = """
-        SELECT
-            visitor_id,
-            visitor_code,
-            display_name,
-            visitor_visit_count,
-            first_seen_at,
-            last_seen_at,
-            best_face_image
-        FROM visitors
-        WHERE visitor_visit_count > 0
-        ORDER BY visitor_visit_count DESC,
-                 last_seen_at DESC,
-                 visitor_id ASC
-        LIMIT %s
-        """
-
-        cursor.execute(sql, (limit,))
-        return cursor.fetchall()
-
-    except (TypeError, ValueError):
-        print("取得散客排行失敗：limit 必須是整數")
-        raise
-
-    except Exception as e:
-        print("取得散客排行失敗：", e)
-        raise
-
-    finally:
-        if cursor:
-            cursor.close()
-
-        if conn and conn.is_connected():
-            conn.close()
-
-
-def get_monthly_visit_ranking(limit=10):
-    """
-    取得本月會員來店排行。
-    """
-    conn = None
-    cursor = None
-
-    try:
-        limit = int(limit)
-
-        if limit <= 0:
-            limit = 10
-
-        if limit > 100:
-            limit = 100
-
-        conn = get_connection()
-        cursor = conn.cursor(dictionary=True)
-
-        sql = """
-        SELECT
-            m.member_id,
-            m.name,
-            m.vip,
-            m.member_level,
-            COUNT(rl.log_id) AS monthly_visit_count,
-            COALESCE(SUM(rl.stay_seconds), 0) AS monthly_stay_seconds,
-            ROUND(
-                COALESCE(SUM(rl.stay_seconds), 0) / 60.0,
-                2
-            ) AS monthly_stay_minutes,
-            MAX(rl.visit_time) AS last_visit_time
-        FROM members m
-        JOIN recognition_logs rl
-            ON rl.member_id = m.member_id
-           AND rl.subject_type = 'member'
-        WHERE rl.visit_time >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
-          AND rl.visit_time < DATE_FORMAT(
-                CURDATE() + INTERVAL 1 MONTH,
-                '%Y-%m-01'
-              )
-        GROUP BY
-            m.member_id,
-            m.name,
-            m.vip,
-            m.member_level
-        ORDER BY
-            monthly_visit_count DESC,
-            monthly_stay_seconds DESC,
-            m.member_id ASC
-        LIMIT %s
-        """
-
-        cursor.execute(sql, (limit,))
-        rows = cursor.fetchall()
-
-        for row in rows:
-            row["member_level_text"] = get_member_level_text(
-                row.get("member_level")
-            )
-
-        return rows
-
-    except (TypeError, ValueError):
-        print("取得本月來店排行失敗：limit 必須是整數")
-        raise
-
-    except Exception as e:
-        print("取得本月來店排行失敗：", e)
+        print("抽獎處理失敗：", e)
         raise
 
     finally:
