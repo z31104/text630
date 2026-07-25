@@ -2707,7 +2707,7 @@ def draw_lottery_for_member(member_id):
                     status,
                     expires_at
                 )
-                VALUES (%s, %s, %s, %s, %s, 'unused')
+                VALUES (%s, %s, %s, %s, %s, 'unused', %s)
                 """,
                 (
                     member_id,
