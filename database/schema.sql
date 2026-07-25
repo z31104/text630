@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS members (
     total_amount DECIMAL(12, 2) NOT NULL DEFAULT 0,
     favorite_product VARCHAR(100),
     face_image VARCHAR(255),
-    registration_source VARCHAR(20) DEFAULT 'line',
+    registration_source VARCHAR(50) DEFAULT 'line',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );

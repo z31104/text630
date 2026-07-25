@@ -3438,3 +3438,38 @@ def get_monthly_visit_ranking(limit=10):
 
         if conn and conn.is_connected():
             conn.close()
+
+
+def get_latest_unconverted_visitor():
+    """
+    取得最近一次尚未轉會員的 Visitor。
+    """
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("""
+            SELECT
+                rl.visitor_id,
+                v.visitor_code
+            FROM recognition_logs rl
+            JOIN visitors v
+              ON rl.visitor_id = v.visitor_id
+            WHERE rl.subject_type='visitor'
+              AND rl.visitor_id IS NOT NULL
+              AND v.converted_member_id IS NULL
+            ORDER BY rl.visit_time DESC
+            LIMIT 1
+        """)
+
+        return cursor.fetchone()
+
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()

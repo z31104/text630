@@ -2,6 +2,7 @@ import json
 import os
 import uuid
 from datetime import datetime, timedelta
+import traceback
 
 import requests
 from flask import Blueprint, request, abort, jsonify
@@ -19,6 +20,7 @@ from database.db import (
     convert_visitor_to_member,
     draw_lottery_for_member,
     get_member_coupons,
+    get_latest_unconverted_visitor,
 )
 from linebot_service.notify import push_message, notify_lottery_result
 from services.face_service import (
@@ -437,9 +439,9 @@ def register_from_line():
         }), 409
 
     # 先比對是否為既有散客，命中的話走轉換流程，避免把老客人當成全新會員重建
-    visitor_match = find_matching_visitor(face_check.get("encoding"))
+    visitor_match = get_latest_unconverted_visitor()
 
-    if visitor_match.get("matched"):
+    if visitor_match:
         try:
             convert_result = convert_visitor_to_member(
                 visitor_id=visitor_match["visitor_id"],
@@ -456,11 +458,8 @@ def register_from_line():
                 os.remove(image_path)
             print("散客轉會員失敗：", e)
             return jsonify({"success": False, "message": str(e)}), 409
-        except Exception as e:
-            if os.path.exists(image_path):
-                os.remove(image_path)
-            print("散客轉會員失敗：", e)
-            return jsonify({"success": False, "message": "註冊失敗，請稍後再試"}), 500
+        except Exception:
+            raise
 
         member_id = convert_result["member_id"]
         reload_member_faces()
@@ -481,8 +480,8 @@ def register_from_line():
             "message": "散客已成功轉為正式會員",
             "is_new": True,
             "converted_from_visitor": True,
-            "visitor_id": visitor_match.get("visitor_id"),
-            "visitor_code": visitor_match.get("visitor_code"),
+            "visitor_id": visitor_match["visitor_id"],
+            "visitor_code": visitor_match["visitor_code"],
             "member_id": member_id,
             "member": member,
         })
@@ -503,11 +502,14 @@ def register_from_line():
         if os.path.exists(image_path):
             os.remove(image_path)
 
-        print("會員與人臉註冊失敗：", e)
+        print("========== 會員與人臉註冊完整錯誤 ==========", flush=True)
+        traceback.print_exc()
+        print(f"錯誤類型：{type(e).__name__}", flush=True)
+        print(f"錯誤內容：{e}", flush=True)
 
         return jsonify({
             "success": False,
-            "message": "註冊失敗，請稍後再試"
+            "message": f"會員註冊失敗：{type(e).__name__}：{e}"
         }), 500
 
     member_id = register_result["member_id"]
