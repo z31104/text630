@@ -1941,7 +1941,7 @@ def get_dashboard_summary():
 
     定義：
     - today_visitors：同一位正式會員或固定散客一天只算一次。
-    - today_visit_count：每一筆 arrived 到店紀錄都算一次。
+    - today_visit_count：今天每一筆成功建立的會員或固定散客到店紀錄都算一次。
     - today_vip：今天成功辨識到的 VIP 會員（不重複）。
     - today_visitors_fixed：今天成功辨識到的固定散客（不重複）。
     - current_people：所有尚未離店的人數，不侷限當日。
@@ -1960,8 +1960,8 @@ def get_dashboard_summary():
                 SELECT COUNT(*)
                 FROM recognition_logs
                 WHERE DATE(visit_time) = CURDATE()
-                  AND visit_status = 'arrived'
                   AND subject_type IN ('member', 'visitor')
+                  AND recognition_status = 'recognized'
             ) AS today_visit_count,
             (
                 SELECT COUNT(DISTINCT CONCAT(subject_type, ':',
@@ -2707,7 +2707,7 @@ def draw_lottery_for_member(member_id):
                     status,
                     expires_at
                 )
-                VALUES (%s, %s, %s, %s, %s, 'unused')
+                VALUES (%s, %s, %s, %s, %s, 'unused', %s)
                 """,
                 (
                     member_id,
