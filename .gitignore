@@ -19,3 +19,7 @@ __pycache__/
 member_images/line_*.jpg
 member_images/line_*.jpeg
 member_images/line_*.png
+visitor_images/*
+member_images/*
+!visitor_images/.gitkeep
+!member_images/.gitkeep

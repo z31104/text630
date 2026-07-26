@@ -24,11 +24,8 @@ except ModuleNotFoundError:
 
 # MVP 階段仍先用圖片檔名找 fake_db 會員資料。
 # 正式版會由資料庫同學提供 get_member_by_id(member_id)。
-try:
-    from database.fake_db import get_member_by_image
-except Exception:
-    get_member_by_image = None
-
+# 正式版不再使用 fake_db
+get_member_by_image = None
 try:
     from database.db import get_member_by_id as db_get_member_by_id
 except Exception as e:
@@ -490,12 +487,7 @@ def validate_member_face_image(image_path):
             # 轉成 face_recognition 可使用的 NumPy 陣列
             image = np.array(pil_image)
 
-        cv2.imwrite(
-            "debug_upload.jpg",
-            cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        )
-        
-        print("已輸出 debug_upload.jpg")
+
         
         print("原始 image shape:", image.shape)
         
@@ -674,8 +666,8 @@ def register_member_face(member_id, image_path):
 
 def load_member_faces():
     """
-    優先從正式資料庫讀取會員人臉 encoding。
-    若資料庫無資料或連線失敗，暫時退回 member_images 假資料。
+    從正式資料庫讀取會員人臉 encoding。
+    正式版不再使用 member_images 或 fake_db。
     """
 
     if face_recognition is None:
@@ -740,53 +732,13 @@ def load_member_faces():
                 )
                 return members
 
-            print("正式資料庫目前沒有可用的人臉資料，改用 member_images")
+            print("正式資料庫目前沒有可用的人臉資料")
+            return members
 
         except Exception as e:
-            print(f"正式資料庫人臉資料載入失敗，改用 member_images：{e}")
-
-    # 以下保留你原本掃描 member_images 的舊程式
-    if not os.path.exists(MEMBER_IMAGE_DIR):
-        print("找不到會員圖片資料夾:", MEMBER_IMAGE_DIR)
-        return members
-
-    for filename in os.listdir(MEMBER_IMAGE_DIR):
-        if not filename.lower().endswith((".jpg", ".jpeg", ".png")):
-            continue
-
-        image_path = os.path.join(MEMBER_IMAGE_DIR, filename)
-
-        try:
-            image = face_recognition.load_image_file(image_path)
-            encodings = face_recognition.face_encodings(image)
-        except Exception as e:
-            print(f"會員圖片讀取或編碼失敗：{filename}，原因：{e}")
-            continue
-
-        if len(encodings) == 0:
-            print(f"會員圖片找不到人臉：{filename}")
-            continue
-
-        if get_member_by_image is None:
-            print("找不到 fake_db.get_member_by_image，無法載入會員假資料")
-            continue
-
-        member_data = normalize_member_data(
-            get_member_by_image(filename)
-        )
-
-        if member_data is None:
-            print(f"假資料庫找不到對應會員：{filename}")
-            continue
-
-        member_data["encoding"] = encodings[0]
-        members.append(member_data)
-
-        print(f"已載入會員人臉：{filename}")
-
-    print(f"會員人臉資料載入完成，共 {len(members)} 筆")
+            print(f"正式資料庫會員人臉資料載入失敗：{e}")
+            return []
     return members
-
 
 
 def load_visitor_faces():
