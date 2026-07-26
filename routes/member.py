@@ -497,6 +497,7 @@ def delete_member(member_id):
         cursor.execute("DELETE FROM members WHERE member_id = %s", (member_id,))
 
         conn.commit()
+        reload_member_faces()
 
         return redirect("/member")
 
@@ -568,7 +569,6 @@ def edit_member(member_id):
 
          cursor.execute(sql, data)
          conn.commit()
-
          # 消費金額跨過門檻時自動升級 VIP。跟 routes/line.py 的
          # POST /line/cron/vip-check（排程批次檢查）是各自獨立的觸發點，
          # 這裡是店員手動編輯當下就觸發，兩邊門檻值要保持一致。
@@ -596,7 +596,8 @@ def edit_member(member_id):
                  ),
              })
 
-         refresh_member(member_id)
+         if not refresh_member(member_id):
+             reload_member_faces()
 
          cursor.close()
          conn.close()

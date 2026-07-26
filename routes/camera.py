@@ -108,6 +108,31 @@ last_result = {
 active_visits = {}
 active_visits_lock = threading.Lock()
 
+
+def clear_visitor_active_visit(visitor_id):
+    """散客轉會員後清除舊狀態，讓下一幀立即重新辨識。"""
+    global last_result
+    global last_recognition_time
+
+    visitor_key = build_subject_key(
+        subject_type="visitor",
+        visitor_id=visitor_id,
+    )
+
+    with active_visits_lock:
+        removed_visit = active_visits.pop(visitor_key, None)
+
+        if (
+            last_result.get("subject_type") == "visitor"
+            and last_result.get("visitor_id") == visitor_id
+        ):
+            last_result = {}
+
+        last_recognition_time = 0
+
+    return removed_visit is not None
+
+
 # 訪客上一次產生 recognition log 的時間
 last_guest_log_time = 0
 
