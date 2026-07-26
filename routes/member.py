@@ -517,6 +517,7 @@ def delete_member(member_id):
         cursor.execute("DELETE FROM members WHERE member_id = %s", (member_id,))
 
         conn.commit()
+        reload_member_faces()
 
         return redirect("/member")
 

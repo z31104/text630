@@ -4,6 +4,7 @@ AI 人臉偵測與會員比對服務
 """
 
 import os
+import threading
 import uuid
 from datetime import datetime
 
@@ -195,6 +196,35 @@ VISITOR_IMAGE_DIR = os.path.join(
     "visitor_images"
 )
 
+
+def is_path_within_directory(image_path, directory):
+    """使用正規化絕對路徑確認圖片是否位於指定目錄內。"""
+    if not image_path:
+        return False
+
+    try:
+        normalized_path = os.path.normcase(
+            os.path.abspath(image_path)
+        )
+        normalized_directory = os.path.normcase(
+            os.path.abspath(directory)
+        )
+
+        return os.path.commonpath(
+            [normalized_path, normalized_directory]
+        ) == normalized_directory
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def is_member_registration_face(member):
+    """只接受明確存放於 member_images 的正式註冊人臉。"""
+    return is_path_within_directory(
+        member.get("image_path"),
+        MEMBER_IMAGE_DIR
+    )
+
+
 # visitor_images 不存在時自動建立
 os.makedirs(
     VISITOR_IMAGE_DIR,
@@ -210,6 +240,9 @@ MEMBER_MATCH_TOLERANCE = 0.5
 
 # 散客使用稍嚴格門檻，降低兩位陌生人被當成同一 visitor 的風險
 VISITOR_MATCH_TOLERANCE = 0.55
+
+# 保護會員與散客人臉快取的替換及快照讀取。
+face_cache_lock = threading.RLock()
 
 
 # -----------------------------
@@ -672,7 +705,7 @@ def load_member_faces():
 
     if face_recognition is None:
         print("尚未安裝 face_recognition，略過會員人臉資料載入")
-        return []
+        return None
 
     members = []
 
@@ -714,6 +747,8 @@ def load_member_faces():
                 }
 
                 member_data = normalize_member_data(member_data)
+                member_data["face_id"] = row.get("face_id")
+                member_data["image_path"] = row.get("image_path")
                 member_data["encoding"] = np.array(
                     encoding_data,
                     dtype=float
@@ -737,8 +772,8 @@ def load_member_faces():
 
         except Exception as e:
             print(f"正式資料庫會員人臉資料載入失敗：{e}")
-            return []
-    return members
+            return None
+    return None
 
 
 def load_visitor_faces():
@@ -752,11 +787,11 @@ def load_visitor_faces():
 
     if face_recognition is None:
         print("尚未安裝 face_recognition，略過散客人臉資料載入")
-        return []
+        return None
 
     if get_all_visitor_faces is None:
         print("散客人臉資料函式尚未載入")
-        return []
+        return None
 
     visitors = []
 
@@ -808,12 +843,12 @@ def load_visitor_faces():
 
     except Exception as e:
         print(f"正式資料庫散客人臉資料載入失敗：{e}")
-        return []
+        return None
 
 
 
-known_members = load_member_faces()
-known_visitors = load_visitor_faces()
+known_members = load_member_faces() or []
+known_visitors = load_visitor_faces() or []
 
 
 def reload_member_faces():
@@ -824,9 +859,15 @@ def reload_member_faces():
     讓攝影機不用重新啟動 app.py 就能辨識新會員。
     """
 
-    global known_members
+    new_data = load_member_faces()
 
-    known_members = load_member_faces()
+    if new_data is None:
+        print("會員人臉資料重新載入失敗，保留原本快取")
+        with face_cache_lock:
+            return known_members
+
+    with face_cache_lock:
+        known_members[:] = new_data
 
     print(
         f"會員人臉資料已重新載入，共 {len(known_members)} 筆"
@@ -840,8 +881,6 @@ def refresh_member(member_id):
     不需要重新載入全部會員。
     """
 
-    global known_members
-
     try:
         # 直接從資料庫取得這位會員最新資料
         member_data = db_get_member_by_id(member_id)
@@ -850,31 +889,29 @@ def refresh_member(member_id):
             print(f"更新會員快取失敗：找不到 member_id={member_id}")
             return False
 
-        # 找出原本快取中的會員
-        for index, old_member in enumerate(known_members):
+        updated_count = 0
+        latest_member = normalize_member_data(member_data)
 
-            if old_member.get("member_id") != member_id:
-                continue
+        with face_cache_lock:
+            for index, old_member in enumerate(known_members):
+                if old_member.get("member_id") != member_id:
+                    continue
 
-            # 保留原本的人臉 encoding
-            old_encoding = old_member.get("encoding")
+                new_member = dict(latest_member)
+                new_member["face_id"] = old_member.get("face_id")
+                new_member["image_path"] = old_member.get("image_path")
+                new_member["encoding"] = old_member.get("encoding")
+                known_members[index] = new_member
+                updated_count += 1
 
-            # 整理最新會員資料
-            new_member = normalize_member_data(member_data)
-
-            # 把原本的人臉特徵放回去
-            new_member["encoding"] = old_encoding
-
-            # 用最新會員資料取代舊資料
-            known_members[index] = new_member
-
+        if updated_count:
             print("========== Member Cache Refreshed ==========")
             print(f"member_id: {member_id}")
-            print(f"name: {new_member.get('name')}")
-            print(f"vip: {new_member.get('vip')}")
-            print(f"member_level: {new_member.get('member_level')}")
+            print(f"name: {latest_member.get('name')}")
+            print(f"vip: {latest_member.get('vip')}")
+            print(f"member_level: {latest_member.get('member_level')}")
+            print(f"updated_face_count: {updated_count}")
             print("============================================")
-
             return True
 
         print(
@@ -898,9 +935,15 @@ def reload_visitor_faces():
     就能立刻把新散客加入辨識名單。
     """
 
-    global known_visitors
+    new_data = load_visitor_faces()
 
-    known_visitors = load_visitor_faces()
+    if new_data is None:
+        print("散客人臉資料重新載入失敗，保留原本快取")
+        with face_cache_lock:
+            return known_visitors
+
+    with face_cache_lock:
+        known_visitors[:] = new_data
 
     print(
         f"散客人臉資料已重新載入，"
@@ -1186,7 +1229,7 @@ def register_new_visitor(frame, faces):
 
 def check_duplicate_face(
     encoding,
-    tolerance=0.6,
+    tolerance=MEMBER_MATCH_TOLERANCE,
     exclude_member_id=None
 ):
     """
@@ -1204,7 +1247,18 @@ def check_duplicate_face(
     }
     """
 
+    def log_result(member=None, distance=None):
+        print(
+            "會員人臉重複檢查："
+            f"face_id={member.get('face_id') if member else None}，"
+            f"image_path={member.get('image_path') if member else None}，"
+            f"member_id={member.get('member_id') if member else None}，"
+            f"distance={round(distance, 4) if distance is not None else None}，"
+            f"threshold={tolerance}"
+        )
+
     if face_recognition is None:
+        log_result()
         return {
             "is_duplicate": False,
             "member_id": None,
@@ -1213,6 +1267,7 @@ def check_duplicate_face(
         }
 
     if encoding is None:
+        log_result()
         return {
             "is_duplicate": False,
             "member_id": None,
@@ -1226,6 +1281,7 @@ def check_duplicate_face(
             dtype=float
         )
     except (TypeError, ValueError):
+        log_result()
         return {
             "is_duplicate": False,
             "member_id": None,
@@ -1234,6 +1290,7 @@ def check_duplicate_face(
         }
 
     if encoding.shape != (128,):
+        log_result()
         return {
             "is_duplicate": False,
             "member_id": None,
@@ -1244,7 +1301,14 @@ def check_duplicate_face(
     closest_member = None
     closest_distance = None
 
-    for member in known_members:
+    with face_cache_lock:
+        members_snapshot = [
+            member
+            for member in known_members
+            if is_member_registration_face(member)
+        ]
+
+    for member in members_snapshot:
         if (
             exclude_member_id is not None
             and member.get("member_id") == exclude_member_id
@@ -1257,7 +1321,7 @@ def check_duplicate_face(
             continue
 
         distance = float(
-            face_recognition.face_distance(
+            _locked_face_distance(
                 [known_encoding],
                 encoding
             )[0]
@@ -1269,6 +1333,8 @@ def check_duplicate_face(
         ):
             closest_distance = distance
             closest_member = member
+
+    log_result(closest_member, closest_distance)
 
     if (
         closest_member is not None
@@ -1360,7 +1426,10 @@ def find_matching_visitor(
     closest_visitor = None
     closest_distance = None
 
-    for visitor in known_visitors:
+    with face_cache_lock:
+        visitors_snapshot = list(known_visitors)
+
+    for visitor in visitors_snapshot:
         # 正常情況下，資料庫查詢已排除已轉會員散客。
         # 此處再補一層保護，避免快取中殘留舊資料。
         if visitor.get("converted_member_id") is not None:
@@ -1652,7 +1721,11 @@ def recognize_face(frame, faces):
     member_encodings = []
     valid_members = []
 
-    for member in known_members:
+    with face_cache_lock:
+        members_snapshot = list(known_members)
+        visitors_snapshot = list(known_visitors)
+
+    for member in members_snapshot:
         known_encoding = member.get("encoding")
 
         if known_encoding is None:
@@ -1706,7 +1779,7 @@ def recognize_face(frame, faces):
     visitor_encodings = []
     valid_visitors = []
 
-    for visitor in known_visitors:
+    for visitor in visitors_snapshot:
         known_encoding = visitor.get("encoding")
 
         if known_encoding is None:
@@ -2184,7 +2257,7 @@ def close_recognition_visit(
         print(f"error: {e}")
         print("====================================================")
 
-        return False
+        return None
 
 
 def send_line_notify(result, log_id=None):

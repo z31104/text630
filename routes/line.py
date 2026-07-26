@@ -482,6 +482,10 @@ def register_from_line():
         reload_member_faces()
         reload_visitor_faces()
 
+        # 延遲匯入以避免 routes 模組載入時產生循環依賴。
+        from routes.camera import clear_visitor_active_visit
+        clear_visitor_active_visit(visitor_match["visitor_id"])
+
         if preferences:
             _insert_member_preferences(member_id, preferences)
 

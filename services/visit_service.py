@@ -362,18 +362,30 @@ def close_timeout_visits(
             )
             stay_minutes = round(stay_seconds / 60, 2)
 
-            closed = close_visit_fn(
-                log_id=log_id,
-                last_seen_at=last_seen_at,
-                leave_time=leave_time,
-                stay_seconds=stay_seconds,
-                stay_minutes=stay_minutes,
-            )
+            try:
+                closed = close_visit_fn(
+                    log_id=log_id,
+                    last_seen_at=last_seen_at,
+                    leave_time=leave_time,
+                    stay_seconds=stay_seconds,
+                    stay_minutes=stay_minutes,
+                )
+            except Exception:
+                # 真正的資料庫例外保留 active visit，稍後再重試。
+                continue
 
-            if not closed:
+            if closed is None:
+                # face_service 使用 None 表示資料庫例外。
+                # 保留 active visit，避免一次連線錯誤造成狀態遺失。
                 continue
 
             leaving_subject_keys.append(subject_key)
+
+            # True 表示本次成功關閉；False 表示 DB 已不是 active
+            # （例如其他流程已先關閉），兩者都應移除記憶體 key。
+            if not closed:
+                continue
+
             closed_visits.append(
                 {
                     "subject_key": subject_key,
