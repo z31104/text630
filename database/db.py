@@ -1283,7 +1283,7 @@ def convert_visitor_to_member(
         registration_face_filename = os.path.basename(
             registration_image_path
         )
-
+    
     conn = None
     cursor = None
 

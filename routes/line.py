@@ -453,10 +453,11 @@ def register_from_line():
             "duplicate_member_id": duplicate_result.get("member_id"),
         }), 409
 
-    # 先比對是否為既有散客，命中的話走轉換流程，避免把老客人當成全新會員重建
-    visitor_match = get_latest_unconverted_visitor()
-
-    if visitor_match:
+    # 用註冊照片的人臉比對是否為既有散客
+    visitor_match = find_matching_visitor(
+        face_check.get("encoding")
+    )
+    if visitor_match.get("matched"):
         try:
             convert_result = convert_visitor_to_member(
                 visitor_id=visitor_match["visitor_id"],
