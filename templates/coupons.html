@@ -17,8 +17,8 @@
 
         <section class="member-coupon-hero">
             <p class="promo-tag">MY MEMBERSHIP</p>
-            <h1>{% if selected_member_id %}我的優惠券{% else %}會員優惠券{% endif %}</h1>
-            <p>
+            <h1 id="couponHeroTitle">{% if selected_member_id %}我的優惠券{% else %}會員優惠券{% endif %}</h1>
+            <p id="couponHeroSubtitle">
                 {% if selected_member_id %}
                 查看目前持有、可使用及即將到期的優惠券數量。
                 {% else %}
@@ -36,7 +36,7 @@
         <section class="member-coupon-panel" aria-labelledby="couponSummaryTitle">
             <div class="member-coupon-heading">
                 <div>
-                    <p class="tag">{% if selected_member_id %}MY COUPONS{% else %}COUPON OVERVIEW{% endif %}</p>
+                    <p class="tag" id="couponPanelTag">{% if selected_member_id %}MY COUPONS{% else %}COUPON OVERVIEW{% endif %}</p>
                     <h2 id="couponSummaryTitle">
                         {% if selected_member_id %}會員優惠券摘要{% else %}優惠券活動摘要{% endif %}
                     </h2>
@@ -63,17 +63,17 @@
             <div class="member-coupon-stat-grid">
                 {% for label, value, note in coupon_stats %}
                 <article class="member-coupon-stat{% if load_error %} is-placeholder{% endif %}">
-                    <p>{{ label }}</p>
-                    <strong>{{ value if value is not none and not load_error else "—" }}</strong>
-                    <span>{{ note }}</span>
+                    <p id="couponStatLabel{{ loop.index }}">{{ label }}</p>
+                    <strong id="couponStatValue{{ loop.index }}">{{ value if value is not none and not load_error else "—" }}</strong>
+                    <span id="couponStatNote{{ loop.index }}">{{ note }}</span>
                 </article>
                 {% endfor %}
             </div>
 
             {% if not selected_member_id %}
-            <div class="member-coupon-empty" role="status">
+            <div class="member-coupon-empty" id="couponUnboundNotice" role="status">
                 <strong>尚未取得會員身分</strong>
-                <p>
+                <p id="couponUnboundMessage">
                     個人「優惠券總數、可使用、即將過期」需由 LINE LIFF 驗證會員後顯示，
                     不會在未登入時載入其他會員的優惠券資料。
                 </p>
@@ -81,5 +81,8 @@
             {% endif %}
         </section>
     </main>
+
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="{{ url_for('static', filename='js/coupons.js') }}"></script>
 </body>
 </html>

@@ -57,6 +57,10 @@ else:
 # LIFF App ID，前端 register.js 用來呼叫 liff.init()
 LIFF_ID = os.getenv("LIFF_ID", "")
 
+# 「我的會員／優惠券」頁用的第二個 LIFF App ID，前端 coupons.js 用來呼叫 liff.init()
+# 跟 LIFF_ID 共用同一個 LINE Login channel，所以 ID Token 的 aud 驗證不受影響
+LIFF_ID_COUPONS = os.getenv("LIFF_ID_COUPONS", "")
+
 # LIFF ID 格式固定是「{LINE Login channel id}-{liff app id}」，
 # 驗證 ID Token 的 aud/client_id 要用前半段的 channel id，不需要另外設定新的環境變數
 LIFF_CHANNEL_ID = LIFF_ID.split("-")[0] if LIFF_ID else ""
@@ -117,8 +121,8 @@ def line_index():
 
 @line_bp.route("/line/config")
 def line_config():
-    """提供前端 register.js 需要的公開設定值（目前只有 LIFF ID）。"""
-    return jsonify({"liff_id": LIFF_ID})
+    """提供前端 register.js / coupons.js 需要的公開設定值（LIFF ID）。"""
+    return jsonify({"liff_id": LIFF_ID, "liff_id_coupons": LIFF_ID_COUPONS})
 
 
 @line_bp.route("/line/callback", methods=["POST"])
