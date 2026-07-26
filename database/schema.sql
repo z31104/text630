@@ -243,6 +243,58 @@ CREATE TABLE IF NOT EXISTS member_coupons (
     FOREIGN KEY (coupon_id) REFERENCES coupons(coupon_id) ON DELETE CASCADE
 );
 
+    INSERT IGNORE INTO coupons (
+    coupon_id,
+    coupon_name,
+    description,
+    discount_type,
+    discount_value,
+    start_at,
+    end_at,
+    status
+)
+VALUES
+(
+    1,
+    '新會員 50 元優惠券',
+    '新會員抽獎獲得，消費時可折抵 50 元',
+    'amount',
+    50,
+    NOW(),
+    DATE_ADD(NOW(), INTERVAL 30 DAY),
+    'active'
+),
+(
+    2,
+    '新會員 9 折優惠券',
+    '新會員抽獎獲得，消費時享 9 折優惠',
+    'percentage',
+    10,
+    NOW(),
+    DATE_ADD(NOW(), INTERVAL 30 DAY),
+    'active'
+),
+(
+    3,
+    '新會員 200 元優惠券',
+    '新會員抽獎獲得，消費時可折抵 200 元',
+    'amount',
+    200,
+    NOW(),
+    DATE_ADD(NOW(), INTERVAL 30 DAY),
+    'active'
+),
+(
+    4,
+    '新會員免運優惠券',
+    '新會員抽獎獲得，可享免運優惠',
+    'free_shipping',
+    0,
+    NOW(),
+    DATE_ADD(NOW(), INTERVAL 30 DAY),
+    'active'
+);
+
 CREATE TABLE IF NOT EXISTS lottery_prizes (
     prize_id INT AUTO_INCREMENT PRIMARY KEY,
 
@@ -256,9 +308,20 @@ CREATE TABLE IF NOT EXISTS lottery_prizes (
     stock_quantity INT NULL,
     prize_status VARCHAR(20) NOT NULL DEFAULT 'active',
 
+
+    -- 抽到這個獎項時，要發哪一張優惠券
+    -- 禮品、再抽一次可以是 NULL
+    coupon_id INT NULL,
+
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        ON UPDATE CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+
+    
+    CONSTRAINT fk_lottery_prizes_coupon
+            FOREIGN KEY (coupon_id)
+            REFERENCES coupons(coupon_id)
+            ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS lottery_records (
@@ -359,7 +422,8 @@ INSERT IGNORE INTO lottery_prizes (
     prize_value,
     probability_weight,
     stock_quantity,
-    prize_status
+    prize_status,
+    coupon_id
 )
 VALUES
     (
@@ -369,7 +433,8 @@ VALUES
         50,
         1,
         NULL,
-        'active'
+        'active',
+        1
     ),
     (
         'WELCOME_10_OFF',
@@ -378,7 +443,8 @@ VALUES
         0.90,
         1,
         NULL,
-        'active'
+        'active',
+        2
     ),
     (
         'WELCOME_200',
@@ -387,7 +453,8 @@ VALUES
         200,
         1,
         NULL,
-        'active'
+        'active',
+        3
     ),
     (
         'WELCOME_GIFT',
@@ -396,7 +463,8 @@ VALUES
         0,
         1,
         NULL,
-        'active'
+        'active',
+        NULL
     ),
     (
         'WELCOME_FREE_SHIP',
@@ -405,7 +473,8 @@ VALUES
         0,
         1,
         NULL,
-        'active'
+        'active',
+        4
     ),
     (
         'WELCOME_RETRY',
@@ -414,7 +483,8 @@ VALUES
         0,
         1,
         NULL,
-        'active'
+        'active',
+        NULL
     );
 
 CREATE TABLE IF NOT EXISTS member_preferences (

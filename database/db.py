@@ -2575,7 +2575,8 @@ def draw_lottery_for_member(member_id):
                 prize_value,
                 probability_weight,
                 stock_quantity,
-                prize_status
+                prize_status,
+                coupon_id
             FROM lottery_prizes
             WHERE prize_status = 'active'
               AND probability_weight > 0
@@ -2610,6 +2611,7 @@ def draw_lottery_for_member(member_id):
         prize_id = selected_prize["prize_id"]
         prize_name = selected_prize["prize_name"]
         prize_type = selected_prize["prize_type"]
+        coupon_id = selected_prize.get("coupon_id")
 
         # 「再抽一次」不是最終獎品
         is_final = prize_type != "retry"
@@ -2654,7 +2656,7 @@ def draw_lottery_for_member(member_id):
              VALUES (
                 %s,
                 %s,
-                NULL,
+                %s,
                 %s,
                 %s,
                 NOW(),
@@ -2670,6 +2672,7 @@ def draw_lottery_for_member(member_id):
             (
                 member_id,
                 prize_id,
+                coupon_id,
                 "新會員抽獎",
                 prize_name,
                 "中獎" if is_final else "未完成",
@@ -2683,6 +2686,39 @@ def draw_lottery_for_member(member_id):
         lottery_id = cursor.lastrowid
 
         redemption = None
+        member_coupon_id = None
+
+# 如果抽中的獎項有設定 coupon_id，
+# 就把優惠券正式發給這位會員。
+        if coupon_id is not None:
+            cursor.execute(
+                """
+                INSERT INTO member_coupons (
+                    member_id,
+                    coupon_id,
+                    source,
+                    status,
+                    receive_time,
+                    used_time
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    %s,
+                    'unused',
+                    NOW(),
+                    NULL
+                )
+                """,
+                (
+                    member_id,
+                    coupon_id,
+                    LOTTERY_CAMPAIGN_CODE
+                )
+            )
+
+            member_coupon_id = cursor.lastrowid
+
 
         # 只有最終獎才建立 member_prizes，下一次抽獎才會被視為已完成。
         # retry 獎不建立這筆資料，因此前端可安全地再抽一次。
@@ -2729,6 +2765,7 @@ def draw_lottery_for_member(member_id):
             }
 
         conn.commit()
+        
         # -------------------------------------------------
         # 第 7 步：全部成功後才 commit
         # -------------------------------------------------
@@ -2738,6 +2775,10 @@ def draw_lottery_for_member(member_id):
             "message": "抽獎成功",
             "already_completed": False,
             "lottery_id": lottery_id,
+            
+            "member_coupon_id": member_coupon_id,
+            "coupon_id": coupon_id,
+            "coupon_issued": member_coupon_id is not None,
             "is_final": to_bool(is_final),
             "can_retry": to_bool(not is_final),
             "redemption": redemption,

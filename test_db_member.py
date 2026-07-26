@@ -16,7 +16,7 @@ def test_insert_member():
         phone,
         vip,
         member_level,
-        visit_count,
+        total_visit_count,
         line_user_id,
         total_amount,
         favorite_product,
@@ -29,7 +29,7 @@ def test_insert_member():
         "test_member",
         "0912345678",
         True,
-        "VIP",
+        "vip",
         5,
         "Utest123",
         1500,
@@ -66,10 +66,10 @@ def test_save_recognition_log(member):
         "camera_id": "camera_01",
         "member_level": member["member_level"],
         "recognition_status": "recognized",
-        "visit_status": "visit",
+        "visit_status": "arrived",
         "visit_time": "2026-07-10 19:30:00",
         "leave_time": None,
-        "stay_minutes": 0,
+        "stay_seconds": 0,
 
         "recognized_at": "2026-07-10 19:30:00",
         "created_at": "2026-07-10 19:30:00",
@@ -86,7 +86,7 @@ def test_insert_vip_notification(member, log_id):
         member_id=member["member_id"],
         log_id=log_id,
         line_user_id=member["line_user_id"],
-        message=f"VIP 會員 {member['name']} 到店",
+        message=f"vip 會員 {member['name']} 到店",
         status="sent"
     )
 
