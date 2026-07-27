@@ -17,6 +17,14 @@ from database.db import (
     save_recognition_log,
     register_member_with_face,
 )
+from linebot_service.notify import notify_vip_upgrade
+
+# 累積消費達到這個門檻，自動升級 VIP 並推播通知。
+# 跟 routes/line.py 的 VIP_UPGRADE_THRESHOLD 是同一個門檻值，
+# 兩邊各自獨立觸發（這裡是店員編輯當下、那邊是排程批次檢查），
+# 之後如果要調整門檻，兩個檔案都要一起改。
+VIP_UPGRADE_THRESHOLD = 10000
+
 UPLOAD_FOLDER = os.path.join(
     "static",
     "member_images"
@@ -560,6 +568,33 @@ def edit_member(member_id):
 
          cursor.execute(sql, data)
          conn.commit()
+
+         # 消費金額跨過門檻時自動升級 VIP。跟 routes/line.py 的
+         # POST /line/cron/vip-check（排程批次檢查）是各自獨立的觸發點，
+         # 這裡是店員手動編輯當下就觸發，兩邊門檻值要保持一致。
+         was_normal = not bool(target_member.get("vip"))
+
+         try:
+             new_total_amount = float(request.form.get("total_amount") or 0)
+         except (TypeError, ValueError):
+             new_total_amount = 0
+
+         if was_normal and new_total_amount >= VIP_UPGRADE_THRESHOLD:
+             cursor.execute(
+                 "UPDATE members SET vip = TRUE, member_level = 'vip', "
+                 "updated_by = 'vip_auto_upgrade' WHERE member_id = %s",
+                 (member_id,)
+             )
+             conn.commit()
+
+             notify_vip_upgrade({
+                 "member_id": member_id,
+                 "name": request.form.get("name") or target_member.get("name"),
+                 "line_user_id": (
+                     request.form.get("line_user_id")
+                     or target_member.get("line_user_id")
+                 ),
+             })
 
          refresh_member(member_id)
 

@@ -25,7 +25,7 @@ from database.db import (
     get_redemption_by_token,
     redeem_member_prize,
 )
-from linebot_service.notify import push_message, notify_lottery_result
+from linebot_service.notify import push_message, notify_lottery_result, notify_vip_upgrade
 from services.face_service import (
     validate_member_face_image,
     check_duplicate_face,
@@ -69,6 +69,14 @@ LIFF_ID_COUPONS = os.getenv("LIFF_ID_COUPONS", "")
 LIFF_CHANNEL_ID = LIFF_ID.split("-")[0] if LIFF_ID else ""
 
 LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify"
+
+# 累積消費金額達到這個門檻，自動升級 VIP 並推播通知
+VIP_UPGRADE_THRESHOLD = 10000
+
+# 保護 /line/cron/vip-check 用的密鑰，Cloud Scheduler 呼叫時要帶在
+# X-Cron-Secret header 裡；本機沒設定時這支 API 直接回 403，避免忘記
+# 設定密鑰卻讓外部任何人都能觸發批次升級。
+CRON_SECRET = os.getenv("CRON_SECRET", "")
 
 # 店員用 LINE 官方帳號，用來接收 VIP 到店通知
 STAFF_LINE_CHANNEL_ACCESS_TOKEN = os.getenv("STAFF_LINE_CHANNEL_ACCESS_TOKEN")
@@ -706,3 +714,96 @@ def redeem_prize(token):
         <button type="submit">確認核銷</button>
     </form>
     """
+
+
+def _fetch_members_crossing_vip_threshold(threshold):
+    """查詢累積消費達門檻、但還不是 VIP 的會員。"""
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT member_id, name, line_user_id, total_amount "
+            "FROM members "
+            "WHERE total_amount >= %s AND (vip = FALSE OR vip IS NULL)",
+            (threshold,)
+        )
+        return cursor.fetchall()
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+def _mark_member_as_vip(member_id):
+    """
+    把會員標記為 VIP，member_level 一併同步成 'vip'
+    （跟 routes/member.py 既有的 member_level = "vip" if vip else "normal" 邏輯一致）。
+    """
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE members SET vip = TRUE, member_level = 'vip', updated_by = 'vip_auto_upgrade' "
+            "WHERE member_id = %s",
+            (member_id,)
+        )
+        conn.commit()
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
+@line_bp.route("/line/cron/vip-check", methods=["POST"])
+def vip_upgrade_cron():
+    """
+    給 Cloud Scheduler 每天固定時間呼叫：撈出累積消費達 VIP_UPGRADE_THRESHOLD、
+    但還不是 VIP 的會員，標記為 VIP 並推播升級通知。查詢條件用 vip = FALSE，
+    所以已經是 VIP 的會員不會被重複撈到，也就不會每天重複推播。
+
+    用 X-Cron-Secret header 驗證，沒帶對密鑰一律 403，避免任何人從外部
+    直接打這支 API 觸發批次升級。
+    """
+    if not CRON_SECRET or request.headers.get("X-Cron-Secret") != CRON_SECRET:
+        abort(403)
+
+    try:
+        candidates = _fetch_members_crossing_vip_threshold(VIP_UPGRADE_THRESHOLD)
+    except Exception as e:
+        print("VIP 升級檢查查詢失敗：", e)
+        return jsonify({"success": False, "message": "查詢失敗"}), 500
+
+    upgraded = []
+    failed = []
+
+    for member in candidates:
+        member_id = member["member_id"]
+
+        try:
+            _mark_member_as_vip(member_id)
+        except Exception as e:
+            print(f"VIP 升級失敗（member_id={member_id}）：", e)
+            failed.append(member_id)
+            continue
+
+        upgraded.append(member_id)
+        notify_vip_upgrade({
+            "member_id": member_id,
+            "name": member.get("name"),
+            "line_user_id": member.get("line_user_id"),
+        })
+
+    return jsonify({
+        "success": True,
+        "checked": len(candidates),
+        "upgraded": upgraded,
+        "failed": failed,
+    })
