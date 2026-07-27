@@ -223,23 +223,6 @@ async function requestLotteryDraw(memberId) {
     return result;
 }
 
-function buildPrizePayload(prize) {
-    const memberId = getRegisteredMemberId();
-    const prizeCode = prize.prize_code || prize.id || null;
-    const prizeName = prize.prize_name || prize.name || null;
-
-    return JSON.stringify({
-        type: "welcome_lottery_prize",
-        member_id: memberId,
-        record_id: prize.record_id ?? null,
-        prize_id: prizeCode,
-        prize_code: prizeCode,
-        prize_name: prizeName,
-        line_user_id: lineUserIdInput ? lineUserIdInput.value.trim() || null : null,
-        issued_at: new Date().toISOString()
-    });
-}
-
 function escapeQrPayloadUnicode(payload) {
     return payload.replace(/[^\x00-\x7F]/g, function (character) {
         return `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`;
@@ -287,20 +270,26 @@ function clearPrizeQrCode() {
 }
 
 function showPrizeResult(prize, qrCodeUrl = null) {
-    const payload = qrCodeUrl || buildPrizePayload(prize);
-
     if (lotteryPrizeName) {
         lotteryPrizeName.textContent = prize.name;
     }
 
-    if (lotteryPrizeDetail) {
-        lotteryPrizeDetail.textContent = "兌換資料已包含獎項、會員資訊與產生時間。";
-    }
+    if (qrCodeUrl) {
+        if (lotteryPrizeDetail) {
+            lotteryPrizeDetail.textContent = "請至門市出示此 QR Code，由店員為您核銷兌換。";
+        }
 
-    renderPrizeQrCode(payload);
+        renderPrizeQrCode(qrCodeUrl);
 
-    if (lotteryQrWrap) {
-        lotteryQrWrap.hidden = false;
+        if (lotteryQrWrap) {
+            lotteryQrWrap.hidden = false;
+        }
+    } else {
+        if (lotteryPrizeDetail) {
+            lotteryPrizeDetail.textContent = "尚未取得兌換資料，請聯絡店員協助處理。";
+        }
+
+        clearPrizeQrCode();
     }
 
     if (lotteryPrizeCard) {
@@ -355,7 +344,7 @@ function handleLotteryResult(result) {
 
     showPrizeResult(
         selectedPrize,
-        result.qr_code_url || prize.qr_code_url || null
+        (result.redemption && result.redemption.qr_value) || null
     );
     launchLotteryConfetti();
 

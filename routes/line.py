@@ -6,6 +6,7 @@ import traceback
 
 import requests
 from flask import Blueprint, request, abort, jsonify
+from markupsafe import escape
 
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
@@ -21,6 +22,8 @@ from database.db import (
     draw_lottery_for_member,
     get_member_coupons,
     get_latest_unconverted_visitor,
+    get_redemption_by_token,
+    redeem_member_prize,
 )
 from linebot_service.notify import push_message, notify_lottery_result
 from services.face_service import (
@@ -628,3 +631,78 @@ def get_my_coupon_summary():
         "usable": usable,
         "expiring_soon": expiring_soon,
     })
+
+
+@line_bp.route("/redeem/<token>", methods=["GET", "POST"])
+def redeem_prize(token):
+    """
+    店員核銷頁面：客人手機上中獎 QR Code 掃出來的網址就是這裡。
+    店員確認會員與獎項資訊無誤後，輸入自己的姓名/工號完成核銷。
+    純內部工具頁面，跟 routes/member.py 其他後台頁面一樣沒有另外做登入驗證。
+    """
+    if request.method == "POST":
+        redeemed_by = (request.form.get("redeemed_by") or "").strip()
+
+        if not redeemed_by:
+            return "請輸入核銷人員姓名，才能完成核銷。", 400
+
+        try:
+            result = redeem_member_prize(token, redeemed_by)
+        except Exception as e:
+            print("核銷失敗：", e)
+            return "核銷失敗，請稍後再試", 500
+
+        if not result.get("success"):
+            return f"""
+            <h1>核銷失敗</h1>
+            <p>{escape(result.get("message", "核銷失敗"))}</p>
+            <p><a href="/redeem/{escape(token)}">重新整理再試一次</a></p>
+            """
+
+    try:
+        redemption = get_redemption_by_token(token)
+    except Exception as e:
+        print("查詢兌換資料失敗：", e)
+        return "查詢失敗，請稍後再試", 500
+
+    if redemption is None:
+        return "找不到這張兌換 QR Code，請確認連結是否正確。", 404
+
+    member_name = escape(redemption.get("member_name") or "")
+    member_phone = escape(redemption.get("member_phone") or "")
+    prize_name = escape(redemption.get("prize_name") or "")
+    status = redemption.get("status")
+    expires_at = redemption.get("expires_at")
+    is_expired = bool(expires_at) and expires_at <= datetime.now()
+
+    if status == "redeemed":
+        return f"""
+        <h1>這張獎項已經核銷過了</h1>
+        <p>會員：{member_name}（{member_phone}）</p>
+        <p>獎項：{prize_name}</p>
+        <p>核銷時間：{redemption.get("redeemed_at")}</p>
+        <p>核銷人員：{escape(redemption.get("redeemed_by") or "")}</p>
+        """
+
+    if status == "expired" or is_expired:
+        return f"""
+        <h1>這張獎項已經過期</h1>
+        <p>會員：{member_name}（{member_phone}）</p>
+        <p>獎項：{prize_name}</p>
+        <p>兌換期限：{expires_at}</p>
+        """
+
+    return f"""
+    <h1>會員兌換核銷</h1>
+    <p>會員：{member_name}（{member_phone}）</p>
+    <p>獎項：{prize_name}</p>
+    <p>兌換期限：{expires_at if expires_at else "無期限"}</p>
+
+    <form method="POST">
+        <p>
+            核銷人員（姓名或工號）：
+            <input type="text" name="redeemed_by" required>
+        </p>
+        <button type="submit">確認核銷</button>
+    </form>
+    """
