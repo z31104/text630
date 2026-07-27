@@ -2737,17 +2737,19 @@ def draw_lottery_for_member(member_id):
                 INSERT INTO member_prizes (
                     member_id,
                     prize_id,
+                    member_coupon_id,
                     campaign_code,
                     prize_code,
                     redeem_token,
                     status,
                     expires_at
                 )
-                VALUES (%s, %s, %s, %s, %s, 'unused', %s)
+                VALUES (%s, %s, %s, %s, %s, %s, 'unused', %s)
                 """,
                 (
                     member_id,
                     prize_id,
+                    member_coupon_id,
                     LOTTERY_CAMPAIGN_CODE,
                     selected_prize["prize_code"],
                     redeem_token,
@@ -2859,7 +2861,10 @@ def redeem_member_prize(redeem_token, redeemed_by):
     """
     核銷會員獎品。
 
-    只有狀態為 unused 且尚未過期時才能成功。
+    核銷成功時：
+    1. member_prizes.status 改成 redeemed
+    2. 如果有對應 member_coupon_id，
+       member_coupons.status 一起改成 used
     """
 
     conn = None
@@ -2873,80 +2878,133 @@ def redeem_member_prize(redeem_token, redeemed_by):
             raise ValueError("redeemed_by 不可為空")
 
         conn = get_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(dictionary=True)
 
-        sql = """
-        UPDATE member_prizes
-        SET
-            status = 'redeemed',
-            redeemed_at = CURRENT_TIMESTAMP,
-            redeemed_by = %s
-        WHERE redeem_token = %s
-          AND status = 'unused'
-          AND (
-                expires_at IS NULL
-                OR expires_at > CURRENT_TIMESTAMP
-              )
-        """
-
+        # 先鎖定資料，避免同一張 QR Code 同時被核銷兩次
         cursor.execute(
-            sql,
+            """
+            SELECT
+                member_prize_id,
+                member_coupon_id,
+                status,
+                expires_at
+            FROM member_prizes
+            WHERE redeem_token = %s
+            FOR UPDATE
+            """,
+            (redeem_token,)
+        )
+
+        prize_record = cursor.fetchone()
+
+        if prize_record is None:
+            conn.rollback()
+
+            return {
+                "success": False,
+                "message": "找不到這張兌換 QR Code"
+            }
+
+        if prize_record["status"] == "redeemed":
+            conn.rollback()
+
+            return {
+                "success": False,
+                "message": "此獎品已經兌換過"
+            }
+
+        if prize_record["status"] == "expired":
+            conn.rollback()
+
+            return {
+                "success": False,
+                "message": "此獎品已過期"
+            }
+
+        expires_at = prize_record["expires_at"]
+
+        if (
+            expires_at is not None
+            and expires_at <= datetime.now()
+        ):
+            conn.rollback()
+
+            return {
+                "success": False,
+                "message": "此獎品已過期"
+            }
+
+        if prize_record["status"] != "unused":
+            conn.rollback()
+
+            return {
+                "success": False,
+                "message": "此獎品目前無法核銷"
+            }
+
+        # 更新 member_prizes
+        cursor.execute(
+            """
+            UPDATE member_prizes
+            SET
+                status = 'redeemed',
+                redeemed_at = CURRENT_TIMESTAMP,
+                redeemed_by = %s
+            WHERE member_prize_id = %s
+              AND status = 'unused'
+            """,
             (
                 redeemed_by,
-                redeem_token
+                prize_record["member_prize_id"]
             )
         )
 
-        success = cursor.rowcount == 1
+        if cursor.rowcount != 1:
+            raise RuntimeError(
+                "更新 member_prizes 核銷狀態失敗"
+            )
 
-        if success:
-            conn.commit()
+        member_coupon_id = prize_record["member_coupon_id"]
 
-            return {
-                "success": True,
-                "message": "獎品核銷成功"
-            }
+        # 有優惠券才同步更新 member_coupons
+        if member_coupon_id is not None:
+            cursor.execute(
+                """
+                UPDATE member_coupons
+                SET
+                    status = 'used',
+                    used_time = CURRENT_TIMESTAMP
+                WHERE member_coupon_id = %s
+                  AND status = 'unused'
+                """,
+                (member_coupon_id,)
+            )
 
-        conn.rollback()
+            if cursor.rowcount != 1:
+                raise RuntimeError(
+                    "更新 member_coupons 使用狀態失敗"
+                )
 
-        # 更新失敗後再查詢原因
-        redemption = get_redemption_by_token(redeem_token)
-
-        if redemption is None:
-            message = "找不到這張兌換 QR Code"
-
-        elif redemption["status"] == "redeemed":
-            message = "此獎品已經兌換過"
-
-        elif redemption["status"] == "expired":
-            message = "此獎品已過期"
-
-        elif (
-            redemption["expires_at"] is not None
-            and redemption["expires_at"] <= datetime.now()
-        ):
-            message = "此獎品已過期"
-
-        else:
-            message = "此獎品目前無法核銷"
+        # 兩張表都成功才提交
+        conn.commit()
 
         return {
-            "success": False,
-            "message": message
+            "success": True,
+            "message": "獎品核銷成功"
         }
 
     except Exception as e:
-        if conn:
+        if conn is not None:
             conn.rollback()
 
         print("核銷獎品失敗：", e)
         raise
 
     finally:
-        if cursor:
+        if cursor is not None:
             cursor.close()
 
-        if conn and conn.is_connected():
+        if conn is not None and conn.is_connected():
             conn.close()
 
 

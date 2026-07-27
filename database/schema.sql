@@ -360,6 +360,8 @@ CREATE TABLE IF NOT EXISTS lottery_records (
         REFERENCES lottery_prizes(prize_id)
         ON DELETE RESTRICT,
 
+
+CONSTRAINT fk_lottery_records_coupon
     FOREIGN KEY (coupon_id)
         REFERENCES coupons(coupon_id)
         ON DELETE SET NULL
@@ -371,6 +373,9 @@ CREATE TABLE IF NOT EXISTS member_prizes (
 
     member_id INT NOT NULL,
     prize_id INT NOT NULL,
+    -- 連到實際發給會員的優惠券
+    -- 再抽一次或沒有優惠券的獎品可以是 NULL
+    member_coupon_id INT NULL,
 
     campaign_code VARCHAR(50) NOT NULL,
     prize_code VARCHAR(50) NOT NULL,
