@@ -34,6 +34,7 @@ from services.face_service import (
     reload_visitor_faces,
     MEMBER_IMAGE_DIR,
 )
+from routes.home import prepare_member_coupon_rows
 
 ALLOWED_FACE_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 ALLOWED_FACE_IMAGE_MIME_TYPES = {"image/jpeg", "image/png"}
@@ -619,11 +620,16 @@ def get_my_coupon_summary():
     now = datetime.now()
     soon = now + timedelta(days=COUPON_EXPIRING_SOON_DAYS)
 
+    prepared_coupons = prepare_member_coupon_rows(
+        coupons,
+        now=now,
+        include_redemption=True
+    )
     usable = 0
     expiring_soon = 0
 
-    for coupon in coupons:
-        if coupon.get("status") != "unused":
+    for coupon in prepared_coupons:
+        if coupon.get("status_key") != "available":
             continue
 
         usable += 1
@@ -638,6 +644,30 @@ def get_my_coupon_summary():
         "total": len(coupons),
         "usable": usable,
         "expiring_soon": expiring_soon,
+        "coupons": [
+            {
+                "member_coupon_id": coupon.get(
+                    "member_coupon_id"
+                ),
+                "coupon_name": coupon.get("coupon_name"),
+                "description": coupon.get("description"),
+                "discount_text": coupon.get("discount_text"),
+                "receive_time": coupon.get("receive_time_text"),
+                "end_at": coupon.get("end_at_text"),
+                "status": coupon.get("status_key"),
+                "status_label": coupon.get("status_label"),
+                "used_time": coupon.get("used_time_text"),
+                "redemption_info": coupon.get(
+                    "redemption_info"
+                ),
+                "can_open_redemption": coupon.get(
+                    "can_open_redemption",
+                    False
+                ),
+                "redeem_url": coupon.get("redeem_url"),
+            }
+            for coupon in prepared_coupons
+        ],
     })
 
 

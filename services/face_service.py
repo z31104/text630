@@ -1232,9 +1232,16 @@ def register_new_visitor(frame, faces):
         )
 
 
-def check_duplicate_face(encoding, tolerance=0.6):
+def check_duplicate_face(
+    encoding,
+    tolerance=0.6,
+    exclude_member_id=None
+):
     """
-    檢查新註冊人臉是否已存在於會員人臉快取。
+    檢查上傳的人臉是否已存在於其他會員的人臉快取。
+
+    更新會員照片時可傳入 exclude_member_id，避免把會員本人原有的
+    encoding 判定成重複；新會員註冊不傳此參數時維持原本行為。
 
     回傳格式：
     {
@@ -1286,6 +1293,12 @@ def check_duplicate_face(encoding, tolerance=0.6):
     closest_distance = None
 
     for member in known_members:
+        if (
+            exclude_member_id is not None
+            and member.get("member_id") == exclude_member_id
+        ):
+            continue
+
         known_encoding = member.get("encoding")
 
         if known_encoding is None:

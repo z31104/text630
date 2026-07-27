@@ -247,6 +247,176 @@
     line-height: 1.65;
 }
 
+.member-coupon-list-panel[hidden] {
+    display: none;
+}
+
+.member-coupon-list-note {
+    margin: 8px 0 0;
+    color: #64748b;
+    line-height: 1.6;
+}
+
+.member-coupon-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.member-coupon-card {
+    min-width: 0;
+    padding: 22px;
+    border: 1px solid #dbe3f0;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #ffffff, #f8fafc);
+    overflow-wrap: anywhere;
+}
+
+.member-coupon-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.member-coupon-code {
+    margin: 0 0 6px;
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+}
+
+.member-coupon-card h3 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 20px;
+    line-height: 1.35;
+}
+
+.member-coupon-status {
+    flex: 0 0 auto;
+    padding: 7px 11px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.member-coupon-status.is-available {
+    background-color: #dcfce7;
+    color: #166534;
+}
+
+.member-coupon-status.is-used {
+    background-color: #e2e8f0;
+    color: #475569;
+}
+
+.member-coupon-status.is-expired {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.member-coupon-status.is-upcoming {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.member-coupon-status.is-unavailable {
+    background-color: #f1f5f9;
+    color: #64748b;
+}
+
+.member-coupon-description {
+    min-height: 48px;
+    margin: 18px 0 10px;
+    color: #475569;
+    line-height: 1.65;
+}
+
+.member-coupon-discount {
+    display: inline-flex;
+    margin: 0 0 18px;
+    padding: 7px 10px;
+    border-radius: 9px;
+    background-color: #dbeafe;
+    color: #1d4ed8;
+    font-size: 13px;
+    font-weight: 900;
+}
+
+.member-coupon-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin: 0;
+}
+
+.member-coupon-meta > div {
+    min-width: 0;
+    padding: 12px;
+    border-radius: 11px;
+    background-color: #f1f5f9;
+}
+
+.member-coupon-meta dt,
+.member-coupon-redemption span {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.member-coupon-meta dd {
+    margin: 5px 0 0;
+    color: #0f172a;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.45;
+}
+
+.member-coupon-redemption {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.member-coupon-redemption span,
+.member-coupon-redemption strong {
+    display: block;
+}
+
+.member-coupon-redemption strong {
+    margin-top: 5px;
+    color: #334155;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.member-coupon-redeem-link {
+    flex: 0 0 auto;
+    padding: 9px 12px;
+    border: 1px solid #2563eb;
+    border-radius: 9px;
+    color: #1d4ed8;
+    font-size: 13px;
+    font-weight: 900;
+    text-decoration: none;
+}
+
+.member-coupon-redeem-link:hover {
+    background-color: #eff6ff;
+}
+
+.member-coupon-list-empty {
+    margin-top: 0;
+    text-align: center;
+}
+
 @media (max-width: 768px) {
     .dashboard-identity-filter {
         max-width: none;
@@ -289,6 +459,14 @@
     .member-coupon-stat span {
         grid-column: 1;
     }
+
+    .member-coupon-list {
+        grid-template-columns: 1fr;
+    }
+
+    .member-coupon-description {
+        min-height: 0;
+    }
 }
 
 @media (max-width: 420px) {
@@ -306,6 +484,22 @@
 
     .member-coupon-heading {
         flex-direction: column;
+    }
+
+    .member-coupon-card-header,
+    .member-coupon-redemption {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .member-coupon-meta {
+        grid-template-columns: 1fr;
+    }
+
+    .member-coupon-redeem-link {
+        width: 100%;
+        box-sizing: border-box;
+        text-align: center;
     }
 }
 
