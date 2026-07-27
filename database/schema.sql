@@ -418,6 +418,11 @@ CREATE TABLE IF NOT EXISTS member_prizes (
     FOREIGN KEY (prize_id)
         REFERENCES lottery_prizes(prize_id)
         ON DELETE RESTRICT
+    
+    CONSTRAINT fk_member_prizes_member_coupon
+        FOREIGN KEY (member_coupon_id)
+        REFERENCES member_coupons(member_coupon_id)
+        ON DELETE SET NULL
 );
 
 INSERT IGNORE INTO lottery_prizes (
