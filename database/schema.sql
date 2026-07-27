@@ -506,19 +506,30 @@ CREATE TABLE IF NOT EXISTS member_preferences (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (member_id) REFERENCES members(member_id) ON DELETE CASCADE
 );
-INSERT IGNORE INTO product_categories (
+
+-- =====================================================
+-- 商品分類預設資料
+-- 四個分類：餐廳、家具、廚具、玩偶
+-- =====================================================
+
+INSERT INTO product_categories (
     category_name,
     description
 )
 VALUES
-('沙發', '客廳沙發與扶手椅'),
-('桌椅', '餐桌、書桌與各類座椅'),
-('收納', '收納櫃、層架與收納盒'),
-('燈具', '桌燈、立燈與吊燈'),
-('寢具', '床架、床墊與寢具用品');
+    ('餐廳', '餐桌用餐與餐廳區相關商品'),
+    ('家具', '居家收納、桌椅與生活家具'),
+    ('廚具', '料理、烹飪與廚房用品'),
+    ('玩偶', '兒童與居家裝飾玩偶')
+ON DUPLICATE KEY UPDATE
+    description = VALUES(description);
 
 
-INSERT IGNORE INTO products (
+-- =====================================================
+-- 餐廳區商品：10 項
+-- =====================================================
+
+INSERT INTO products (
     product_code,
     product_name,
     category_id,
@@ -530,102 +541,565 @@ INSERT IGNORE INTO products (
 )
 VALUES
 (
-    'SOFA001',
-    'KIVIK 三人座沙發',
-    1,
-    24990,
-    10,
-    '舒適寬敞的三人座沙發',
-    '/static/images/kivik_sofa.jpg',
-    '上架'
-),
-(
-    'SOFA002',
-    'EKTORP 雙人座沙發',
-    1,
-    18990,
-    8,
-    '經典造型雙人座沙發，椅套可拆洗',
-    '/static/images/ektorp_sofa.jpg',
-    '上架'
-),
-(
-    'TABLE001',
-    'LACK 邊桌',
-    2,
-    399,
+    'REST001',
+    '陶瓷餐盤四件組',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '餐廳'),
+    499,
     50,
-    '簡約輕巧的客廳邊桌',
-    '/static/images/lack_table.jpg',
+    '日常用白色陶瓷餐盤四件組',
+    NULL,
     '上架'
 ),
 (
-    'CHAIR001',
-    'POÄNG 扶手椅',
-    2,
-    3999,
-    20,
-    '符合人體工學的彎曲木製扶手椅',
-    '/static/images/poang_chair.jpg',
+    'REST002',
+    '玻璃水杯六件組',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '餐廳'),
+    399,
+    60,
+    '透明耐用玻璃水杯六件組',
+    NULL,
     '上架'
 ),
 (
-    'STORAGE001',
-    'KALLAX 層架組',
-    3,
-    2999,
-    25,
-    '適合客廳與臥室的收納層架',
-    '/static/images/kallax.jpg',
+    'REST003',
+    '不鏽鋼餐具組',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '餐廳'),
+    299,
+    80,
+    '包含刀、叉、湯匙的餐具組',
+    NULL,
     '上架'
 ),
 (
-    'STORAGE002',
-    'BILLY 書櫃',
-    3,
-    2499,
-    18,
-    '經典簡約多層書櫃，適合居家收納',
-    '/static/images/billy_bookcase.jpg',
+    'REST004',
+    '棉麻桌巾',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '餐廳'),
+    459,
+    35,
+    '簡約棉麻材質餐桌桌巾',
+    NULL,
     '上架'
 ),
 (
-    'LIGHT001',
-    'TERTIAL 工作燈',
-    4,
-    699,
-    30,
-    '可調整方向的工作桌燈',
-    '/static/images/tertial.jpg',
+    'REST005',
+    '防滑餐墊四入組',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '餐廳'),
+    259,
+    70,
+    '防水防滑餐桌墊四入組',
+    NULL,
     '上架'
 ),
 (
-    'LIGHT002',
-    'HEKTAR 立燈',
-    4,
-    1999,
+    'REST006',
+    '木製托盤',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '餐廳'),
+    349,
+    40,
+    '適合端送餐點與飲品的木製托盤',
+    NULL,
+    '上架'
+),
+(
+    'REST007',
+    '陶瓷馬克杯',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '餐廳'),
+    199,
+    100,
+    '簡約設計陶瓷馬克杯',
+    NULL,
+    '上架'
+),
+(
+    'REST008',
+    '雙層保溫杯',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '餐廳'),
+    599,
+    45,
+    '不鏽鋼雙層真空保溫杯',
+    NULL,
+    '上架'
+),
+(
+    'REST009',
+    '餐巾紙收納盒',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '餐廳'),
+    229,
+    55,
+    '木紋餐巾紙收納盒',
+    NULL,
+    '上架'
+),
+(
+    'REST010',
+    '玻璃調味罐三件組',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '餐廳'),
+    329,
+    65,
+    '鹽、胡椒與香料玻璃調味罐',
+    NULL,
+    '上架'
+)
+ON DUPLICATE KEY UPDATE
+    product_name = VALUES(product_name),
+    category_id = VALUES(category_id),
+    price = VALUES(price),
+    stock_quantity = VALUES(stock_quantity),
+    description = VALUES(description),
+    image_url = VALUES(image_url),
+    product_status = VALUES(product_status);
+
+
+-- =====================================================
+-- 家具區商品：10 項
+-- =====================================================
+
+INSERT INTO products (
+    product_code,
+    product_name,
+    category_id,
+    price,
+    stock_quantity,
+    description,
+    image_url,
+    product_status
+)
+VALUES
+(
+    'FURN001',
+    '實木餐桌',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '家具'),
+    4990,
     15,
-    '工業風可調整式立燈',
-    '/static/images/hektar_floor_lamp.jpg',
+    '四人使用實木餐桌',
+    NULL,
     '上架'
 ),
 (
-    'BED001',
-    'MALM 雙人床架',
-    5,
-    8999,
-    12,
-    '簡約設計雙人床架',
-    '/static/images/malm_bed.jpg',
+    'FURN002',
+    '簡約餐椅',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '家具'),
+    1290,
+    40,
+    '簡約木質靠背餐椅',
+    NULL,
     '上架'
 ),
 (
-    'BED002',
-    'HEMNES 單人床框',
-    5,
-    12990,
-    6,
-    '附收納抽屜的多功能單人床框',
-    '/static/images/hemnes_bed.jpg',
+    'FURN003',
+    '三人布沙發',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '家具'),
+    8990,
+    10,
+    '舒適三人座布面沙發',
+    NULL,
     '上架'
-);
+),
+(
+    'FURN004',
+    '雙層茶几',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '家具'),
+    2390,
+    20,
+    '附下層收納空間的客廳茶几',
+    NULL,
+    '上架'
+),
+(
+    'FURN005',
+    '五層收納櫃',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '家具'),
+    1790,
+    30,
+    '五層開放式收納櫃',
+    NULL,
+    '上架'
+),
+(
+    'FURN006',
+    '床頭櫃',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '家具'),
+    990,
+    35,
+    '附抽屜的小型床頭櫃',
+    NULL,
+    '上架'
+),
+(
+    'FURN007',
+    '電腦書桌',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '家具'),
+    2990,
+    18,
+    '適合居家辦公的電腦書桌',
+    NULL,
+    '上架'
+),
+(
+    'FURN008',
+    '人體工學辦公椅',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '家具'),
+    3990,
+    22,
+    '可調整高度與椅背的辦公椅',
+    NULL,
+    '上架'
+),
+(
+    'FURN009',
+    '三層鞋櫃',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '家具'),
+    1590,
+    28,
+    '玄關用三層鞋櫃',
+    NULL,
+    '上架'
+),
+(
+    'FURN010',
+    '落地衣帽架',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '家具'),
+    799,
+    45,
+    '可懸掛衣物與帽子的落地架',
+    NULL,
+    '上架'
+)
+ON DUPLICATE KEY UPDATE
+    product_name = VALUES(product_name),
+    category_id = VALUES(category_id),
+    price = VALUES(price),
+    stock_quantity = VALUES(stock_quantity),
+    description = VALUES(description),
+    image_url = VALUES(image_url),
+    product_status = VALUES(product_status);
+
+
+-- =====================================================
+-- 廚具區商品：10 項
+-- =====================================================
+
+INSERT INTO products (
+    product_code,
+    product_name,
+    category_id,
+    price,
+    stock_quantity,
+    description,
+    image_url,
+    product_status
+)
+VALUES
+(
+    'KITC001',
+    '不沾平底鍋',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '廚具'),
+    799,
+    50,
+    '二十八公分不沾平底鍋',
+    NULL,
+    '上架'
+),
+(
+    'KITC002',
+    '不鏽鋼湯鍋',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '廚具'),
+    1090,
+    35,
+    '附玻璃鍋蓋的不鏽鋼湯鍋',
+    NULL,
+    '上架'
+),
+(
+    'KITC003',
+    '主廚刀',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '廚具'),
+    699,
+    55,
+    '適合切肉與蔬菜的主廚刀',
+    NULL,
+    '上架'
+),
+(
+    'KITC004',
+    '竹製砧板',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '廚具'),
+    399,
+    60,
+    '天然竹材製成的料理砧板',
+    NULL,
+    '上架'
+),
+(
+    'KITC005',
+    '矽膠鍋鏟',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '廚具'),
+    199,
+    100,
+    '耐高溫矽膠料理鍋鏟',
+    NULL,
+    '上架'
+),
+(
+    'KITC006',
+    '料理夾',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '廚具'),
+    169,
+    90,
+    '不鏽鋼防滑料理夾',
+    NULL,
+    '上架'
+),
+(
+    'KITC007',
+    '瀝水籃',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '廚具'),
+    299,
+    70,
+    '蔬果與餐具皆可使用的瀝水籃',
+    NULL,
+    '上架'
+),
+(
+    'KITC008',
+    '玻璃保鮮盒三件組',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '廚具'),
+    649,
+    50,
+    '耐熱玻璃保鮮盒三件組',
+    NULL,
+    '上架'
+),
+(
+    'KITC009',
+    '量杯量匙組',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '廚具'),
+    249,
+    75,
+    '烘焙與料理用量杯量匙組',
+    NULL,
+    '上架'
+),
+(
+    'KITC010',
+    '旋轉調味料架',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '廚具'),
+    899,
+    25,
+    '可旋轉式多格調味料收納架',
+    NULL,
+    '上架'
+)
+ON DUPLICATE KEY UPDATE
+    product_name = VALUES(product_name),
+    category_id = VALUES(category_id),
+    price = VALUES(price),
+    stock_quantity = VALUES(stock_quantity),
+    description = VALUES(description),
+    image_url = VALUES(image_url),
+    product_status = VALUES(product_status);
+
+
+-- =====================================================
+-- 玩偶區商品：10 項
+-- =====================================================
+
+INSERT INTO products (
+    product_code,
+    product_name,
+    category_id,
+    price,
+    stock_quantity,
+    description,
+    image_url,
+    product_status
+)
+VALUES
+(
+    'DOLL001',
+    '泰迪熊玩偶',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '玩偶'),
+    499,
+    50,
+    '柔軟棕色泰迪熊玩偶',
+    NULL,
+    '上架'
+),
+(
+    'DOLL002',
+    '白兔玩偶',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '玩偶'),
+    399,
+    60,
+    '長耳朵白兔絨毛玩偶',
+    NULL,
+    '上架'
+),
+(
+    'DOLL003',
+    '柴犬玩偶',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '玩偶'),
+    459,
+    55,
+    '可愛柴犬造型絨毛玩偶',
+    NULL,
+    '上架'
+),
+(
+    'DOLL004',
+    '企鵝玩偶',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '玩偶'),
+    429,
+    45,
+    '黑白企鵝造型玩偶',
+    NULL,
+    '上架'
+),
+(
+    'DOLL005',
+    '恐龍玩偶',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '玩偶'),
+    549,
+    40,
+    '綠色恐龍造型玩偶',
+    NULL,
+    '上架'
+),
+(
+    'DOLL006',
+    '長頸鹿玩偶',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '玩偶'),
+    599,
+    30,
+    '長頸鹿造型大型玩偶',
+    NULL,
+    '上架'
+),
+(
+    'DOLL007',
+    '小象玩偶',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '玩偶'),
+    459,
+    50,
+    '灰色小象造型玩偶',
+    NULL,
+    '上架'
+),
+(
+    'DOLL008',
+    '貓咪抱枕玩偶',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '玩偶'),
+    699,
+    35,
+    '可作為抱枕使用的貓咪玩偶',
+    NULL,
+    '上架'
+),
+(
+    'DOLL009',
+    '羊駝玩偶',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '玩偶'),
+    529,
+    42,
+    '柔軟羊駝造型絨毛玩偶',
+    NULL,
+    '上架'
+),
+(
+    'DOLL010',
+    '狐狸玩偶',
+    (SELECT category_id
+     FROM product_categories
+     WHERE category_name = '玩偶'),
+    479,
+    48,
+    '橘色狐狸造型絨毛玩偶',
+    NULL,
+    '上架'
+)
+ON DUPLICATE KEY UPDATE
+    product_name = VALUES(product_name),
+    category_id = VALUES(category_id),
+    price = VALUES(price),
+    stock_quantity = VALUES(stock_quantity),
+    description = VALUES(description),
+    image_url = VALUES(image_url),
+    product_status = VALUES(product_status);
