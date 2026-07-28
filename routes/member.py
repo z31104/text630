@@ -13,6 +13,7 @@ from flask import (
 from werkzeug.utils import secure_filename
 
 from database.db import (
+    convert_visitor_to_member,
     get_connection,
     normalize_encoding_data,
     save_recognition_log,
@@ -48,8 +49,13 @@ def allowed_image(filename):
 # 請依照你專案實際資料夾位置調整
 from services.face_service import (
     check_duplicate_face,
+    find_matching_visitor,
+    is_path_within_directory,
+    remove_member_from_face_cache,
+    sync_converted_visitor_cache,
     validate_member_face_image,
     reload_member_faces,
+    reload_visitor_faces,
     refresh_member,
 )
 
@@ -226,27 +232,51 @@ def member():
                 m.vip,
                 m.member_level,
                 m.total_visit_count,
+                COALESCE(
+                    latest_log.visit_time,
+                    latest_log.recognized_at,
+                    m.last_visit_time
+                ) AS last_visit_time,
+                CASE
+                    WHEN latest_log.log_id IS NULL THEN NULL
+                    WHEN COALESCE(latest_log.stay_seconds, 0) > 0
+                        THEN latest_log.stay_seconds
+                    ELSE GREATEST(
+                        TIMESTAMPDIFF(
+                            SECOND,
+                            COALESCE(
+                                latest_log.visit_time,
+                                latest_log.recognized_at
+                            ),
+                            COALESCE(
+                                latest_log.leave_time,
+                                latest_log.last_seen_at,
+                                latest_log.visit_time,
+                                latest_log.recognized_at
+                            )
+                        ),
+                        0
+                    )
+                END AS latest_stay_seconds,
                 m.line_user_id,
                 m.total_amount,
                 m.favorite_product,
                 m.face_image,
                 m.registration_source,
                 m.created_at,
-                m.updated_at,
-                latest_visit.last_visit_time
+                m.updated_at
             FROM members AS m
-            LEFT JOIN (
-                SELECT
-                    member_id,
-                    MAX(
-                        COALESCE(visit_time, recognized_at)
-                    ) AS last_visit_time
-                FROM recognition_logs
-                WHERE member_id IS NOT NULL
-                  AND subject_type = 'member'
-                GROUP BY member_id
-            ) AS latest_visit
-                ON latest_visit.member_id = m.member_id
+            LEFT JOIN recognition_logs AS latest_log
+                ON latest_log.log_id = (
+                    SELECT rl.log_id
+                    FROM recognition_logs AS rl
+                    WHERE rl.member_id = m.member_id
+                      AND rl.subject_type = 'member'
+                    ORDER BY
+                        COALESCE(rl.visit_time, rl.recognized_at) DESC,
+                        rl.log_id DESC
+                    LIMIT 1
+                )
         """
 
         params = ()
@@ -402,28 +432,73 @@ def add_member_page():
             vip = request.form.get("vip") == "1"
             member_level = "vip" if vip else "normal"
 
-            # 7. members 與 face_images 使用同一筆 transaction
-            register_member_with_face(
-                name=request.form.get("name"),
-                phone=request.form.get("phone"),
-                birthday=request.form.get("birthday") or None,
-                vip=vip,
-                member_level=member_level,
-                # 累積到店數只能由離店流程更新，不能由管理頁手動輸入。
-                total_visit_count=0,
-                last_visit_time=None,
-                total_visit_time=0,
-                updated_by="backend",
-                line_user_id=request.form.get("line_user_id"),
-                total_amount=request.form.get("total_amount") or 0,
-                favorite_product=request.form.get(
-                    "favorite_product"
-                ),
-                face_image=saved_image_path,
-                registration_source="backend",
-                image_path=saved_image_path,
-                encoding_data=encoding_data
-            )
+            # 7. 後台與 LINE 註冊共用相同的散客轉會員規則。
+            name = request.form.get("name")
+            line_user_id = request.form.get("line_user_id")
+            visitor_match = find_matching_visitor(encoding_data)
+
+            if visitor_match.get("matched"):
+                convert_result = convert_visitor_to_member(
+                    visitor_id=visitor_match["visitor_id"],
+                    name=name,
+                    phone=request.form.get("phone"),
+                    birthday=request.form.get("birthday") or None,
+                    vip=vip,
+                    member_level=member_level,
+                    line_user_id=line_user_id,
+                    registration_source="backend_visitor_conversion",
+                    registration_image_path=saved_image_path,
+                    registration_encoding=encoding_data,
+                    updated_by="backend",
+                    total_amount=request.form.get("total_amount") or 0,
+                    favorite_product=request.form.get(
+                        "favorite_product"
+                    ),
+                )
+                member_id = convert_result["member_id"]
+
+                reload_member_faces()
+                reload_visitor_faces()
+                sync_converted_visitor_cache(
+                    visitor_id=visitor_match["visitor_id"],
+                    member_id=member_id,
+                    registration_encoding=encoding_data,
+                    registration_image_path=saved_image_path,
+                )
+
+                from routes.camera import convert_visitor_active_visit
+                convert_visitor_active_visit(
+                    visitor_id=visitor_match["visitor_id"],
+                    member_id=member_id,
+                    name=name,
+                    vip=vip,
+                    member_level=member_level,
+                    line_user_id=line_user_id,
+                    converted_active_log_id=convert_result.get(
+                        "converted_active_log_id"
+                    ),
+                )
+            else:
+                register_member_with_face(
+                    name=name,
+                    phone=request.form.get("phone"),
+                    birthday=request.form.get("birthday") or None,
+                    vip=vip,
+                    member_level=member_level,
+                    total_visit_count=0,
+                    last_visit_time=None,
+                    total_visit_time=0,
+                    updated_by="backend",
+                    line_user_id=line_user_id,
+                    total_amount=request.form.get("total_amount") or 0,
+                    favorite_product=request.form.get(
+                        "favorite_product"
+                    ),
+                    face_image=saved_image_path,
+                    registration_source="backend",
+                    image_path=saved_image_path,
+                    encoding_data=encoding_data
+                )
 
             # 8. 資料庫成功後，重新載入 AI 會員人臉名單
             reload_member_faces()
@@ -511,13 +586,41 @@ def delete_member(member_id):
         conn = get_connection()
         cursor = conn.cursor()
 
+        cursor.execute(
+            "SELECT image_path FROM face_images WHERE member_id = %s",
+            (member_id,)
+        )
+        member_image_paths = [
+            row[0]
+            for row in cursor.fetchall()
+            if row and row[0]
+        ]
+
         cursor.execute("DELETE FROM vip_notifications WHERE member_id = %s", (member_id,))
         cursor.execute("DELETE FROM recognition_logs WHERE member_id = %s", (member_id,))
         cursor.execute("DELETE FROM face_images WHERE member_id = %s", (member_id,))
         cursor.execute("DELETE FROM members WHERE member_id = %s", (member_id,))
 
         conn.commit()
+        remove_member_from_face_cache(member_id)
         reload_member_faces()
+        reload_visitor_faces()
+
+        for image_path in member_image_paths:
+            if not is_path_within_directory(
+                image_path,
+                MEMBER_IMAGE_DIR
+            ):
+                continue
+
+            try:
+                if os.path.isfile(image_path):
+                    os.remove(image_path)
+            except OSError as image_error:
+                print(
+                    "刪除會員照片失敗："
+                    f"path={image_path}, error={image_error}"
+                )
 
         return redirect("/member")
 

@@ -1,4 +1,5 @@
 let LIFF_ID = "";
+let liffProfilePromise = Promise.resolve();
 
 const spinWheel = document.getElementById("spinWheel");
 const spinButton = document.getElementById("spinButton");
@@ -102,10 +103,10 @@ function initLiffProfile() {
         if (!hasQueryLineUserId) {
             setLineHint("目前不是從 LINE LIFF 開啟，請從 LINE 註冊連結進入。", "warning");
         }
-        return;
+        return Promise.resolve();
     }
 
-    fetch("/line/config")
+    return fetch("/line/config", { cache: "no-store" })
         .then(function (res) {
             return res.json();
         })
@@ -379,7 +380,7 @@ function launchLotteryConfetti() {
 }
 
 if (registerForm) {
-    initLiffProfile();
+    liffProfilePromise = initLiffProfile();
 
     if (faceImageInput) {
         faceImageInput.addEventListener("change", function () {
@@ -408,10 +409,20 @@ if (registerForm) {
         });
     }
 
-    registerForm.addEventListener("submit", function (event) {
+    registerForm.addEventListener("submit", async function (event) {
         event.preventDefault();
 
         if (registerSuccess) {
+            return;
+        }
+
+        try {
+            await liffProfilePromise;
+        } catch (error) {
+            showRegisterResult(
+                "LINE 登入尚未完成，請關閉頁面後從官方帳號重新開啟。",
+                "error"
+            );
             return;
         }
 
@@ -453,6 +464,29 @@ if (registerForm) {
         if (registerButton) {
             registerButton.disabled = true;
             registerButton.textContent = "註冊中...";
+        }
+
+        if (typeof liff !== "undefined" && liff.isLoggedIn()) {
+            let freshIdToken = "";
+
+            try {
+                freshIdToken = liff.getIDToken() || "";
+            } catch (error) {
+                console.error("取得 LINE ID Token 失敗", error);
+            }
+
+            if (!freshIdToken) {
+                showRegisterResult(
+                    "無法取得 LINE 登入憑證，請關閉頁面後從官方帳號重新開啟。",
+                    "error"
+                );
+                resetRegisterButton();
+                return;
+            }
+
+            if (idTokenInput) {
+                idTokenInput.value = freshIdToken;
+            }
         }
 
         const formData = new FormData();

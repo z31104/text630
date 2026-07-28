@@ -1258,7 +1258,10 @@ def convert_visitor_to_member(
     line_user_id=None,
     registration_source="line_visitor_conversion",
     registration_image_path=None,
-    registration_encoding=None
+    registration_encoding=None,
+    updated_by=None,
+    total_amount=0,
+    favorite_product=None,
 ):
     """
     將既有散客轉成正式會員。
@@ -1328,11 +1331,15 @@ def convert_visitor_to_member(
                 line_user_id,
                 registration_source,
                 last_visit_time,
-                face_image
+                face_image,
+                updated_by,
+                total_amount,
+                favorite_product
             )
             VALUES (
                 %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s,
+                %s, %s, %s
             )
             """,
             (
@@ -1345,7 +1352,10 @@ def convert_visitor_to_member(
                 line_user_id,
                 registration_source,
                 visitor.get("last_seen_at"),
-                registration_face_filename
+                registration_face_filename,
+                updated_by,
+                total_amount or 0,
+                favorite_product
             )
         )
 
@@ -1408,28 +1418,52 @@ def convert_visitor_to_member(
         # 6. 將目前尚未離店的紀錄改成會員
         cursor.execute(
             """
-            UPDATE recognition_logs
-            SET
-                subject_type = 'member',
-                member_id = %s,
-                name = %s,
-                vip = %s,
-                line_user_id = %s,
-                member_level = %s,
-                recognition_status = 'recognized'
+            SELECT log_id
+            FROM recognition_logs
             WHERE visitor_id = %s
               AND leave_time IS NULL
               AND visit_status IN ('arrived', 'staying')
+            ORDER BY
+                COALESCE(visit_time, recognized_at) DESC,
+                log_id DESC
+            LIMIT 1
+            FOR UPDATE
             """,
-            (
-                member_id,
-                name,
-                bool(vip),
-                line_user_id,
-                member_level,
-                visitor_id
-            )
+            (visitor_id,)
         )
+        active_log = cursor.fetchone()
+        converted_active_log_id = (
+            active_log.get("log_id") if active_log else None
+        )
+
+        if converted_active_log_id is not None:
+            cursor.execute(
+                """
+                UPDATE recognition_logs
+                SET
+                    subject_type = 'member',
+                    member_id = %s,
+                    name = %s,
+                    vip = %s,
+                    line_user_id = %s,
+                    member_level = %s,
+                    recognition_status = 'recognized'
+                WHERE log_id = %s
+                  AND leave_time IS NULL
+                  AND visit_status IN ('arrived', 'staying')
+                """,
+                (
+                    member_id,
+                    name,
+                    bool(vip),
+                    line_user_id,
+                    member_level,
+                    converted_active_log_id
+                )
+            )
+
+            if cursor.rowcount != 1:
+                raise RuntimeError("尚未離店的散客紀錄轉換失敗")
 
         conn.commit()
 
@@ -1439,7 +1473,8 @@ def convert_visitor_to_member(
             "member_id": member_id,
             "visitor_id": visitor_id,
             "visitor_code": visitor.get("visitor_code"),
-            "copied_face_count": copied_face_count
+            "copied_face_count": copied_face_count,
+            "converted_active_log_id": converted_active_log_id
         }
 
     except Exception:

@@ -172,7 +172,7 @@
                     <td>{{ record.get("visit_time") or record.get("recognized_at") or "-" }}</td>
                     <td>{{ record.get("leave_time") or record.get("last_seen_at") or "-" }}</td>
                     <td>
-                        {% if stay_seconds %}
+                        {% if stay_seconds is not none %}
                             {{ stay_minutes }} 分鐘
                         {% else %}
                             -

@@ -32,6 +32,7 @@ from services.face_service import (
     find_matching_visitor,
     reload_member_faces,
     reload_visitor_faces,
+    sync_converted_visitor_cache,
     MEMBER_IMAGE_DIR,
 )
 from routes.home import prepare_member_coupon_rows
@@ -94,6 +95,9 @@ else:
 
 
 def get_registration_link(line_user_id):
+    if LIFF_ID:
+        return f"https://liff.line.me/{LIFF_ID}"
+
     base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
     if not base_url:
         base_url = request.url_root.rstrip("/")
@@ -481,10 +485,26 @@ def register_from_line():
         member_id = convert_result["member_id"]
         reload_member_faces()
         reload_visitor_faces()
+        sync_converted_visitor_cache(
+            visitor_id=visitor_match["visitor_id"],
+            member_id=member_id,
+            registration_encoding=face_check.get("encoding"),
+            registration_image_path=image_path,
+        )
 
         # 延遲匯入以避免 routes 模組載入時產生循環依賴。
-        from routes.camera import clear_visitor_active_visit
-        clear_visitor_active_visit(visitor_match["visitor_id"])
+        from routes.camera import convert_visitor_active_visit
+        convert_visitor_active_visit(
+            visitor_id=visitor_match["visitor_id"],
+            member_id=member_id,
+            name=name,
+            vip=False,
+            member_level="normal",
+            line_user_id=line_user_id,
+            converted_active_log_id=convert_result.get(
+                "converted_active_log_id"
+            ),
+        )
 
         if preferences:
             _insert_member_preferences(member_id, preferences)

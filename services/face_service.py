@@ -244,6 +244,26 @@ VISITOR_MATCH_TOLERANCE = 0.55
 # 保護會員與散客人臉快取的替換及快照讀取。
 face_cache_lock = threading.RLock()
 
+# Windows 上的 dlib 原生推論若同時由攝影機執行緒與 Flask 註冊請求
+# 進入，可能直接造成 python.exe heap corruption，無法由 try/except
+# 捕捉。所有 face_recognition 推論必須共用這把可重入鎖。
+face_inference_lock = threading.RLock()
+
+
+def _locked_face_locations(*args, **kwargs):
+    with face_inference_lock:
+        return face_recognition.face_locations(*args, **kwargs)
+
+
+def _locked_face_encodings(*args, **kwargs):
+    with face_inference_lock:
+        return face_recognition.face_encodings(*args, **kwargs)
+
+
+def _locked_face_distance(*args, **kwargs):
+    with face_inference_lock:
+        return face_recognition.face_distance(*args, **kwargs)
+
 
 # -----------------------------
 # 會員資料欄位統一處理
@@ -546,7 +566,7 @@ def validate_member_face_image(image_path):
         print("偵測用 image shape:", image_for_detection.shape)
         print("縮放比例:", scale)
         
-        face_locations_small = face_recognition.face_locations(
+        face_locations_small = _locked_face_locations(
             image_for_detection,
             number_of_times_to_upsample=2,
             model="hog"
@@ -595,7 +615,7 @@ def validate_member_face_image(image_path):
             "encoding": None
         }
 
-    encodings = face_recognition.face_encodings(
+    encodings = _locked_face_encodings(
         image,
         face_locations
     )
@@ -926,6 +946,86 @@ def refresh_member(member_id):
         return False
 
 
+def remove_member_from_face_cache(member_id):
+    """立即從會員人臉快取移除指定會員。"""
+    with face_cache_lock:
+        original_count = len(known_members)
+        known_members[:] = [
+            member
+            for member in known_members
+            if member.get("member_id") != member_id
+        ]
+
+        return original_count - len(known_members)
+
+
+def sync_converted_visitor_cache(
+    visitor_id,
+    member_id,
+    registration_encoding,
+    registration_image_path
+):
+    """
+    visitor 轉會員後原子同步兩份快取。
+
+    完整 reload 正常時沿用資料庫載入結果；若新會員尚未出現在
+    known_members，則使用已驗證的註冊 encoding 補入單筆快取。
+    """
+    try:
+        member_data = db_get_member_by_id(member_id)
+
+        if member_data is None:
+            print(
+                "散客轉會員快取同步失敗："
+                f"找不到 member_id={member_id}"
+            )
+            return False
+
+        normalized_member = normalize_member_data(member_data)
+        encoding = np.array(
+            registration_encoding,
+            dtype=float
+        )
+
+        if encoding.shape != (128,):
+            print(
+                "散客轉會員快取同步失敗："
+                f"encoding 維度={encoding.shape}"
+            )
+            return False
+
+        with face_cache_lock:
+            known_visitors[:] = [
+                visitor
+                for visitor in known_visitors
+                if visitor.get("visitor_id") != visitor_id
+            ]
+
+            member_exists = any(
+                member.get("member_id") == member_id
+                for member in known_members
+            )
+
+            if not member_exists:
+                cache_member = dict(normalized_member)
+                cache_member["face_id"] = None
+                cache_member["image_path"] = registration_image_path
+                cache_member["encoding"] = encoding
+                known_members.append(cache_member)
+
+        print(
+            "散客轉會員快取同步完成："
+            f"visitor_id={visitor_id}，"
+            f"member_id={member_id}，"
+            f"member_exists={member_exists}"
+        )
+        return True
+
+    except Exception as e:
+        print(f"散客轉會員快取同步失敗：{e}")
+        return False
+
+
 def reload_visitor_faces():
     """
     重新載入散客人臉資料。
@@ -1075,7 +1175,7 @@ def register_new_visitor(frame, faces):
     )
 
     try:
-        encodings = face_recognition.face_encodings(
+        encodings = _locked_face_encodings(
             rgb_frame,
             [face_location]
         )
@@ -1452,7 +1552,7 @@ def find_matching_visitor(
             continue
 
         distance = float(
-            face_recognition.face_distance(
+            _locked_face_distance(
                 [known_encoding],
                 encoding
             )[0]
@@ -1575,7 +1675,7 @@ def detect_face(frame):
     )
 
     try:
-        detected_locations = face_recognition.face_locations(
+        detected_locations = _locked_face_locations(
             rgb_small_frame,
             number_of_times_to_upsample=0,
             model="hog"
@@ -1693,7 +1793,7 @@ def recognize_face(frame, faces):
     )
 
     try:
-        encodings = face_recognition.face_encodings(
+        encodings = _locked_face_encodings(
             rgb_frame,
             [face_location]
         )
@@ -1735,7 +1835,7 @@ def recognize_face(frame, faces):
         valid_members.append(member)
 
     if member_encodings:
-        member_distances = face_recognition.face_distance(
+        member_distances = _locked_face_distance(
             member_encodings,
             current_encoding
         )
@@ -1789,7 +1889,7 @@ def recognize_face(frame, faces):
         valid_visitors.append(visitor)
 
     if visitor_encodings:
-        visitor_distances = face_recognition.face_distance(
+        visitor_distances = _locked_face_distance(
             visitor_encodings,
             current_encoding
         )

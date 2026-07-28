@@ -53,6 +53,7 @@
                 <th>LINE User ID</th>
                 <th>會員狀態</th>
                 <th>最近來店</th>
+                <th>停留時間</th>
                 <th>操作</th>
             </tr>
         </thead>
@@ -76,6 +77,21 @@
                         {% endif %}
                     </td>
                     <td>{{ member.get("last_visit_time", "") or "-" }}</td>
+                    <td>
+                        {% set stay_seconds = member.get("latest_stay_seconds") %}
+                        {% if stay_seconds is not none %}
+                            {% set stay_seconds = stay_seconds|int %}
+                            {% set stay_minutes = stay_seconds // 60 %}
+                            {% set remaining_seconds = stay_seconds % 60 %}
+                            {% if stay_minutes > 0 %}
+                                {{ stay_minutes }} 分 {{ remaining_seconds }} 秒
+                            {% else %}
+                                {{ remaining_seconds }} 秒
+                            {% endif %}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
                     <td>
                         <a
                             href="{{ url_for('member.member_detail', member_id=member_id) }}"
