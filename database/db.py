@@ -3135,6 +3135,22 @@ def get_recognition_logs(
             visitor_code,
             camera_id,
             camera_location,
+            (
+                SELECT source_visitor.visitor_id
+                FROM visitors AS source_visitor
+                WHERE source_visitor.converted_member_id =
+                    recognition_logs.member_id
+                ORDER BY source_visitor.visitor_id ASC
+                LIMIT 1
+            ) AS source_visitor_id,
+            (
+                SELECT source_visitor.visitor_code
+                FROM visitors AS source_visitor
+                WHERE source_visitor.converted_member_id =
+                    recognition_logs.member_id
+                ORDER BY source_visitor.visitor_id ASC
+                LIMIT 1
+            ) AS source_visitor_code,
             name,
             vip,
             line_user_id,
