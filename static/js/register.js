@@ -159,6 +159,32 @@ function resetRegisterButton() {
     registerButton.textContent = "完成註冊";
 }
 
+function restartLiffLogin() {
+    showRegisterResult(
+        "LINE 登入狀態已失效，正在重新登入，請稍候。",
+        "error"
+    );
+
+    try {
+        if (typeof liff !== "undefined" && liff.isLoggedIn()) {
+            liff.logout();
+        }
+    } catch (error) {
+        console.warn("清除舊 LINE 登入狀態失敗", error);
+    }
+
+    window.setTimeout(function () {
+        if (LIFF_ID) {
+            window.location.replace(
+                `https://liff.line.me/${LIFF_ID}?reauth=${Date.now()}`
+            );
+            return;
+        }
+
+        window.location.reload();
+    }, 500);
+}
+
 function getSelectedPreferences() {
     return Array.from(document.querySelectorAll('input[name="preference"]:checked'))
         .map(function (checkbox) {
@@ -197,6 +223,7 @@ async function requestLotteryDraw(memberId) {
 
     const response = await fetch("/api/lottery/draw", {
         method: "POST",
+        cache: "no-store",
         headers: {
             "Content-Type": "application/json"
         },
@@ -510,11 +537,20 @@ if (registerForm) {
                         return { success: false, message: "伺服器回應格式錯誤。" };
                     })
                     .then(function (data) {
-                        return { ok: response.ok, data: data };
+                        return {
+                            ok: response.ok,
+                            status: response.status,
+                            data: data
+                        };
                     });
             })
             .then(function (result) {
                 if (!result.ok || !result.data.success) {
+                    if (result.status === 401) {
+                        restartLiffLogin();
+                        return;
+                    }
+
                     showRegisterResult(result.data.message || "註冊失敗，請稍後再試。", "error");
                     return;
                 }
@@ -588,16 +624,10 @@ if (spinButton && spinWheel && lotteryResult) {
             const result = await requestLotteryDraw(memberId);
 
             if (result.already_completed === true) {
-                lotteryCompleted = true;
-                clearPrizeQrCode();
-
-                if (lotteryPrizeCard) {
-                    lotteryPrizeCard.hidden = true;
-                }
-
-                spinButton.disabled = true;
-                spinButton.textContent = "已完成抽獎";
-                lotteryResult.textContent = result.message || "已完成抽獎";
+                handleLotteryResult(result);
+                lotteryResult.textContent = (
+                    result.message || "已完成抽獎"
+                );
                 return;
             }
 

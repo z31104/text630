@@ -528,8 +528,48 @@ def insert_vip_notification(
         if conn:
             conn.rollback()
 
-        # 1062：同一個 log_id 已經有通知
+        # 1062：同一個 log_id 已經有通知。成功或仍在處理中的
+        # 紀錄不重送；先前發送失敗的紀錄則重新標成 pending，
+        # 讓 Camera 下一次恢復同一筆 visit 時可以重試。
         if e.errno == 1062:
+            retry_cursor = conn.cursor(dictionary=True)
+            retry_cursor.execute(
+                """
+                SELECT notification_id, status
+                FROM vip_notifications
+                WHERE log_id = %s
+                FOR UPDATE
+                """,
+                (log_id,),
+            )
+            existing = retry_cursor.fetchone()
+
+            if (
+                existing is not None
+                and existing.get("status") == NOTIFICATION_STATUS_FAILED
+            ):
+                retry_cursor.execute(
+                    """
+                    UPDATE vip_notifications
+                    SET
+                        status = %s,
+                        retry_count = retry_count + 1,
+                        response_message = NULL
+                    WHERE notification_id = %s
+                      AND status = %s
+                    """,
+                    (
+                        NOTIFICATION_STATUS_PENDING,
+                        existing["notification_id"],
+                        NOTIFICATION_STATUS_FAILED,
+                    ),
+                )
+                conn.commit()
+                notification_id = existing["notification_id"]
+                retry_cursor.close()
+                return notification_id
+
+            retry_cursor.close()
             print(
                 f"VIP 通知已存在，略過重複新增：log_id={log_id}"
             )
@@ -688,6 +728,7 @@ def get_active_visit(
             last_seen_at,
             leave_time,
             stay_seconds,    
+            notification_sent,
             camera_location,
             created_at
         FROM recognition_logs

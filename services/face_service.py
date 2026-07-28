@@ -2364,7 +2364,7 @@ def send_line_notify(result, log_id=None):
     正確流程：
     1. 必須是正式會員
     2. 必須成功辨識
-    3. 必須是 VIP 且已綁定 LINE
+    3. 必須是 VIP
     4. 只有 arrived 才發送
     5. 同一次到店不可重複通知
     6. 先建立 vip_notifications pending
@@ -2404,16 +2404,9 @@ def send_line_notify(result, log_id=None):
         return None
 
     # -----------------------------------------
-    # 5. 必須有綁定 LINE 使用者 ID
+    # 5. 店員通知不依賴會員本人的 LINE 綁定狀態
     # -----------------------------------------
     line_user_id = result.get("line_user_id")
-
-    if not line_user_id:
-        print(
-            "LINE 推播略過："
-            f"member_id={member_id} 尚未綁定 line_user_id"
-        )
-        return None
 
     # -----------------------------------------
     # 6. 只有第一次到店 arrived 才發送

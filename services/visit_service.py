@@ -151,6 +151,22 @@ def handle_recognition(
                         0
                     )
 
+                    # visitor 在其他 Flask process 轉成 member 後，
+                    # DB log 仍保留原 visitor_id 供追溯。恢復 member
+                    # visit 時清掉本機舊 visitor key，避免兩套 active state。
+                    converted_visitor_id = db_active_visit.get(
+                        "visitor_id"
+                    )
+                    if (
+                        subject_type == "member"
+                        and converted_visitor_id is not None
+                    ):
+                        old_visitor_key = build_subject_key(
+                            subject_type="visitor",
+                            visitor_id=converted_visitor_id,
+                        )
+                        active_visits.pop(old_visitor_key, None)
+
                     active_visits[subject_key] = {
                         "log_id": db_log_id,
                         "result": result,
@@ -166,12 +182,33 @@ def handle_recognition(
                         last_seen_at=current_time_text,
                     )
 
+                    notification_status = None
+                    if (
+                        subject_type == "member"
+                        and db_active_visit.get(
+                            "notification_sent"
+                        ) is not True
+                    ):
+                        notification_result = dict(result)
+                        notification_result["visit_status"] = "arrived"
+                        notification_result["notification_sent"] = False
+                        notification_status = notify_fn(
+                            notification_result,
+                            log_id=db_log_id,
+                        )
+                        if notification_status == "sent":
+                            result["notification_sent"] = True
+                            active_visits[subject_key][
+                                "result"
+                            ]["notification_sent"] = True
+
                     return {
                         "action": "restored",
                         "log_id": db_log_id,
                         "member_id": member_id,
                         "visitor_id": visitor_id,
                         "subject_type": subject_type,
+                        "notification_status": notification_status,
                     }
 
                 leave_timestamp = min(
@@ -275,6 +312,24 @@ def handle_recognition(
         visit_data["result"] = result
         visit_data["last_seen_timestamp"] = current_time
         visit_data["last_seen_at"] = current_time_text
+
+        # VIP 店員推播曾失敗時，同一筆 active visit 不必等到
+        # Flask 重啟才重試。資料庫的 log_id 唯一鍵會阻止已成功
+        # 或仍在處理中的通知被重複發送。
+        if (
+            subject_type == "member"
+            and result.get("notification_sent") is not True
+        ):
+            notification_result = dict(result)
+            notification_result["visit_status"] = "arrived"
+            notification_result["notification_sent"] = False
+            notification_status = notify_fn(
+                notification_result,
+                log_id=visit_data.get("log_id"),
+            )
+            if notification_status == "sent":
+                result["notification_sent"] = True
+                visit_data["result"]["notification_sent"] = True
 
         last_db_update_timestamp = visit_data.get(
             "last_db_update_timestamp",
