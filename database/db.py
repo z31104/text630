@@ -1262,6 +1262,7 @@ def convert_visitor_to_member(
     updated_by=None,
     total_amount=0,
     favorite_product=None,
+    active_visit_timeout_seconds=60,
 ):
     """
     將既有散客轉成正式會員。
@@ -1415,7 +1416,106 @@ def convert_visitor_to_member(
         if cursor.rowcount != 1:
             raise ValueError("visitor 轉會員失敗或已被其他流程轉換")
 
-        # 6. 將目前尚未離店的紀錄改成會員
+        # 6. 先結束已超過離店逾時、但尚未由攝影機執行緒關閉的紀錄。
+        # 這可避免顧客實際離店後才註冊，舊散客歷史卻被改成會員。
+        active_visit_timeout_seconds = max(
+            1,
+            int(active_visit_timeout_seconds or 60)
+        )
+        cursor.execute(
+            """
+            SELECT
+                log_id,
+                visit_time,
+                recognized_at,
+                last_seen_at
+            FROM recognition_logs
+            WHERE visitor_id = %s
+              AND leave_time IS NULL
+              AND visit_status IN ('arrived', 'staying')
+              AND COALESCE(last_seen_at, visit_time, recognized_at)
+                  < DATE_SUB(NOW(), INTERVAL %s SECOND)
+            ORDER BY
+                COALESCE(visit_time, recognized_at) DESC,
+                log_id DESC
+            LIMIT 1
+            FOR UPDATE
+            """,
+            (visitor_id, active_visit_timeout_seconds)
+        )
+        stale_log = cursor.fetchone()
+        closed_stale_log_id = None
+
+        if stale_log:
+            last_seen_value = (
+                stale_log.get("last_seen_at")
+                or stale_log.get("visit_time")
+                or stale_log.get("recognized_at")
+                or datetime.now()
+            )
+            visit_start_value = (
+                stale_log.get("visit_time")
+                or stale_log.get("recognized_at")
+                or last_seen_value
+            )
+
+            if isinstance(last_seen_value, str):
+                last_seen_value = datetime.strptime(
+                    last_seen_value,
+                    "%Y-%m-%d %H:%M:%S"
+                )
+            if isinstance(visit_start_value, str):
+                visit_start_value = datetime.strptime(
+                    visit_start_value,
+                    "%Y-%m-%d %H:%M:%S"
+                )
+
+            stale_leave_time = (
+                last_seen_value
+                + timedelta(seconds=active_visit_timeout_seconds)
+            )
+            stale_stay_seconds = max(
+                int((stale_leave_time - visit_start_value).total_seconds()),
+                0
+            )
+            closed_stale_log_id = stale_log.get("log_id")
+
+            cursor.execute(
+                """
+                UPDATE recognition_logs
+                SET
+                    recognition_status = 'recognized',
+                    visit_status = 'left',
+                    leave_time = %s,
+                    stay_seconds = %s
+                WHERE log_id = %s
+                  AND leave_time IS NULL
+                  AND visit_status IN ('arrived', 'staying')
+                """,
+                (
+                    stale_leave_time,
+                    stale_stay_seconds,
+                    closed_stale_log_id
+                )
+            )
+
+            if cursor.rowcount != 1:
+                raise RuntimeError("逾時散客紀錄關閉失敗")
+
+            cursor.execute(
+                """
+                UPDATE visitors
+                SET
+                    visitor_visit_count =
+                        COALESCE(visitor_visit_count, 0) + 1,
+                    last_seen_at = %s,
+                    updated_at = NOW()
+                WHERE visitor_id = %s
+                """,
+                (last_seen_value, visitor_id)
+            )
+
+        # 只有仍在離店逾時範圍內的紀錄，才原地切換成會員。
         cursor.execute(
             """
             SELECT log_id
@@ -1474,7 +1574,8 @@ def convert_visitor_to_member(
             "visitor_id": visitor_id,
             "visitor_code": visitor.get("visitor_code"),
             "copied_face_count": copied_face_count,
-            "converted_active_log_id": converted_active_log_id
+            "converted_active_log_id": converted_active_log_id,
+            "closed_stale_log_id": closed_stale_log_id
         }
 
     except Exception:
