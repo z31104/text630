@@ -40,8 +40,11 @@ LOTTERY_CAMPAIGN_CODE = "WELCOME_2026"
 
 REDEMPTION_BASE_URL = os.getenv(
     "REDEMPTION_BASE_URL",
-    "http://127.0.0.1:5000"
-)
+    os.getenv(
+        "PUBLIC_BASE_URL",
+        "http://127.0.0.1:5000",
+    ),
+).rstrip("/")
 
 LOTTERY_REDEMPTION_DAYS = int(
     os.getenv(
@@ -1300,6 +1303,7 @@ def convert_visitor_to_member(
     registration_source="line_visitor_conversion",
     registration_image_path=None,
     registration_encoding=None,
+    display_face_image=None,
     updated_by=None,
     total_amount=0,
     favorite_product=None,
@@ -1323,10 +1327,10 @@ def convert_visitor_to_member(
 
     registration_face_filename = None
 
-    if registration_image_path:
-        registration_face_filename = os.path.basename(
-            registration_image_path
-        )
+    if display_face_image:
+        registration_face_filename = display_face_image
+    elif registration_image_path:
+        registration_face_filename = registration_image_path
     
     conn = None
     cursor = None
@@ -2813,19 +2817,17 @@ def draw_lottery_for_member(member_id):
                 INSERT INTO member_prizes (
                     member_id,
                     prize_id,
-                    member_coupon_id,
                     campaign_code,
                     prize_code,
                     redeem_token,
                     status,
                     expires_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, 'unused', %s)
+                VALUES (%s, %s, %s, %s, %s, 'unused', %s)
                 """,
                 (
                     member_id,
                     prize_id,
-                    member_coupon_id,
                     LOTTERY_CAMPAIGN_CODE,
                     selected_prize["prize_code"],
                     redeem_token,
@@ -2961,14 +2963,29 @@ def redeem_member_prize(redeem_token, redeemed_by):
             """
             SELECT
                 member_prize_id,
-                member_coupon_id,
+                member_id,
+                prize_id,
                 status,
-                expires_at
+                expires_at,
+                (
+                    SELECT mc.member_coupon_id
+                    FROM member_coupons AS mc
+                    JOIN lottery_prizes AS lp
+                        ON lp.coupon_id = mc.coupon_id
+                    WHERE mc.member_id = member_prizes.member_id
+                      AND lp.prize_id = member_prizes.prize_id
+                      AND mc.source = %s
+                    ORDER BY mc.member_coupon_id DESC
+                    LIMIT 1
+                ) AS member_coupon_id
             FROM member_prizes
             WHERE redeem_token = %s
             FOR UPDATE
             """,
-            (redeem_token,)
+            (
+                LOTTERY_CAMPAIGN_CODE,
+                redeem_token,
+            )
         )
 
         prize_record = cursor.fetchone()

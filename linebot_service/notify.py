@@ -1,7 +1,7 @@
 import os
 from linebot import LineBotApi
 from linebot.exceptions import LineBotApiError
-from linebot.models import TextSendMessage
+from linebot.models import ImageSendMessage, TextSendMessage
 
 # 延後初始化 LineBotApi：若環境變數未設定，將停用 LINE 推播而不造成例外
 # 顧客用 LINE 官方帳號
@@ -47,7 +47,7 @@ def push_message(line_user_id, text):
         return "failed"
 
 
-def push_staff_message(text):
+def push_staff_message(text, image_url=None):
     """
     店員 Bot 的底層推播函式，推給 STAFF_LINE_USER_ID 裡設定的所有 userId。
     return: "sent" 或 "failed"
@@ -60,11 +60,26 @@ def push_staff_message(text):
         print("推播失敗：STAFF_LINE_CHANNEL_ACCESS_TOKEN 未設定，已停用店員推播功能")
         return "failed"
 
+    messages = [TextSendMessage(text=text)]
+    if image_url and str(image_url).startswith("https://"):
+        messages.append(
+            ImageSendMessage(
+                original_content_url=image_url,
+                preview_image_url=image_url,
+            )
+        )
+
     try:
         if len(STAFF_LINE_USER_IDS) == 1:
-            staff_line_bot_api.push_message(STAFF_LINE_USER_IDS[0], TextSendMessage(text=text))
+            staff_line_bot_api.push_message(
+                STAFF_LINE_USER_IDS[0],
+                messages,
+            )
         else:
-            staff_line_bot_api.multicast(STAFF_LINE_USER_IDS, TextSendMessage(text=text))
+            staff_line_bot_api.multicast(
+                STAFF_LINE_USER_IDS,
+                messages,
+            )
         return "sent"
     except LineBotApiError as e:
         print(f"店員 LINE 推播失敗：{e}")
@@ -91,7 +106,10 @@ def notify_vip_recognition(data):
 
     name = data.get("name")
     message = f"VIP會員 {name} 到店了！"
-    return push_staff_message(message)
+    return push_staff_message(
+        message,
+        image_url=data.get("notification_image_url"),
+    )
 
 
 def notify_vip_upgrade(member):

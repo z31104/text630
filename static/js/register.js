@@ -531,18 +531,34 @@ if (registerForm) {
             method: "POST",
             body: formData
         })
-            .then(function (response) {
-                return response.json()
-                    .catch(function () {
-                        return { success: false, message: "伺服器回應格式錯誤。" };
-                    })
-                    .then(function (data) {
-                        return {
-                            ok: response.ok,
-                            status: response.status,
-                            data: data
-                        };
-                    });
+            .then(async function (response) {
+                const responseText = await response.text();
+                let data = null;
+
+                try {
+                    data = JSON.parse(responseText);
+                } catch (error) {
+                    const fallbackMessages = {
+                        413: "照片大小不可超過 8 MB，請縮小照片後再試。",
+                        502: "雲端服務暫時無法回應，請稍後再試。",
+                        503: "雲端服務暫時無法使用，請稍後再試。",
+                        504: "照片處理逾時，請稍後重新嘗試。"
+                    };
+
+                    data = {
+                        success: false,
+                        message: (
+                            fallbackMessages[response.status]
+                            || `註冊服務回應失敗（HTTP ${response.status}），請稍後再試。`
+                        )
+                    };
+                }
+
+                return {
+                    ok: response.ok,
+                    status: response.status,
+                    data: data
+                };
             })
             .then(function (result) {
                 if (!result.ok || !result.data.success) {

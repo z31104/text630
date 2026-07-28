@@ -7,6 +7,7 @@ import os
 import threading
 import uuid
 from datetime import datetime
+from urllib.parse import quote
 
 import cv2
 import numpy as np
@@ -17,11 +18,36 @@ from PIL import (
     ImageFont,
 )
 
-try:
-    import face_recognition
-except ModuleNotFoundError:
-    face_recognition = None
-    print("警告：尚未安裝 face_recognition，AI 人臉辨識功能暫時無法使用")
+face_recognition = None
+face_recognition_import_attempted = False
+face_recognition_import_lock = threading.Lock()
+
+
+def _get_face_recognition():
+    """延遲載入 dlib/face_recognition，避免拖慢 Flask 啟動。"""
+    global face_recognition
+    global face_recognition_import_attempted
+
+    if face_recognition is not None:
+        return face_recognition
+
+    with face_recognition_import_lock:
+        if face_recognition is not None:
+            return face_recognition
+        if face_recognition_import_attempted:
+            return None
+
+        face_recognition_import_attempted = True
+        try:
+            import face_recognition as loaded_face_recognition
+            face_recognition = loaded_face_recognition
+        except ModuleNotFoundError:
+            print(
+                "警告：尚未安裝 face_recognition，"
+                "AI 人臉辨識功能暫時無法使用"
+            )
+
+    return face_recognition
 
 # MVP 階段仍先用圖片檔名找 fake_db 會員資料。
 # 正式版會由資料庫同學提供 get_member_by_id(member_id)。
@@ -251,16 +277,25 @@ face_inference_lock = threading.RLock()
 
 def _locked_face_locations(*args, **kwargs):
     with face_inference_lock:
+        module = _get_face_recognition()
+        if module is None:
+            return []
         return face_recognition.face_locations(*args, **kwargs)
 
 
 def _locked_face_encodings(*args, **kwargs):
     with face_inference_lock:
+        module = _get_face_recognition()
+        if module is None:
+            return []
         return face_recognition.face_encodings(*args, **kwargs)
 
 
 def _locked_face_distance(*args, **kwargs):
     with face_inference_lock:
+        module = _get_face_recognition()
+        if module is None:
+            return np.array([])
         return face_recognition.face_distance(*args, **kwargs)
 
 # -----------------------------
@@ -508,7 +543,7 @@ def validate_member_face_image(image_path):
     3. 成功後回傳 128 維 encoding
     """
 
-    if face_recognition is None:
+    if _get_face_recognition() is None:
         return {
             "success": False,
             "message": "尚未安裝 face_recognition",
@@ -522,6 +557,10 @@ def validate_member_face_image(image_path):
             "encoding": None
         }
     
+    max_dimension = 1000
+    max_source_pixels = 80_000_000
+    processed_image = None
+
     try:
         print("=" * 50)
         print("開始驗證會員照片")
@@ -529,62 +568,52 @@ def validate_member_face_image(image_path):
         print("file_size:", os.path.getsize(image_path), "bytes")
         
         with Image.open(image_path) as pil_image:
-            # 依手機照片的 EXIF Orientation 自動轉正
+            source_width, source_height = pil_image.size
+            source_pixels = source_width * source_height
+
+            if source_pixels > max_source_pixels:
+                return {
+                    "success": False,
+                    "message": (
+                        "照片解析度過高，請改用較小尺寸的照片"
+                    ),
+                    "encoding": None,
+                }
+
+            # JPEG 先提示解碼器直接讀取較小版本，避免手機原圖在
+            # 轉成 NumPy 前就占用數百 MB 記憶體。
+            pil_image.draft(
+                "RGB",
+                (max_dimension, max_dimension),
+            )
+            pil_image.thumbnail(
+                (max_dimension, max_dimension),
+                Image.Resampling.LANCZOS,
+            )
+
+            # 縮圖後再依 EXIF Orientation 轉正，避免複製完整原圖。
             pil_image = ImageOps.exif_transpose(pil_image)
             
             # 統一轉成 RGB，避免灰階、RGBA 等格式造成問題
-            pil_image = pil_image.convert("RGB")
+            processed_image = pil_image.convert("RGB")
             
             # 轉成 face_recognition 可使用的 NumPy 陣列
-            image = np.array(pil_image)
-
-
+            image = np.asarray(processed_image)
         
-        print("原始 image shape:", image.shape)
+        print("標準化 image shape:", image.shape)
         
         height, width = image.shape[:2]
-        
-        # 大型手機照片先等比例縮小，避免偵測太慢
-        max_width = 1200
-        
-        if width > max_width:
-            scale = max_width / width
-            resized_width = int(width * scale)
-            resized_height = int(height * scale)
-            
-            image_for_detection = cv2.resize(
-                image,
-                (resized_width, resized_height)
-            )
-            
-        else:
-            scale = 1.0
-            image_for_detection = image
+        image_for_detection = image
         
         print("偵測用 image shape:", image_for_detection.shape)
-        print("縮放比例:", scale)
         
         face_locations_small = _locked_face_locations(
             image_for_detection,
-            number_of_times_to_upsample=2,
+            number_of_times_to_upsample=1,
             model="hog"
         )
         
-        # 把縮小圖片上的座標換算回原圖
-        face_locations = []
-        
-        for top, right, bottom, left in face_locations_small:
-            original_top = max(0, int(round(top / scale)))
-            original_right = min(width, int(round(right / scale)))
-            original_bottom = min(height, int(round(bottom / scale)))
-            original_left = max(0, int(round(left / scale)))
-            
-            face_locations.append((
-                original_top,
-                original_right,
-                original_bottom,
-                original_left
-            ))
+        face_locations = list(face_locations_small)
         
         print("face_locations:", face_locations)
         print("偵測到人臉數量:", len(face_locations))
@@ -623,6 +652,34 @@ def validate_member_face_image(image_path):
             "success": False,
             "message": "無法建立人臉特徵",
             "encoding": None
+        }
+
+    # 辨識成功後以標準化尺寸覆寫上傳檔案，後台顯示、VIP 通知
+    # 與之後的快取載入都不再使用高解析手機原圖。
+    extension = os.path.splitext(image_path)[1].lower()
+    image_format = "PNG" if extension == ".png" else "JPEG"
+    temp_image_path = f"{image_path}.normalized"
+
+    try:
+        save_options = (
+            {"optimize": True}
+            if image_format == "PNG"
+            else {"quality": 88, "optimize": True}
+        )
+        processed_image.save(
+            temp_image_path,
+            format=image_format,
+            **save_options,
+        )
+        os.replace(temp_image_path, image_path)
+    except Exception as e:
+        if os.path.exists(temp_image_path):
+            os.remove(temp_image_path)
+        print(f"標準化會員照片儲存失敗：{e}")
+        return {
+            "success": False,
+            "message": "照片處理失敗，請重新上傳",
+            "encoding": None,
         }
 
     return {
@@ -721,7 +778,7 @@ def load_member_faces():
     正式版不再使用 member_images 或 fake_db。
     """
 
-    if face_recognition is None:
+    if _get_face_recognition() is None:
         print("尚未安裝 face_recognition，略過會員人臉資料載入")
         return None
 
@@ -803,7 +860,7 @@ def load_visitor_faces():
     仍能從 visitor_faces 重新取得散客人臉資料。
     """
 
-    if face_recognition is None:
+    if _get_face_recognition() is None:
         print("尚未安裝 face_recognition，略過散客人臉資料載入")
         return None
 
@@ -865,8 +922,10 @@ def load_visitor_faces():
 
 
 
-known_members = load_member_faces() or []
-known_visitors = load_visitor_faces() or []
+# 不在 Flask import 階段載入 dlib 或查詢人臉資料庫。
+# Camera 串流啟動時會 reload；註冊防重與散客比對則按需載入。
+known_members = []
+known_visitors = []
 
 
 def reload_member_faces():
@@ -1085,7 +1144,7 @@ def register_new_visitor(frame, faces):
     7. 回傳統一 visitor 辨識結果
     """
 
-    if face_recognition is None:
+    if _get_face_recognition() is None:
         print("建立新散客失敗：face_recognition 尚未載入")
 
         return build_result(
@@ -1355,7 +1414,7 @@ def check_duplicate_face(
             f"threshold={tolerance}"
         )
 
-    if face_recognition is None:
+    if _get_face_recognition() is None:
         log_result()
         return {
             "is_duplicate": False,
@@ -1399,6 +1458,11 @@ def check_duplicate_face(
     closest_member = None
     closest_distance = None
 
+    # 註冊與刪除可能落在不同 Flask/Cloud Run instance。
+    # 每次防重前都從共用資料庫同步，避免使用其他 instance
+    # 尚未清掉的已刪除會員快取。
+    reload_member_faces()
+
     with face_cache_lock:
         members_snapshot = [
             member
@@ -1431,20 +1495,51 @@ def check_duplicate_face(
             closest_distance = distance
             closest_member = member
 
-    log_result(closest_member, closest_distance)
-
     if (
         closest_member is not None
         and closest_distance is not None
         and closest_distance < tolerance
     ):
+        closest_member_id = closest_member.get("member_id")
+
+        # reload 若因短暫 DB 問題保留舊快取，命中後再確認一次
+        # 正式會員是否仍存在。已刪除會員不可阻擋重新註冊。
+        if (
+            closest_member_id is not None
+            and db_get_member_by_id is not None
+        ):
+            try:
+                current_member = db_get_member_by_id(
+                    closest_member_id
+                )
+            except Exception as e:
+                print(
+                    "會員人臉防重二次確認失敗："
+                    f"member_id={closest_member_id}，error={e}"
+                )
+                current_member = closest_member
+
+            if current_member is None:
+                remove_member_from_face_cache(
+                    closest_member_id
+                )
+                log_result()
+                return {
+                    "is_duplicate": False,
+                    "member_id": None,
+                    "name": None,
+                    "distance": None,
+                }
+
+        log_result(closest_member, closest_distance)
         return {
             "is_duplicate": True,
-            "member_id": closest_member.get("member_id"),
+            "member_id": closest_member_id,
             "name": closest_member.get("name"),
             "distance": round(closest_distance, 4)
         }
 
+    log_result(closest_member, closest_distance)
     return {
         "is_duplicate": False,
         "member_id": None,
@@ -1486,7 +1581,7 @@ def find_matching_visitor(
         "confidence": 0
     }
 
-    if face_recognition is None:
+    if _get_face_recognition() is None:
         print(
             "散客轉會員比對失敗："
             "face_recognition 尚未載入"
@@ -1522,6 +1617,9 @@ def find_matching_visitor(
 
     closest_visitor = None
     closest_distance = None
+
+    if not known_visitors:
+        reload_visitor_faces()
 
     with face_cache_lock:
         visitors_snapshot = list(known_visitors)
@@ -1651,7 +1749,7 @@ def detect_face(frame):
     if frame is None:
         return []
 
-    if face_recognition is None:
+    if _get_face_recognition() is None:
         print("face_recognition 尚未載入，無法偵測人臉")
         return []
 
@@ -1758,7 +1856,7 @@ def recognize_face(frame, faces):
     4. 兩者都未命中時回傳 unknown guest
     """
 
-    if face_recognition is None:
+    if _get_face_recognition() is None:
         return build_result(
             confidence=0,
             recognition_status="failed"
@@ -2430,6 +2528,22 @@ def send_line_notify(result, log_id=None):
         return None
 
     name = result.get("name") or "VIP 會員"
+    public_base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+    face_image = result.get("face_image") or result.get("image_path")
+    if (
+        face_image
+        and str(face_image).startswith("https://")
+    ):
+        result["notification_image_url"] = str(face_image)
+    elif public_base_url and face_image:
+        image_filename = os.path.basename(
+            str(face_image).replace("\\", "/")
+        )
+        if image_filename:
+            result["notification_image_url"] = (
+                f"{public_base_url}/member_images/"
+                f"{quote(image_filename)}"
+            )
 
     if db_insert_vip_notification is None:
         print(

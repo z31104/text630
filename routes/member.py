@@ -100,6 +100,12 @@ def _safe_member_image_url(image_path):
         return None
 
     normalized_path = str(image_path).replace("\\", "/")
+
+    if normalized_path.startswith(
+        ("https://", "http://")
+    ):
+        return normalized_path
+
     static_marker = "static/"
     member_image_marker = "member_images/"
 
@@ -152,7 +158,16 @@ def _get_member_detail(member_id):
                 line_user_id,
                 total_amount,
                 favorite_product,
-                face_image,
+                COALESCE(
+                    NULLIF(face_image, ''),
+                    (
+                        SELECT fi.image_path
+                        FROM face_images AS fi
+                        WHERE fi.member_id = members.member_id
+                        ORDER BY fi.face_id DESC
+                        LIMIT 1
+                    )
+                ) AS face_image,
                 registration_source,
                 created_at,
                 updated_at
@@ -261,7 +276,16 @@ def member():
                 m.line_user_id,
                 m.total_amount,
                 m.favorite_product,
-                m.face_image,
+                COALESCE(
+                    NULLIF(m.face_image, ''),
+                    (
+                        SELECT fi.image_path
+                        FROM face_images AS fi
+                        WHERE fi.member_id = m.member_id
+                        ORDER BY fi.face_id DESC
+                        LIMIT 1
+                    )
+                ) AS face_image,
                 m.registration_source,
                 m.created_at,
                 m.updated_at

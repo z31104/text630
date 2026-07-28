@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import traceback
 
 import requests
-from flask import Blueprint, request, abort, jsonify
+from flask import Blueprint, request, abort, jsonify, redirect
 from markupsafe import escape
 
 from linebot import LineBotApi, WebhookHandler
@@ -144,6 +144,20 @@ def line_index():
 def line_config():
     """提供前端 register.js / coupons.js 需要的公開設定值（LIFF ID）。"""
     return jsonify({"liff_id": LIFF_ID, "liff_id_coupons": LIFF_ID_COUPONS})
+
+
+@line_bp.route("/line/member")
+@line_bp.route("/my-member")
+@line_bp.route("/member-area")
+def member_portal():
+    """LINE Rich Menu 的穩定會員專區入口。"""
+    if LIFF_ID_COUPONS:
+        return redirect(
+            f"https://liff.line.me/{LIFF_ID_COUPONS}",
+            code=302,
+        )
+
+    return redirect("/coupons", code=302)
 
 
 @line_bp.route("/line/callback", methods=["POST"])
@@ -453,6 +467,12 @@ def register_from_line():
     saved_filename = f"line_{uuid.uuid4().hex}{ext}"
     image_path = os.path.join(MEMBER_IMAGE_DIR, saved_filename)
     face_image_file.save(image_path)
+    public_base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+    display_face_image = (
+        f"{public_base_url}/member_images/{saved_filename}"
+        if public_base_url
+        else image_path
+    )
 
     face_check = validate_member_face_image(image_path)
     if not face_check.get("success"):
@@ -483,14 +503,24 @@ def register_from_line():
                 registration_source="line_visitor_conversion",
                 registration_image_path=image_path,
                 registration_encoding=face_check.get("encoding"),
+                display_face_image=display_face_image,
             )
         except ValueError as e:
             if os.path.exists(image_path):
                 os.remove(image_path)
             print("散客轉會員失敗：", e)
             return jsonify({"success": False, "message": str(e)}), 409
-        except Exception:
-            raise
+        except Exception as e:
+            if os.path.exists(image_path):
+                os.remove(image_path)
+            print("散客轉會員發生未預期錯誤：", flush=True)
+            traceback.print_exc()
+            return jsonify({
+                "success": False,
+                "message": (
+                    "散客轉會員失敗，請稍後再試。"
+                ),
+            }), 500
 
         member_id = convert_result["member_id"]
         reload_member_faces()
@@ -548,7 +578,7 @@ def register_from_line():
             birthday=birthday,
             member_level="normal",
             line_user_id=line_user_id,
-            face_image=saved_filename,
+            face_image=display_face_image,
             registration_source="line",
             image_path=image_path,
             encoding_data=face_check.get("encoding"),
