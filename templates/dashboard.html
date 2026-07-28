@@ -236,7 +236,7 @@ normal
                         <td data-label="會員 ID">{{ display_value(row.member_id) }}</td>
                         <td data-label="散客 ID">{{ display_value(row.visitor_id) }}</td>
                         <td data-label="散客代碼">
-                            {% if row.subject_type == "visitor" %}
+                            {% if row.visitor_id is not none %}
                                 {{ visitor_label(row) }}
                             {% else %}
                                 {{ display_value(row.visitor_code) }}
