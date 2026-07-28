@@ -417,7 +417,7 @@ CREATE TABLE IF NOT EXISTS member_prizes (
 
     FOREIGN KEY (prize_id)
         REFERENCES lottery_prizes(prize_id)
-        ON DELETE RESTRICT
+        ON DELETE RESTRICT,
     
     CONSTRAINT fk_member_prizes_member_coupon
         FOREIGN KEY (member_coupon_id)
