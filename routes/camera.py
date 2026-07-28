@@ -133,6 +133,74 @@ def clear_visitor_active_visit(visitor_id):
     return removed_visit is not None
 
 
+def convert_visitor_active_visit(
+    visitor_id,
+    member_id,
+    name,
+    vip=False,
+    member_level="normal",
+    line_user_id=None,
+    converted_active_log_id=None,
+):
+    """Keep the same active Log ID when a visitor registers in store."""
+    global last_result
+    global last_recognition_time
+
+    visitor_key = build_subject_key(
+        subject_type="visitor",
+        visitor_id=visitor_id,
+    )
+    member_key = build_subject_key(
+        subject_type="member",
+        member_id=member_id,
+    )
+
+    with active_visits_lock:
+        visit_data = active_visits.pop(visitor_key, None)
+
+        if converted_active_log_id is None:
+            if (
+                last_result.get("subject_type") == "visitor"
+                and last_result.get("visitor_id") == visitor_id
+            ):
+                last_result = {}
+            last_recognition_time = 0
+            return False
+
+        converted_result = {}
+        if visit_data:
+            converted_result.update(visit_data.get("result") or {})
+        if (
+            last_result.get("subject_type") == "visitor"
+            and last_result.get("visitor_id") == visitor_id
+        ):
+            converted_result.update(last_result)
+
+        converted_result.update({
+            "subject_type": "member",
+            "member_id": member_id,
+            "visitor_id": visitor_id,
+            "name": name,
+            "vip": bool(vip),
+            "line_user_id": line_user_id,
+            "member_level": member_level,
+            "member_level_text": (
+                "VIP 會員" if bool(vip) or member_level == "vip"
+                else "一般會員"
+            ),
+            "recognition_status": "recognized",
+            "log_id": converted_active_log_id,
+        })
+
+        if visit_data is None:
+            last_result = converted_result
+            return True
+
+        visit_data["log_id"] = converted_active_log_id
+        visit_data["result"] = converted_result
+        active_visits[member_key] = visit_data
+        last_result = converted_result
+        return True
 # 訪客上一次產生 recognition log 的時間
 last_guest_log_time = 0
 

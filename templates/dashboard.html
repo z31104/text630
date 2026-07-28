@@ -65,11 +65,18 @@
 {%- endif -%}
 {%- endmacro %}
 
+{% macro visitor_label(row) -%}
+<span
+    class="visitor-label"
+    title="{{ row.visitor_code or '' }}"
+>散客 #{{ row.visitor_id if row.visitor_id is not none else "—" }}</span>
+{%- endmacro %}
+
 {% macro subject_name(row) -%}
 {%- if row.subject_type == "member" -%}
 {{ row.name or "未提供姓名" }}
 {%- elif row.subject_type == "visitor" -%}
-{{ row.name or row.visitor_code or "未命名散客" }}
+{{ visitor_label(row) }}
 {%- else -%}
 未知身分
 {%- endif -%}
@@ -228,8 +235,20 @@ normal
                         <td data-label="身分"><span class="badge {{ subject_badge_class(row) }}">{{ subject_text(row) }}</span></td>
                         <td data-label="會員 ID">{{ display_value(row.member_id) }}</td>
                         <td data-label="散客 ID">{{ display_value(row.visitor_id) }}</td>
-                        <td data-label="散客代碼">{{ display_value(row.visitor_code) }}</td>
-                        <td data-label="VIP">{{ vip_badge(row.vip|default(none)) }}</td>
+                        <td data-label="散客代碼">
+                            {% if row.visitor_id is not none %}
+                                {{ visitor_label(row) }}
+                            {% else %}
+                                {{ display_value(row.visitor_code) }}
+                            {% endif %}
+                        </td>
+                        <td data-label="VIP">
+                            {% if row.subject_type == "visitor" %}
+                                <span class="badge normal">不適用</span>
+                            {% else %}
+                                {{ vip_badge(row.vip|default(none)) }}
+                            {% endif %}
+                        </td>
                         <td data-label="本次到店開始">{{ format_datetime(row.visit_time) }}</td>
                         <td data-label="辨識紀錄建立">{{ format_datetime(row.recognized_at) }}</td>
                         <td data-label="最後辨識時間">{{ format_datetime(row.last_seen_at) }}</td>

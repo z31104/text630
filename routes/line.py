@@ -32,8 +32,10 @@ from services.face_service import (
     find_matching_visitor,
     reload_member_faces,
     reload_visitor_faces,
+    sync_converted_visitor_cache,
     MEMBER_IMAGE_DIR,
 )
+from routes.home import prepare_member_coupon_rows
 
 ALLOWED_FACE_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 ALLOWED_FACE_IMAGE_MIME_TYPES = {"image/jpeg", "image/png"}
@@ -93,6 +95,9 @@ else:
 
 
 def get_registration_link(line_user_id):
+    if LIFF_ID:
+        return f"https://liff.line.me/{LIFF_ID}"
+
     base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
     if not base_url:
         base_url = request.url_root.rstrip("/")
@@ -480,6 +485,26 @@ def register_from_line():
         member_id = convert_result["member_id"]
         reload_member_faces()
         reload_visitor_faces()
+        sync_converted_visitor_cache(
+            visitor_id=visitor_match["visitor_id"],
+            member_id=member_id,
+            registration_encoding=face_check.get("encoding"),
+            registration_image_path=image_path,
+        )
+
+        # 延遲匯入以避免 routes 模組載入時產生循環依賴。
+        from routes.camera import convert_visitor_active_visit
+        convert_visitor_active_visit(
+            visitor_id=visitor_match["visitor_id"],
+            member_id=member_id,
+            name=name,
+            vip=False,
+            member_level="normal",
+            line_user_id=line_user_id,
+            converted_active_log_id=convert_result.get(
+                "converted_active_log_id"
+            ),
+        )
 
         # 延遲匯入以避免 routes 模組載入時產生循環依賴。
         from routes.camera import clear_visitor_active_visit
@@ -624,11 +649,16 @@ def get_my_coupon_summary():
     now = datetime.now()
     soon = now + timedelta(days=COUPON_EXPIRING_SOON_DAYS)
 
+    prepared_coupons = prepare_member_coupon_rows(
+        coupons,
+        now=now,
+        include_redemption=True
+    )
     usable = 0
     expiring_soon = 0
 
-    for coupon in coupons:
-        if coupon.get("status") != "unused":
+    for coupon in prepared_coupons:
+        if coupon.get("status_key") != "available":
             continue
 
         usable += 1
@@ -643,6 +673,30 @@ def get_my_coupon_summary():
         "total": len(coupons),
         "usable": usable,
         "expiring_soon": expiring_soon,
+        "coupons": [
+            {
+                "member_coupon_id": coupon.get(
+                    "member_coupon_id"
+                ),
+                "coupon_name": coupon.get("coupon_name"),
+                "description": coupon.get("description"),
+                "discount_text": coupon.get("discount_text"),
+                "receive_time": coupon.get("receive_time_text"),
+                "end_at": coupon.get("end_at_text"),
+                "status": coupon.get("status_key"),
+                "status_label": coupon.get("status_label"),
+                "used_time": coupon.get("used_time_text"),
+                "redemption_info": coupon.get(
+                    "redemption_info"
+                ),
+                "can_open_redemption": coupon.get(
+                    "can_open_redemption",
+                    False
+                ),
+                "redeem_url": coupon.get("redeem_url"),
+            }
+            for coupon in prepared_coupons
+        ],
     })
 
 

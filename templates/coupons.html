@@ -80,6 +80,94 @@
             </div>
             {% endif %}
         </section>
+
+        <section
+            class="member-coupon-panel member-coupon-list-panel"
+            id="couponListPanel"
+            aria-labelledby="couponListTitle"
+            {% if not selected_member_id %}hidden{% endif %}
+        >
+            <div class="member-coupon-heading">
+                <div>
+                    <p class="tag">COUPON DETAILS</p>
+                    <h2 id="couponListTitle">優惠券明細</h2>
+                    <p class="member-coupon-list-note">
+                        依取得時間由新到舊排列，兌換狀態以系統資料為準。
+                    </p>
+                </div>
+            </div>
+
+            <div
+                class="member-coupon-list"
+                id="couponList"
+                aria-live="polite"
+            >
+                {% for coupon in coupon_rows %}
+                <article class="member-coupon-card">
+                    <div class="member-coupon-card-header">
+                        <div>
+                            <p class="member-coupon-code">
+                                優惠券 #{{ coupon.get("member_coupon_id") }}
+                            </p>
+                            <h3>{{ coupon.get("coupon_name") or "未命名優惠券" }}</h3>
+                        </div>
+                        <span class="member-coupon-status is-{{ coupon.get('status_key', 'unavailable') }}">
+                            {{ coupon.get("status_label") or "不可使用" }}
+                        </span>
+                    </div>
+
+                    <p class="member-coupon-description">
+                        {{ coupon.get("description") or coupon.get("discount_text") or "依活動內容使用" }}
+                    </p>
+
+                    {% if coupon.get("discount_text") %}
+                    <p class="member-coupon-discount">
+                        {{ coupon.get("discount_text") }}
+                    </p>
+                    {% endif %}
+
+                    <dl class="member-coupon-meta">
+                        <div>
+                            <dt>取得時間</dt>
+                            <dd>{{ coupon.get("receive_time_text") or "-" }}</dd>
+                        </div>
+                        <div>
+                            <dt>到期時間</dt>
+                            <dd>{{ coupon.get("end_at_text") or "無期限" }}</dd>
+                        </div>
+                    </dl>
+
+                    <div class="member-coupon-redemption">
+                        <div>
+                            <span>兌換資訊</span>
+                            <strong>{{ coupon.get("redemption_info") or "-" }}</strong>
+                        </div>
+
+                        {% if coupon.get("can_open_redemption") and coupon.get("redeem_url") %}
+                        <a
+                            class="member-coupon-redeem-link"
+                            href="{{ coupon.get('redeem_url') }}"
+                            target="_blank"
+                            rel="noopener"
+                        >
+                            查看兌換入口
+                        </a>
+                        {% endif %}
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+
+            <div
+                class="member-coupon-empty member-coupon-list-empty"
+                id="couponListEmpty"
+                role="status"
+                {% if coupon_rows or load_error %}hidden{% endif %}
+            >
+                <strong>目前沒有優惠券</strong>
+                <p>完成指定活動或領取優惠後，優惠券明細會顯示在這裡。</p>
+            </div>
+        </section>
     </main>
 
     <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
