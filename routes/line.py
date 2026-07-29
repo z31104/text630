@@ -151,12 +151,6 @@ def line_config():
 @line_bp.route("/member-area")
 def member_portal():
     """LINE Rich Menu 的穩定會員專區入口。"""
-    if LIFF_ID_COUPONS:
-        return redirect(
-            f"https://liff.line.me/{LIFF_ID_COUPONS}",
-            code=302,
-        )
-
     return redirect("/coupons", code=302)
 
 

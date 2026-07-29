@@ -208,7 +208,7 @@ async function restartCouponsLogin() {
 
     if (LIFF_ID_COUPONS) {
         window.location.replace(
-            `https://liff.line.me/${LIFF_ID_COUPONS}?reauth=${Date.now()}`
+            `/coupons?reauth=${Date.now()}`
         );
     }
 }
@@ -282,7 +282,7 @@ function initLiffCoupons() {
             if (!liff.isLoggedIn()) {
                 liff.login({
                     redirectUri: (
-                        `https://liff.line.me/${LIFF_ID_COUPONS}`
+                        `${window.location.origin}/coupons`
                     )
                 });
                 return;

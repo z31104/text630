@@ -38,6 +38,25 @@ def get_member_level_text(member_level):
 # 抽獎活動設定
 LOTTERY_CAMPAIGN_CODE = "WELCOME_2026"
 
+LOTTERY_PRIZE_DISPLAY_NAMES = {
+    "WELCOME_50": "$50 折價券",
+    "WELCOME_10_OFF": "9 折優惠",
+    "WELCOME_200": "$200 折價券",
+    "WELCOME_GIFT": "小禮品",
+    "WELCOME_FREE_SHIP": "免運券",
+    "WELCOME_RETRY": "再抽一次",
+}
+
+
+def get_lottery_prize_display_name(prize_code, fallback=None):
+    return (
+        LOTTERY_PRIZE_DISPLAY_NAMES.get(prize_code)
+        or fallback
+        or prize_code
+        or "獎品"
+    )
+
+
 REDEMPTION_BASE_URL = os.getenv(
     "REDEMPTION_BASE_URL",
     os.getenv(
@@ -2714,6 +2733,10 @@ def draw_lottery_for_member(member_id):
 
         if completed_record is not None:
             conn.rollback()
+            completed_prize_name = get_lottery_prize_display_name(
+                completed_record["prize_code"],
+                completed_record["prize_name"],
+            )
 
             qr_value = (
                 f"{REDEMPTION_BASE_URL}/redeem/"
@@ -2729,7 +2752,7 @@ def draw_lottery_for_member(member_id):
                 "prize": {
                     "prize_id": completed_record["prize_id"],
                     "prize_code": completed_record["prize_code"],
-                    "prize_name": completed_record["prize_name"],
+                    "prize_name": completed_prize_name,
                     "prize_type": completed_record["prize_type"],
                     "prize_value": completed_record["prize_value"]
                 },
@@ -2788,6 +2811,13 @@ def draw_lottery_for_member(member_id):
             weights=weights,
             k=1
         )[0]
+        selected_prize = dict(selected_prize)
+        selected_prize["prize_name"] = (
+            get_lottery_prize_display_name(
+                selected_prize.get("prize_code"),
+                selected_prize.get("prize_name"),
+            )
+        )
 
         prize_id = selected_prize["prize_id"]
         prize_name = selected_prize["prize_name"]
