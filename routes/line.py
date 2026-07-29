@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import traceback
 
 import requests
-from flask import Blueprint, request, abort, jsonify
+from flask import Blueprint, request, abort, jsonify, redirect
 from markupsafe import escape
 
 from linebot import LineBotApi, WebhookHandler
@@ -67,8 +67,13 @@ LIFF_ID = os.getenv("LIFF_ID", "")
 LIFF_ID_COUPONS = os.getenv("LIFF_ID_COUPONS", "")
 
 # LIFF ID 格式固定是「{LINE Login channel id}-{liff app id}」，
-# 驗證 ID Token 的 aud/client_id 要用前半段的 channel id，不需要另外設定新的環境變數
+# 驗證 ID Token 的 aud/client_id 要用前半段的 channel id。
 LIFF_CHANNEL_ID = LIFF_ID.split("-")[0] if LIFF_ID else ""
+LIFF_COUPONS_CHANNEL_ID = (
+    LIFF_ID_COUPONS.split("-")[0]
+    if LIFF_ID_COUPONS
+    else ""
+)
 
 LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify"
 
@@ -139,6 +144,20 @@ def line_index():
 def line_config():
     """提供前端 register.js / coupons.js 需要的公開設定值（LIFF ID）。"""
     return jsonify({"liff_id": LIFF_ID, "liff_id_coupons": LIFF_ID_COUPONS})
+
+
+@line_bp.route("/line/member")
+@line_bp.route("/my-member")
+@line_bp.route("/member-area")
+def member_portal():
+    """LINE Rich Menu 的穩定會員專區入口。"""
+    if LIFF_ID_COUPONS:
+        return redirect(
+            f"https://liff.line.me/{LIFF_ID_COUPONS}",
+            code=302,
+        )
+
+    return redirect("/coupons", code=302)
 
 
 @line_bp.route("/line/callback", methods=["POST"])
@@ -304,7 +323,7 @@ def _insert_member_preferences(member_id, preferences):
             conn.close()
 
 
-def _decode_line_id_token(id_token):
+def _decode_line_id_token(id_token, channel_id=None):
     """
     向 LINE 官方驗證 ID Token 是否有效，成功時回傳 token 本身認證出的 line_user_id
     （payload 的 sub 欄位）。呼叫端不需要、也不應該自己另外傳一個 line_user_id 來比對，
@@ -316,13 +335,18 @@ def _decode_line_id_token(id_token):
     if not id_token:
         return None, "缺少 LINE 登入憑證，請從 LINE 官方帳號重新開啟頁面"
 
-    if not LIFF_CHANNEL_ID:
+    expected_channel_id = channel_id or LIFF_CHANNEL_ID
+
+    if not expected_channel_id:
         return None, "LIFF_ID 尚未設定，請聯絡管理員設定後再試"
 
     try:
         resp = requests.post(
             LINE_VERIFY_URL,
-            data={"id_token": id_token, "client_id": LIFF_CHANNEL_ID},
+            data={
+                "id_token": id_token,
+                "client_id": expected_channel_id,
+            },
             timeout=5,
         )
     except requests.RequestException as e:
@@ -335,7 +359,7 @@ def _decode_line_id_token(id_token):
 
     payload = resp.json()
 
-    if payload.get("aud") != LIFF_CHANNEL_ID:
+    if str(payload.get("aud")) != str(expected_channel_id):
         print("LINE ID Token aud 不符：", payload.get("aud"))
         return None, "LINE 登入驗證失敗，請重新登入後再試"
 
@@ -443,6 +467,12 @@ def register_from_line():
     saved_filename = f"line_{uuid.uuid4().hex}{ext}"
     image_path = os.path.join(MEMBER_IMAGE_DIR, saved_filename)
     face_image_file.save(image_path)
+    public_base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+    display_face_image = (
+        f"{public_base_url}/member_images/{saved_filename}"
+        if public_base_url
+        else image_path
+    )
 
     face_check = validate_member_face_image(image_path)
     if not face_check.get("success"):
@@ -473,14 +503,24 @@ def register_from_line():
                 registration_source="line_visitor_conversion",
                 registration_image_path=image_path,
                 registration_encoding=face_check.get("encoding"),
+                display_face_image=display_face_image,
             )
         except ValueError as e:
             if os.path.exists(image_path):
                 os.remove(image_path)
             print("散客轉會員失敗：", e)
             return jsonify({"success": False, "message": str(e)}), 409
-        except Exception:
-            raise
+        except Exception as e:
+            if os.path.exists(image_path):
+                os.remove(image_path)
+            print("散客轉會員發生未預期錯誤：", flush=True)
+            traceback.print_exc()
+            return jsonify({
+                "success": False,
+                "message": (
+                    "散客轉會員失敗，請稍後再試。"
+                ),
+            }), 500
 
         member_id = convert_result["member_id"]
         reload_member_faces()
@@ -505,6 +545,10 @@ def register_from_line():
                 "converted_active_log_id"
             ),
         )
+
+        # 延遲匯入以避免 routes 模組載入時產生循環依賴。
+        from routes.camera import clear_visitor_active_visit
+        clear_visitor_active_visit(visitor_match["visitor_id"])
 
         if preferences:
             _insert_member_preferences(member_id, preferences)
@@ -534,7 +578,7 @@ def register_from_line():
             birthday=birthday,
             member_level="normal",
             line_user_id=line_user_id,
-            face_image=saved_filename,
+            face_image=display_face_image,
             registration_source="line",
             image_path=image_path,
             encoding_data=face_check.get("encoding"),
@@ -618,7 +662,10 @@ def get_my_coupon_summary():
     data = request.get_json(silent=True) or {}
     id_token = (data.get("id_token") or "").strip()
 
-    line_user_id, error = _decode_line_id_token(id_token)
+    line_user_id, error = _decode_line_id_token(
+        id_token,
+        channel_id=LIFF_COUPONS_CHANNEL_ID,
+    )
 
     if error:
         return jsonify({"success": False, "message": error}), 401

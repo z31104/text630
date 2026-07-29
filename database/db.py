@@ -40,8 +40,11 @@ LOTTERY_CAMPAIGN_CODE = "WELCOME_2026"
 
 REDEMPTION_BASE_URL = os.getenv(
     "REDEMPTION_BASE_URL",
-    "http://127.0.0.1:5000"
-)
+    os.getenv(
+        "PUBLIC_BASE_URL",
+        "http://127.0.0.1:5000",
+    ),
+).rstrip("/")
 
 LOTTERY_REDEMPTION_DAYS = int(
     os.getenv(
@@ -528,8 +531,48 @@ def insert_vip_notification(
         if conn:
             conn.rollback()
 
-        # 1062：同一個 log_id 已經有通知
+        # 1062：同一個 log_id 已經有通知。成功或仍在處理中的
+        # 紀錄不重送；先前發送失敗的紀錄則重新標成 pending，
+        # 讓 Camera 下一次恢復同一筆 visit 時可以重試。
         if e.errno == 1062:
+            retry_cursor = conn.cursor(dictionary=True)
+            retry_cursor.execute(
+                """
+                SELECT notification_id, status
+                FROM vip_notifications
+                WHERE log_id = %s
+                FOR UPDATE
+                """,
+                (log_id,),
+            )
+            existing = retry_cursor.fetchone()
+
+            if (
+                existing is not None
+                and existing.get("status") == NOTIFICATION_STATUS_FAILED
+            ):
+                retry_cursor.execute(
+                    """
+                    UPDATE vip_notifications
+                    SET
+                        status = %s,
+                        retry_count = retry_count + 1,
+                        response_message = NULL
+                    WHERE notification_id = %s
+                      AND status = %s
+                    """,
+                    (
+                        NOTIFICATION_STATUS_PENDING,
+                        existing["notification_id"],
+                        NOTIFICATION_STATUS_FAILED,
+                    ),
+                )
+                conn.commit()
+                notification_id = existing["notification_id"]
+                retry_cursor.close()
+                return notification_id
+
+            retry_cursor.close()
             print(
                 f"VIP 通知已存在，略過重複新增：log_id={log_id}"
             )
@@ -688,6 +731,7 @@ def get_active_visit(
             last_seen_at,
             leave_time,
             stay_seconds,    
+            notification_sent,
             camera_location,
             created_at
         FROM recognition_logs
@@ -1259,9 +1303,11 @@ def convert_visitor_to_member(
     registration_source="line_visitor_conversion",
     registration_image_path=None,
     registration_encoding=None,
+    display_face_image=None,
     updated_by=None,
     total_amount=0,
     favorite_product=None,
+    active_visit_timeout_seconds=60,
 ):
     """
     將既有散客轉成正式會員。
@@ -1282,10 +1328,10 @@ def convert_visitor_to_member(
 
     registration_face_filename = None
 
-    if registration_image_path:
-        registration_face_filename = os.path.basename(
-            registration_image_path
-        )
+    if display_face_image:
+        registration_face_filename = display_face_image
+    elif registration_image_path:
+        registration_face_filename = registration_image_path
     
     conn = None
     cursor = None
@@ -1415,7 +1461,106 @@ def convert_visitor_to_member(
         if cursor.rowcount != 1:
             raise ValueError("visitor 轉會員失敗或已被其他流程轉換")
 
-        # 6. 將目前尚未離店的紀錄改成會員
+        # 6. 先結束已超過離店逾時、但尚未由攝影機執行緒關閉的紀錄。
+        # 這可避免顧客實際離店後才註冊，舊散客歷史卻被改成會員。
+        active_visit_timeout_seconds = max(
+            1,
+            int(active_visit_timeout_seconds or 60)
+        )
+        cursor.execute(
+            """
+            SELECT
+                log_id,
+                visit_time,
+                recognized_at,
+                last_seen_at
+            FROM recognition_logs
+            WHERE visitor_id = %s
+              AND leave_time IS NULL
+              AND visit_status IN ('arrived', 'staying')
+              AND COALESCE(last_seen_at, visit_time, recognized_at)
+                  < DATE_SUB(NOW(), INTERVAL %s SECOND)
+            ORDER BY
+                COALESCE(visit_time, recognized_at) DESC,
+                log_id DESC
+            LIMIT 1
+            FOR UPDATE
+            """,
+            (visitor_id, active_visit_timeout_seconds)
+        )
+        stale_log = cursor.fetchone()
+        closed_stale_log_id = None
+
+        if stale_log:
+            last_seen_value = (
+                stale_log.get("last_seen_at")
+                or stale_log.get("visit_time")
+                or stale_log.get("recognized_at")
+                or datetime.now()
+            )
+            visit_start_value = (
+                stale_log.get("visit_time")
+                or stale_log.get("recognized_at")
+                or last_seen_value
+            )
+
+            if isinstance(last_seen_value, str):
+                last_seen_value = datetime.strptime(
+                    last_seen_value,
+                    "%Y-%m-%d %H:%M:%S"
+                )
+            if isinstance(visit_start_value, str):
+                visit_start_value = datetime.strptime(
+                    visit_start_value,
+                    "%Y-%m-%d %H:%M:%S"
+                )
+
+            stale_leave_time = (
+                last_seen_value
+                + timedelta(seconds=active_visit_timeout_seconds)
+            )
+            stale_stay_seconds = max(
+                int((stale_leave_time - visit_start_value).total_seconds()),
+                0
+            )
+            closed_stale_log_id = stale_log.get("log_id")
+
+            cursor.execute(
+                """
+                UPDATE recognition_logs
+                SET
+                    recognition_status = 'recognized',
+                    visit_status = 'left',
+                    leave_time = %s,
+                    stay_seconds = %s
+                WHERE log_id = %s
+                  AND leave_time IS NULL
+                  AND visit_status IN ('arrived', 'staying')
+                """,
+                (
+                    stale_leave_time,
+                    stale_stay_seconds,
+                    closed_stale_log_id
+                )
+            )
+
+            if cursor.rowcount != 1:
+                raise RuntimeError("逾時散客紀錄關閉失敗")
+
+            cursor.execute(
+                """
+                UPDATE visitors
+                SET
+                    visitor_visit_count =
+                        COALESCE(visitor_visit_count, 0) + 1,
+                    last_seen_at = %s,
+                    updated_at = NOW()
+                WHERE visitor_id = %s
+                """,
+                (last_seen_value, visitor_id)
+            )
+
+        # 只有仍在離店逾時範圍內的紀錄，才原地切換成會員。
         cursor.execute(
             """
             SELECT log_id
@@ -1474,7 +1619,8 @@ def convert_visitor_to_member(
             "visitor_id": visitor_id,
             "visitor_code": visitor.get("visitor_code"),
             "copied_face_count": copied_face_count,
-            "converted_active_log_id": converted_active_log_id
+            "converted_active_log_id": converted_active_log_id,
+            "closed_stale_log_id": closed_stale_log_id
         }
 
     except Exception:
@@ -2772,19 +2918,17 @@ def draw_lottery_for_member(member_id):
                 INSERT INTO member_prizes (
                     member_id,
                     prize_id,
-                    member_coupon_id,
                     campaign_code,
                     prize_code,
                     redeem_token,
                     status,
                     expires_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, 'unused', %s)
+                VALUES (%s, %s, %s, %s, %s, 'unused', %s)
                 """,
                 (
                     member_id,
                     prize_id,
-                    member_coupon_id,
                     LOTTERY_CAMPAIGN_CODE,
                     selected_prize["prize_code"],
                     redeem_token,
@@ -2920,14 +3064,29 @@ def redeem_member_prize(redeem_token, redeemed_by):
             """
             SELECT
                 member_prize_id,
-                member_coupon_id,
+                member_id,
+                prize_id,
                 status,
-                expires_at
+                expires_at,
+                (
+                    SELECT mc.member_coupon_id
+                    FROM member_coupons AS mc
+                    JOIN lottery_prizes AS lp
+                        ON lp.coupon_id = mc.coupon_id
+                    WHERE mc.member_id = member_prizes.member_id
+                      AND lp.prize_id = member_prizes.prize_id
+                      AND mc.source = %s
+                    ORDER BY mc.member_coupon_id DESC
+                    LIMIT 1
+                ) AS member_coupon_id
             FROM member_prizes
             WHERE redeem_token = %s
             FOR UPDATE
             """,
-            (redeem_token,)
+            (
+                LOTTERY_CAMPAIGN_CODE,
+                redeem_token,
+            )
         )
 
         prize_record = cursor.fetchone()
@@ -3135,6 +3294,22 @@ def get_recognition_logs(
             visitor_code,
             camera_id,
             camera_location,
+            (
+                SELECT source_visitor.visitor_id
+                FROM visitors AS source_visitor
+                WHERE source_visitor.converted_member_id =
+                    recognition_logs.member_id
+                ORDER BY source_visitor.visitor_id ASC
+                LIMIT 1
+            ) AS source_visitor_id,
+            (
+                SELECT source_visitor.visitor_code
+                FROM visitors AS source_visitor
+                WHERE source_visitor.converted_member_id =
+                    recognition_logs.member_id
+                ORDER BY source_visitor.visitor_id ASC
+                LIMIT 1
+            ) AS source_visitor_code,
             name,
             vip,
             line_user_id,

@@ -100,6 +100,12 @@ def _safe_member_image_url(image_path):
         return None
 
     normalized_path = str(image_path).replace("\\", "/")
+
+    if normalized_path.startswith(
+        ("https://", "http://")
+    ):
+        return normalized_path
+
     static_marker = "static/"
     member_image_marker = "member_images/"
 
@@ -152,7 +158,16 @@ def _get_member_detail(member_id):
                 line_user_id,
                 total_amount,
                 favorite_product,
-                face_image,
+                COALESCE(
+                    NULLIF(face_image, ''),
+                    (
+                        SELECT fi.image_path
+                        FROM face_images AS fi
+                        WHERE fi.member_id = members.member_id
+                        ORDER BY fi.face_id DESC
+                        LIMIT 1
+                    )
+                ) AS face_image,
                 registration_source,
                 created_at,
                 updated_at
@@ -261,7 +276,16 @@ def member():
                 m.line_user_id,
                 m.total_amount,
                 m.favorite_product,
-                m.face_image,
+                COALESCE(
+                    NULLIF(m.face_image, ''),
+                    (
+                        SELECT fi.image_path
+                        FROM face_images AS fi
+                        WHERE fi.member_id = m.member_id
+                        ORDER BY fi.face_id DESC
+                        LIMIT 1
+                    )
+                ) AS face_image,
                 m.registration_source,
                 m.created_at,
                 m.updated_at
@@ -601,7 +625,7 @@ def delete_member(member_id):
         cursor.execute("DELETE FROM face_images WHERE member_id = %s", (member_id,))
         cursor.execute("DELETE FROM members WHERE member_id = %s", (member_id,))
 
-        conn.commit()
+        conn.commit()        
         remove_member_from_face_cache(member_id)
         reload_member_faces()
         reload_visitor_faces()
@@ -640,11 +664,15 @@ def delete_member(member_id):
             conn.close()
 
 
-@member_bp.route("/member/edit/<int:member_id>", methods=["GET", "POST"])
+@member_bp.route(
+    "/member/edit/<int:member_id>",
+    methods=["GET", "POST"]
+)
 def edit_member(member_id):
     conn = None
     cursor = None
     new_image_path = None
+    old_image_path = None
     database_committed = False
 
     try:
@@ -652,9 +680,19 @@ def edit_member(member_id):
         cursor = conn.cursor(dictionary=True)
 
         cursor.execute("""
-            SELECT member_id, name, phone, birthday, vip, member_level,
-                   total_visit_count, line_user_id, total_amount,
-                   favorite_product, face_image, registration_source
+            SELECT
+                member_id,
+                name,
+                phone,
+                birthday,
+                vip,
+                member_level,
+                total_visit_count,
+                line_user_id,
+                total_amount,
+                favorite_product,
+                face_image,
+                registration_source
             FROM members
             WHERE member_id = %s
         """, (member_id,))
@@ -664,117 +702,268 @@ def edit_member(member_id):
         if target_member is None:
             return "找不到會員", 404
 
+        # =============================
+        # POST：儲存會員修改
+        # =============================
         if request.method == "POST":
             image_file = request.files.get("face_image")
+
             has_new_image = bool(
                 image_file
                 and image_file.filename
             )
+
             encoding_json = None
 
+            # -----------------------------
+            # 1. 取得表單欄位
+            # -----------------------------
+            name = (request.form.get("name") or "").strip()
+            phone = (request.form.get("phone") or "").strip()
+            birthday = request.form.get("birthday") or None
+            line_user_id = (
+                request.form.get("line_user_id") or ""
+            ).strip() or None
+
+            favorite_product = (
+                request.form.get("favorite_product") or ""
+            ).strip() or None
+
+            requested_vip = (
+                request.form.get("vip") == "1"
+            )
+
+            try:
+                new_total_amount = float(
+                    request.form.get("total_amount") or 0
+                )
+            except (TypeError, ValueError):
+                return redirect(url_for(
+                    "member.member_detail",
+                    member_id=member_id,
+                    error="累積消費金額格式錯誤。"
+                ))
+
+            if new_total_amount < 0:
+                return redirect(url_for(
+                    "member.member_detail",
+                    member_id=member_id,
+                    error="累積消費金額不可小於 0。"
+                ))
+
+            # -----------------------------
+            # 2. 判斷是否自動升級 VIP
+            # -----------------------------
+            was_normal = not bool(
+                target_member.get("vip")
+            )
+
+            upgraded_to_vip = (
+                was_normal
+                and new_total_amount
+                >= VIP_UPGRADE_THRESHOLD
+            )
+
+            # 一般會員消費達門檻時，自動升級。
+            # 若原本已是 VIP，仍允許店員手動調整。
+            final_vip = (
+                True
+                if upgraded_to_vip
+                else requested_vip
+            )
+
+            member_level = (
+                "vip"
+                if final_vip
+                else "normal"
+            )
+
+            # -----------------------------
+            # 3. 有上傳新照片才處理照片
+            # -----------------------------
             if has_new_image:
-                if not allowed_image_file(image_file.filename):
+                if not allowed_image_file(
+                    image_file.filename
+                ):
                     return redirect(url_for(
                         "member.member_detail",
                         member_id=member_id,
-                        error="照片格式不支援，請上傳 JPG、JPEG 或 PNG 檔案。"
+                        error=(
+                            "照片格式不支援，"
+                            "請上傳 JPG、JPEG 或 PNG 檔案。"
+                        )
                     ))
 
-                if image_file.mimetype not in ALLOWED_IMAGE_MIME_TYPES:
+                if (
+                    image_file.mimetype
+                    not in ALLOWED_IMAGE_MIME_TYPES
+                ):
                     return redirect(url_for(
                         "member.member_detail",
                         member_id=member_id,
-                        error="照片格式不支援，請上傳 JPG、JPEG 或 PNG 檔案。"
+                        error=(
+                            "照片格式不支援，"
+                            "請上傳 JPG、JPEG 或 PNG 檔案。"
+                        )
                     ))
+
+                original_filename = secure_filename(
+                    image_file.filename
+                )
 
                 extension = (
-                    image_file.filename.rsplit(".", 1)[1].lower()
+                    original_filename
+                    .rsplit(".", 1)[1]
+                    .lower()
                 )
+
                 new_filename = (
-                    f"member_{uuid.uuid4().hex}.{extension}"
+                    f"member_{uuid.uuid4().hex}."
+                    f"{extension}"
                 )
+
                 new_image_path = os.path.join(
                     MEMBER_IMAGE_DIR,
                     new_filename
                 )
+
                 image_file.save(new_image_path)
 
-                face_check_result = validate_member_face_image(
-                    new_image_path
+                # 驗證照片是否只有一張人臉
+                face_check_result = (
+                    validate_member_face_image(
+                        new_image_path
+                    )
                 )
 
                 if not face_check_result.get("success"):
-                    os.remove(new_image_path)
+                    if os.path.exists(new_image_path):
+                        os.remove(new_image_path)
+
                     new_image_path = None
+
                     return redirect(url_for(
                         "member.member_detail",
                         member_id=member_id,
                         error=face_check_result.get(
                             "message",
-                            "會員照片驗證失敗，原照片已保留。"
+                            (
+                                "會員照片驗證失敗，"
+                                "原照片已保留。"
+                            )
                         )
                     ))
 
-                encoding_data = face_check_result.get("encoding")
+                encoding_data = face_check_result.get(
+                    "encoding"
+                )
+
+                if encoding_data is None:
+                    if os.path.exists(new_image_path):
+                        os.remove(new_image_path)
+
+                    new_image_path = None
+
+                    return redirect(url_for(
+                        "member.member_detail",
+                        member_id=member_id,
+                        error=(
+                            "新照片無法產生人臉特徵，"
+                            "原照片已保留。"
+                        )
+                    ))
+
                 encoding_json = normalize_encoding_data(
                     encoding_data
                 )
 
+                # 排除會員自己原本的人臉，
+                # 只檢查是否與其他會員重複。
                 duplicate_result = check_duplicate_face(
                     encoding_data,
                     exclude_member_id=member_id
                 )
 
                 if duplicate_result.get("is_duplicate"):
-                    os.remove(new_image_path)
+                    if os.path.exists(new_image_path):
+                        os.remove(new_image_path)
+
                     new_image_path = None
+
+                    duplicate_name = (
+                        duplicate_result.get("name")
+                        or "其他會員"
+                    )
+
                     return redirect(url_for(
                         "member.member_detail",
                         member_id=member_id,
                         error=(
-                            "此人臉已屬於其他會員，"
+                            f"此人臉已屬於"
+                            f"{duplicate_name}，"
                             "請確認照片後再重新上傳。"
                         )
                     ))
 
-            vip = request.form.get("vip") == "1"
-            member_level = "vip" if vip else "normal"
-
+            # -----------------------------
+            # 4. 更新會員基本資料
+            # -----------------------------
             cursor.execute("""
                 UPDATE members
-                SET name = %s,
+                SET
+                    name = %s,
                     phone = %s,
                     birthday = %s,
                     vip = %s,
                     member_level = %s,
+                    line_user_id = %s,
+                    total_amount = %s,
                     favorite_product = %s,
-                    updated_by = 'backend'
+                    updated_by = %s
                 WHERE member_id = %s
             """, (
-                request.form.get("name"),
-                request.form.get("phone"),
-                request.form.get("birthday") or None,
-                vip,
+                name,
+                phone,
+                birthday,
+                final_vip,
                 member_level,
-                request.form.get("favorite_product"),
+                line_user_id,
+                new_total_amount,
+                favorite_product,
+                (
+                    "vip_auto_upgrade"
+                    if upgraded_to_vip
+                    else "backend"
+                ),
                 member_id
             ))
 
+            # -----------------------------
+            # 5. 有新照片才更新 face_images
+            # -----------------------------
             if has_new_image:
                 cursor.execute("""
-                    SELECT face_id
+                    SELECT
+                        face_id,
+                        image_path
                     FROM face_images
                     WHERE member_id = %s
                     ORDER BY face_id DESC
                     LIMIT 1
                     FOR UPDATE
                 """, (member_id,))
+
                 current_face = cursor.fetchone()
 
                 if current_face:
+                    old_image_path = (
+                        current_face.get("image_path")
+                    )
+
                     cursor.execute("""
                         UPDATE face_images
-                        SET image_path = %s,
+                        SET
+                            image_path = %s,
                             encoding_data = %s
                         WHERE face_id = %s
                     """, (
@@ -782,7 +971,12 @@ def edit_member(member_id):
                         encoding_json,
                         current_face["face_id"]
                     ))
+
                 else:
+                    old_image_path = (
+                        target_member.get("face_image")
+                    )
+
                     cursor.execute("""
                         INSERT INTO face_images (
                             member_id,
@@ -805,80 +999,109 @@ def edit_member(member_id):
                     member_id
                 ))
 
-            # 消費金額跨過門檻時自動升級 VIP。跟 routes/line.py 的
-            # POST /line/cron/vip-check（排程批次檢查）是各自獨立的觸發點，
-            # 這裡是店員手動編輯當下就觸發，兩邊門檻值要保持一致。
-            was_normal = not bool(target_member.get("vip"))
-
-            try:
-                new_total_amount = float(
-                    target_member.get("total_amount") or 0
-                )
-            except (TypeError, ValueError):
-                new_total_amount = 0
-
-            upgraded_to_vip = (
-                was_normal
-                and new_total_amount >= VIP_UPGRADE_THRESHOLD
-            )
-
-            if upgraded_to_vip:
-                cursor.execute(
-                    "UPDATE members SET vip = TRUE, member_level = 'vip', "
-                    "updated_by = 'vip_auto_upgrade' WHERE member_id = %s",
-                    (member_id,)
-                )
-
+            # -----------------------------
+            # 6. 正式提交資料庫
+            # -----------------------------
             conn.commit()
             database_committed = True
 
+            # -----------------------------
+            # 7. 更新 AI 人臉快取
+            # -----------------------------
             if has_new_image:
                 try:
                     loaded_members = reload_member_faces()
+
+                    # 散客資料未修改，但一起重新整理，
+                    # 避免散客轉會員後殘留舊快取。
+                    reload_visitor_faces()
+
                 except Exception as reload_error:
-                    print("會員人臉資料重新載入失敗：", reload_error)
+                    print(
+                        "會員人臉資料重新載入失敗：",
+                        reload_error
+                    )
+
                     return redirect(url_for(
                         "member.member_detail",
                         member_id=member_id,
                         error=(
-                            "會員照片已更新，但人臉辨識資料重新載入失敗。"
-                            "請至 Camera 頁重新載入人臉資料。"
+                            "會員資料與照片已更新，"
+                            "但人臉辨識快取重新載入失敗。"
                         )
                     ))
 
-                if not any(
-                    member_data.get("member_id") == member_id
+                member_loaded = any(
+                    member_data.get("member_id")
+                    == member_id
                     for member_data in loaded_members
-                ):
+                )
+
+                if not member_loaded:
                     print(
-                        "會員人臉資料重新載入後找不到會員：",
+                        "人臉快取找不到會員：",
                         member_id
                     )
+
                     return redirect(url_for(
                         "member.member_detail",
                         member_id=member_id,
                         error=(
-                            "會員照片已更新，但人臉辨識資料尚未載入。"
-                            "請至 Camera 頁重新載入人臉資料。"
+                            "會員資料與照片已更新，"
+                            "但攝影機尚未載入新照片。"
                         )
                     ))
-            else:
-                refresh_member(member_id)
 
+            else:
+                # 沒換照片時只刷新該會員的
+                # 姓名、VIP、消費等快取資料。
+                refreshed = refresh_member(member_id)
+
+                if not refreshed:
+                    reload_member_faces()
+
+            # -----------------------------
+            # 8. 資料成功後刪除舊照片
+            # -----------------------------
+            if (
+                has_new_image
+                and old_image_path
+                and old_image_path != new_image_path
+                and is_path_within_directory(
+                    old_image_path,
+                    MEMBER_IMAGE_DIR
+                )
+            ):
+                try:
+                    if os.path.isfile(old_image_path):
+                        os.remove(old_image_path)
+
+                except OSError as image_error:
+                    print(
+                        "刪除會員舊照片失敗："
+                        f"path={old_image_path}, "
+                        f"error={image_error}"
+                    )
+
+            # -----------------------------
+            # 9. 自動升級 VIP 時發送通知
+            # -----------------------------
             if upgraded_to_vip:
                 try:
                     notify_vip_upgrade({
                         "member_id": member_id,
                         "name": (
-                            request.form.get("name")
+                            name
                             or target_member.get("name")
                         ),
-                        "line_user_id": (
-                            target_member.get("line_user_id")
-                        ),
+                        "line_user_id": line_user_id,
                     })
+
                 except Exception as notify_error:
-                    print("VIP 升級通知失敗：", notify_error)
+                    print(
+                        "VIP 升級通知失敗：",
+                        notify_error
+                    )
 
             return redirect(url_for(
                 "member.member_detail",
@@ -887,24 +1110,35 @@ def edit_member(member_id):
             ))
 
     except Exception as e:
-        if conn is not None and not database_committed:
+        if (
+            conn is not None
+            and not database_committed
+        ):
             conn.rollback()
 
+        # 資料庫尚未成功時，
+        # 刪除這次新上傳但未使用的照片。
         if (
             new_image_path
             and not database_committed
             and os.path.exists(new_image_path)
         ):
-            os.remove(new_image_path)
+            try:
+                os.remove(new_image_path)
+            except OSError:
+                pass
 
-        print("修改會員失敗：", e)
+        print(
+            "修改會員失敗："
+            f"{type(e).__name__}: {e}"
+        )
 
         return redirect(url_for(
             "member.member_detail",
             member_id=member_id,
             error=(
-                "會員資料儲存失敗，原照片已保留，"
-                "請稍後再試。"
+                "會員資料儲存失敗，"
+                "原照片已保留，請稍後再試。"
             )
         ))
 
@@ -915,30 +1149,141 @@ def edit_member(member_id):
         if conn is not None:
             conn.close()
 
-    vip_selected = "selected" if target_member["vip"] else ""
-    normal_selected = "" if target_member["vip"] else "selected"
+    # =============================
+    # GET：顯示修改表單
+    # =============================
+    vip_selected = (
+        "selected"
+        if target_member["vip"]
+        else ""
+    )
+
+    normal_selected = (
+        ""
+        if target_member["vip"]
+        else "selected"
+    )
+
+    birthday_value = (
+        target_member["birthday"]
+        or ""
+    )
 
     return f"""
     <h1>修改會員</h1>
 
     <form method="POST" enctype="multipart/form-data">
-        <p>會員編號：{target_member['member_id']}</p>
-        <p>姓名：<input type="text" name="name" value="{target_member['name'] or ''}"></p>
-        <p>電話：<input type="text" name="phone" value="{target_member['phone'] or ''}"></p>
-        <p>生日：<input type="date" name="birthday" value="{target_member['birthday'] or ''}"></p>
-        <p>LINE User ID：<input type="text" name="line_user_id" value="{target_member['line_user_id'] or ''}"></p>
-        <p>累積到店次數（系統自動計算）：{target_member['total_visit_count'] or 0}</p>
-        <p>累積消費：<input type="number" name="total_amount" value="{target_member['total_amount'] or 0}"></p>
-        <p>偏好商品：<input type="text" name="favorite_product" value="{target_member['favorite_product'] or ''}"></p>
-        <p>人臉圖片：{target_member['face_image'] or '尚未設定'}</p>
-        <p>是否 VIP：
+        <p>
+            會員編號：{target_member['member_id']}
+        </p>
+
+        <p>
+            姓名：
+            <input
+                type="text"
+                name="name"
+                value="{target_member['name'] or ''}"
+                required
+            >
+        </p>
+
+        <p>
+            電話：
+            <input
+                type="text"
+                name="phone"
+                value="{target_member['phone'] or ''}"
+            >
+        </p>
+
+        <p>
+            生日：
+            <input
+                type="date"
+                name="birthday"
+                value="{birthday_value}"
+            >
+        </p>
+
+        <p>
+            LINE User ID：
+            <input
+                type="text"
+                name="line_user_id"
+                value="{target_member['line_user_id'] or ''}"
+            >
+        </p>
+
+        <p>
+            累積到店次數（系統自動計算）：
+            {target_member['total_visit_count'] or 0}
+        </p>
+
+        <p>
+            累積消費：
+            <input
+                type="number"
+                name="total_amount"
+                min="0"
+                step="1"
+                value="{target_member['total_amount'] or 0}"
+            >
+        </p>
+
+        <p>
+            偏好商品：
+            <input
+                type="text"
+                name="favorite_product"
+                value="{target_member['favorite_product'] or ''}"
+            >
+        </p>
+
+        <p>
+            目前人臉圖片：
+            {target_member['face_image'] or '尚未設定'}
+        </p>
+
+        <p>
+            重新上傳會員照片：
+            <input
+                type="file"
+                name="face_image"
+                accept=".jpg,.jpeg,.png"
+            >
+        </p>
+
+        <p>
+            未選擇新照片時，會保留目前照片。
+        </p>
+
+        <p>
+            是否 VIP：
             <select name="vip">
-                <option value="0" {normal_selected}>一般會員</option>
-                <option value="1" {vip_selected}>VIP會員</option>
+                <option
+                    value="0"
+                    {normal_selected}
+                >
+                    一般會員
+                </option>
+
+                <option
+                    value="1"
+                    {vip_selected}
+                >
+                    VIP會員
+                </option>
             </select>
         </p>
-        <button type="submit">儲存修改</button>
+
+        <button type="submit">
+            儲存修改
+        </button>
     </form>
 
-    <p><a href="/member">回會員列表</a></p>
+    <p>
+        <a href="/member">
+            回會員列表
+        </a>
+    </p>
     """

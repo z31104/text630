@@ -65,11 +65,15 @@
 {%- endif -%}
 {%- endmacro %}
 
-{% macro visitor_label(row) -%}
+{% macro visitor_source_label(visitor_id, visitor_code) -%}
 <span
     class="visitor-label"
-    title="{{ row.visitor_code or '' }}"
->散客 #{{ row.visitor_id if row.visitor_id is not none else "—" }}</span>
+    title="{{ visitor_code or '' }}"
+>散客 #{{ visitor_id if visitor_id is not none else "—" }}</span>
+{%- endmacro %}
+
+{% macro visitor_label(row) -%}
+{{ visitor_source_label(row.visitor_id, row.visitor_code) }}
 {%- endmacro %}
 
 {% macro subject_name(row) -%}
@@ -203,8 +207,7 @@ normal
                         <th>訪客</th>
                         <th>身分</th>
                         <th>會員 ID</th>
-                        <th>散客 ID</th>
-                        <th>散客代碼</th>
+                        <th>會員來源</th>
                         <th>VIP</th>
                         <th>本次到店開始</th>
                         <th>辨識紀錄建立</th>
@@ -234,12 +237,17 @@ normal
                         <td data-label="訪客">{{ subject_name(row) }}</td>
                         <td data-label="身分"><span class="badge {{ subject_badge_class(row) }}">{{ subject_text(row) }}</span></td>
                         <td data-label="會員 ID">{{ display_value(row.member_id) }}</td>
-                        <td data-label="散客 ID">{{ display_value(row.visitor_id) }}</td>
-                        <td data-label="散客代碼">
-                            {% if row.visitor_id is not none %}
-                                {{ visitor_label(row) }}
+                        <td data-label="會員來源">
+                            {% if row.subject_type == "member" %}
+                                {% set source_visitor_id = row.visitor_id or row.source_visitor_id %}
+                                {% set source_visitor_code = row.visitor_code or row.source_visitor_code %}
+                                {% if source_visitor_id is not none %}
+                                    {{ visitor_source_label(source_visitor_id, source_visitor_code) }}
+                                {% else %}
+                                    直接註冊
+                                {% endif %}
                             {% else %}
-                                {{ display_value(row.visitor_code) }}
+                                —
                             {% endif %}
                         </td>
                         <td data-label="VIP">

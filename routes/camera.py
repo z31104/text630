@@ -201,8 +201,6 @@ def convert_visitor_active_visit(
         active_visits[member_key] = visit_data
         last_result = converted_result
         return True
-
-
 # 訪客上一次產生 recognition log 的時間
 last_guest_log_time = 0
 
@@ -226,6 +224,10 @@ LAST_SEEN_UPDATE_INTERVAL = 15 # 每 15 秒更新一次資料庫
 GUEST_LOG_INTERVAL = 60        # Guest 每 60 秒最多記錄一次，避免太頻繁
 MIN_CONFIDENCE = 0.5           # 信心值低於 0.5 的會員辨識結果先不記錄
 LEAVE_TIMEOUT = 60             # 超過 60 秒沒再看到同一會員，就先視為離店
+FACE_CACHE_REFRESH_INTERVAL = max(
+    get_int_env("FACE_CACHE_REFRESH_INTERVAL", 5),
+    1
+)
 CAMERA_ID = os.getenv("CAMERA_ID", "camera_1")
 CAMERA_LOCATION = os.getenv("CAMERA_LOCATION", "入口")
 
@@ -565,7 +567,11 @@ def generate_frames():
         # 未執行 HOG 的畫面，沿用上一次偵測結果
         last_detected_faces = []
 
-
+        # Camera 與 LINE 可能運行在不同 Flask process。
+        # 串流啟動時先載入一次，之後定期從共用 DB 同步。
+        reload_member_faces()
+        reload_visitor_faces()
+        last_face_cache_refresh_time = time.monotonic()
 
         while True:
             time.sleep(0.01)
@@ -582,6 +588,16 @@ def generate_frames():
                 )
                 
                 break
+
+            monotonic_now = time.monotonic()
+            if (
+                monotonic_now - last_face_cache_refresh_time
+                >= FACE_CACHE_REFRESH_INTERVAL
+            ):
+                reload_member_faces()
+                reload_visitor_faces()
+                last_face_cache_refresh_time = monotonic_now
+                last_recognition_time = 0
             
             # 每成功取得一張畫面，就累積一幀。
             fps_frame_count += 1

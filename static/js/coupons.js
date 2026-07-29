@@ -197,20 +197,54 @@ function showUnbound(message) {
     }
 }
 
+async function restartCouponsLogin() {
+    try {
+        if (typeof liff !== "undefined" && liff.isLoggedIn()) {
+            liff.logout();
+        }
+    } catch (error) {
+        console.warn("清除舊 LINE 登入狀態失敗", error);
+    }
+
+    if (LIFF_ID_COUPONS) {
+        window.location.replace(
+            `https://liff.line.me/${LIFF_ID_COUPONS}?reauth=${Date.now()}`
+        );
+    }
+}
+
 function fetchMyCoupons(idToken) {
-    fetch("/api/coupons/me", {
+    return fetch("/api/coupons/me", {
         method: "POST",
+        cache: "no-store",
         headers: {
             "Content-Type": "application/json"
         },
         body: JSON.stringify({ id_token: idToken })
     })
         .then(function (res) {
-            return res.json();
+            return res.json().then(function (result) {
+                return {
+                    ok: res.ok,
+                    status: res.status,
+                    result: result
+                };
+            });
         })
-        .then(function (result) {
+        .then(function (response) {
+            const result = response.result;
+
+            if (response.status === 401) {
+                restartCouponsLogin();
+                return;
+            }
+
             if (!result || result.success !== true) {
                 console.warn("查詢我的優惠券失敗", result && result.message);
+                showUnbound(
+                    (result && result.message)
+                    || "優惠券載入失敗，請稍後再試。"
+                );
                 return;
             }
 
@@ -230,7 +264,7 @@ function initLiffCoupons() {
         return;
     }
 
-    fetch("/line/config")
+    fetch("/line/config", { cache: "no-store" })
         .then(function (res) {
             return res.json();
         })
@@ -246,7 +280,11 @@ function initLiffCoupons() {
         })
         .then(function () {
             if (!liff.isLoggedIn()) {
-                liff.login({ redirectUri: window.location.href });
+                liff.login({
+                    redirectUri: (
+                        `https://liff.line.me/${LIFF_ID_COUPONS}`
+                    )
+                });
                 return;
             }
 
