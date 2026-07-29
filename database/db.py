@@ -3451,12 +3451,17 @@ def get_member_coupons(member_id=None, status=None, limit=100):
             mc.source,
             mc.status,
             mc.receive_time,
-            mc.used_time
+            mc.used_time,
+            mp.redeem_token,
+            mp.status AS redemption_status,
+            mp.expires_at AS redemption_expires_at
         FROM member_coupons mc
         JOIN members m
             ON mc.member_id = m.member_id
         JOIN coupons c
             ON mc.coupon_id = c.coupon_id
+        LEFT JOIN member_prizes mp
+            ON mp.member_coupon_id = mc.member_coupon_id
         WHERE 1 = 1
         """
 
