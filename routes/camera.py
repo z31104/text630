@@ -1,7 +1,9 @@
 import os
 import cv2
+import numpy as np
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from flask import Blueprint, Response, jsonify
 from services.visit_service import (
@@ -21,13 +23,12 @@ from services.face_service import (
     detect_face,
     recognize_face,
     register_new_visitor,
-    reload_member_faces,
-    reload_visitor_faces,
     draw_face_boxes,
     log_recognition_result,
     update_recognition_last_seen,
     close_recognition_visit,
     send_line_notify,
+    reload_all_faces,
 )
 camera_bp = Blueprint("camera", __name__)
 
@@ -41,6 +42,15 @@ camera_instance_lock = threading.Lock()
 # 同一時間只允許一個 /camera/video_feed 串流執行，
 # 避免重新整理或開啟多個分頁時同時搶用攝影機。
 camera_stream_lock = threading.Lock()
+
+# 雲端 I/O 不可阻塞 MJPEG 影格產生器。
+face_cache_worker_lock = threading.Lock()
+face_cache_worker_started = False
+face_cache_refresh_wakeup = threading.Event()
+visit_db_executor = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="visit-db",
+)
 
 # =============================
 # 攝影機連線狀態
@@ -206,9 +216,16 @@ last_guest_log_time = 0
 
 # Guest 必須連續辨識幾次才正式確認
 guest_confirm_count = 0
+guest_candidate_encoding = None
 
 # 連續 2 次辨識為 Guest 才正式顯示與記錄
-GUEST_CONFIRM_REQUIRED = 2
+GUEST_CONFIRM_REQUIRED = max(
+    get_int_env("GUEST_CONFIRM_REQUIRED", 3),
+    2,
+)
+GUEST_STABILITY_TOLERANCE = float(
+    os.getenv("GUEST_STABILITY_TOLERANCE", "0.45")
+)
 
 # 連續幾幀沒有偵測到人臉，
 # 才正式切換成 no_face，避免眨眼或瞬間轉頭造成畫面閃爍。
@@ -225,11 +242,111 @@ GUEST_LOG_INTERVAL = 60        # Guest 每 60 秒最多記錄一次，避免太�
 MIN_CONFIDENCE = 0.5           # 信心值低於 0.5 的會員辨識結果先不記錄
 LEAVE_TIMEOUT = 60             # 超過 60 秒沒再看到同一會員，就先視為離店
 FACE_CACHE_REFRESH_INTERVAL = max(
-    get_int_env("FACE_CACHE_REFRESH_INTERVAL", 5),
-    1
+    get_int_env("FACE_CACHE_REFRESH_INTERVAL", 60),
+    10
 )
 CAMERA_ID = os.getenv("CAMERA_ID", "camera_1")
 CAMERA_LOCATION = os.getenv("CAMERA_LOCATION", "入口")
+
+
+def reset_guest_confirmation():
+    global guest_confirm_count
+    global guest_candidate_encoding
+
+    guest_confirm_count = 0
+    guest_candidate_encoding = None
+
+
+def confirm_stable_guest(recognition_result):
+    """只有連續數次 encoding 都像同一張臉，才允許建立散客。"""
+    global guest_confirm_count
+    global guest_candidate_encoding
+
+    encoding = recognition_result.get("_face_encoding")
+    if encoding is None:
+        reset_guest_confirmation()
+        return False
+
+    try:
+        encoding = np.asarray(encoding, dtype=float)
+    except (TypeError, ValueError):
+        reset_guest_confirmation()
+        return False
+
+    if encoding.shape != (128,):
+        reset_guest_confirmation()
+        return False
+
+    if guest_candidate_encoding is None:
+        guest_confirm_count = 1
+    else:
+        distance = float(
+            np.linalg.norm(
+                guest_candidate_encoding - encoding
+            )
+        )
+        if distance <= GUEST_STABILITY_TOLERANCE:
+            guest_confirm_count += 1
+        else:
+            guest_confirm_count = 1
+
+    guest_candidate_encoding = np.array(
+        encoding,
+        dtype=float
+    )
+    return guest_confirm_count >= GUEST_CONFIRM_REQUIRED
+
+
+def _face_cache_refresh_worker():
+    while True:
+        refresh_started = time.monotonic()
+        try:
+            members, visitors = reload_all_faces()
+            elapsed = time.monotonic() - refresh_started
+            print(
+                "背景人臉快取更新完成："
+                f"會員 {len(members)} 筆，"
+                f"散客 {len(visitors)} 筆，"
+                f"耗時 {elapsed:.2f} 秒"
+            )
+        except Exception as error:
+            print(f"背景人臉快取更新失敗：{error}")
+
+        elapsed = time.monotonic() - refresh_started
+        wait_seconds = max(
+            FACE_CACHE_REFRESH_INTERVAL - elapsed,
+            1,
+        )
+        face_cache_refresh_wakeup.wait(wait_seconds)
+        face_cache_refresh_wakeup.clear()
+
+
+def start_face_cache_refresh_worker():
+    global face_cache_worker_started
+
+    with face_cache_worker_lock:
+        if face_cache_worker_started:
+            return False
+
+        worker = threading.Thread(
+            target=_face_cache_refresh_worker,
+            name="face-cache-refresh",
+            daemon=True,
+        )
+        face_cache_worker_started = True
+        worker.start()
+        return True
+
+
+def queue_recognition_last_seen(log_id, last_seen_at):
+    """將週期性 last_seen 寫入交給單一背景執行緒。"""
+    visit_db_executor.submit(
+        update_recognition_last_seen,
+        log_id,
+        last_seen_at,
+    )
+    return True
+
 
 def update_camera_status(
     connected,
@@ -418,7 +535,7 @@ def update_member_visit(result, current_time):
         last_seen_update_interval=LAST_SEEN_UPDATE_INTERVAL,
         get_active_visit_fn=get_active_visit,
         create_log_fn=log_recognition_result,
-        update_last_seen_fn=update_recognition_last_seen,
+        update_last_seen_fn=queue_recognition_last_seen,
         close_visit_fn=close_recognition_visit,
         notify_fn=send_line_notify,
     )
@@ -526,6 +643,7 @@ def generate_frames():
     global last_result
     global last_guest_log_time
     global guest_confirm_count
+    global guest_candidate_encoding
     global no_face_frame_count
 
     # 嘗試取得攝影機串流鎖。
@@ -567,11 +685,8 @@ def generate_frames():
         # 未執行 HOG 的畫面，沿用上一次偵測結果
         last_detected_faces = []
 
-        # Camera 與 LINE 可能運行在不同 Flask process。
-        # 串流啟動時先載入一次，之後定期從共用 DB 同步。
-        reload_member_faces()
-        reload_visitor_faces()
-        last_face_cache_refresh_time = time.monotonic()
+        # 快取由背景執行緒同步，攝影串流不等待雲端 DB。
+        start_face_cache_refresh_worker()
 
         while True:
             time.sleep(0.01)
@@ -589,16 +704,6 @@ def generate_frames():
                 
                 break
 
-            monotonic_now = time.monotonic()
-            if (
-                monotonic_now - last_face_cache_refresh_time
-                >= FACE_CACHE_REFRESH_INTERVAL
-            ):
-                reload_member_faces()
-                reload_visitor_faces()
-                last_face_cache_refresh_time = monotonic_now
-                last_recognition_time = 0
-            
             # 每成功取得一張畫面，就累積一幀。
             fps_frame_count += 1
             
@@ -639,7 +744,7 @@ def generate_frames():
             # 畫面沒有偵測到人臉
             if not has_face:
                 no_face_frame_count += 1
-                guest_confirm_count = 0
+                reset_guest_confirmation()
                 
                 # 連續多幀沒有臉才切換 no_face，
                 # 避免眨眼、低頭或短暫側臉造成畫面閃爍。
@@ -695,18 +800,15 @@ def generate_frames():
                     
                     # 成功辨識會員或既有散客
                     if recognition_status == "recognized":
-                        guest_confirm_count = 0
+                        reset_guest_confirmation()
                         last_result = recognition_result
                         
                     # 第一次辨識為 Guest 時先顯示 Detecting
                     elif recognition_status == "guest":
-                        guest_confirm_count += 1
-                        
-                        # 同一張未知人臉連續確認達標後，
+                        # encoding 必須連續數次屬於同一張穩定人臉，
                         # 才正式建立固定 visitor。
-                        if (
-                            guest_confirm_count
-                            >= GUEST_CONFIRM_REQUIRED
+                        if confirm_stable_guest(
+                            recognition_result
                         ):
                             print(
                                 "未知人臉連續確認完成，"
@@ -715,7 +817,10 @@ def generate_frames():
                             
                             visitor_result = register_new_visitor(
                                 frame,
-                                faces
+                                faces,
+                                encoding=recognition_result.get(
+                                    "_face_encoding"
+                                ),
                             )
                             
                             if (
@@ -742,7 +847,7 @@ def generate_frames():
                             
                             # 不論成功或失敗，
                             # 結束本輪 Guest 確認。
-                            guest_confirm_count = 0
+                            reset_guest_confirmation()
                             
                         else:
                             last_result = {
@@ -773,7 +878,7 @@ def generate_frames():
                     
                     # failed 或其他狀態
                     else:
-                        guest_confirm_count = 0
+                        reset_guest_confirmation()
                         last_result = recognition_result
 
 
@@ -990,7 +1095,8 @@ def get_camera_status():
             "status": camera_status["status"],
             "message": camera_status["message"]
         })
-    
+
+
 
 @camera_bp.route("/camera/reload-faces", methods=["POST"])
 def reload_faces():
@@ -998,8 +1104,7 @@ def reload_faces():
     重新載入正式資料庫的人臉資料
     """
     try:
-        members = reload_member_faces()
-        visitors = reload_visitor_faces()
+        members, visitors = reload_all_faces()
 
         print("========== Face Reload API ==========")
         print(f"Member Faces : {len(members)}")
@@ -1014,9 +1119,11 @@ def reload_faces():
         }, 200
 
     except Exception as e:
+        print(f"Face Reload API 失敗：{e}")
+
         return {
             "success": False,
-            "message": str(e),
+            "message": "Face data reload failed.",
         }, 500
 
 
