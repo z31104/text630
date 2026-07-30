@@ -11,6 +11,10 @@ from datetime import datetime
 from urllib.parse import quote
 
 import cv2
+from services.image_storage import (
+    parse_gcs_uri,
+    parse_google_storage_url,
+)
 import numpy as np
 from PIL import (
     Image,
@@ -246,9 +250,14 @@ def is_path_within_directory(image_path, directory):
 
 def is_member_registration_face(member):
     """只接受明確存放於 member_images 的正式註冊人臉。"""
-    return is_path_within_directory(
-        member.get("image_path"),
-        MEMBER_IMAGE_DIR
+    image_path = member.get("image_path")
+    return (
+        is_path_within_directory(
+            image_path,
+            MEMBER_IMAGE_DIR,
+        )
+        or parse_gcs_uri(image_path) is not None
+        or parse_google_storage_url(image_path) is not None
     )
 
 
