@@ -173,6 +173,12 @@ def line_config():
 @line_bp.route("/member-area")
 def member_portal():
     """LINE Rich Menu 的穩定會員專區入口。"""
+    if LIFF_ID_COUPONS:
+        return redirect(
+            f"https://liff.line.me/{LIFF_ID_COUPONS}",
+            code=302,
+        )
+
     return redirect("/coupons", code=302)
 
 
@@ -691,6 +697,58 @@ def lottery_draw():
 COUPON_EXPIRING_SOON_DAYS = 7
 
 
+def _fetch_member_coupons_without_redemption(member_id, limit=500):
+    """
+    舊版正式資料庫的 member_prizes 尚未有 member_coupon_id 時使用。
+
+    會員專區仍可顯示身分與優惠券；只有依賴該欄位的兌換資訊留空。
+    """
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT
+                mc.member_coupon_id,
+                mc.member_id,
+                m.name AS member_name,
+                mc.coupon_id,
+                c.coupon_name,
+                c.description,
+                c.discount_type,
+                c.discount_value,
+                c.start_at,
+                c.end_at,
+                c.status AS coupon_status,
+                mc.source,
+                mc.status,
+                mc.receive_time,
+                mc.used_time,
+                NULL AS redeem_token,
+                NULL AS redemption_status,
+                NULL AS redemption_expires_at
+            FROM member_coupons mc
+            JOIN members m
+                ON mc.member_id = m.member_id
+            JOIN coupons c
+                ON mc.coupon_id = c.coupon_id
+            WHERE mc.member_id = %s
+            ORDER BY mc.receive_time DESC,
+                     mc.member_coupon_id DESC
+            LIMIT %s
+            """,
+            (member_id, min(max(int(limit), 1), 500)),
+        )
+        return cursor.fetchall()
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
 @line_bp.route("/api/coupons/me", methods=["POST"])
 def get_my_coupon_summary():
     """
@@ -727,8 +785,28 @@ def get_my_coupon_summary():
     try:
         coupons = get_member_coupons(member_id=member["member_id"], limit=500)
     except Exception as e:
-        print("查詢會員優惠券失敗：", e)
-        return jsonify({"success": False, "message": "查詢失敗，請稍後再試"}), 500
+        error_text = str(e)
+        if (
+            "Unknown column" in error_text
+            and "mp.member_coupon_id" in error_text
+        ):
+            try:
+                coupons = _fetch_member_coupons_without_redemption(
+                    member_id=member["member_id"],
+                    limit=500,
+                )
+            except Exception as fallback_error:
+                print("相容模式查詢會員優惠券失敗：", fallback_error)
+                return jsonify({
+                    "success": False,
+                    "message": "查詢失敗，請稍後再試",
+                }), 500
+        else:
+            print("查詢會員優惠券失敗：", e)
+            return jsonify({
+                "success": False,
+                "message": "查詢失敗，請稍後再試",
+            }), 500
 
     now = datetime.now()
     soon = now + timedelta(days=COUPON_EXPIRING_SOON_DAYS)
