@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta
 
-from flask import Blueprint, render_template, request, url_for
+from flask import Blueprint, jsonify, render_template, request, url_for
 
 try:
     from database.db import (
@@ -280,6 +280,53 @@ def dashboard():
         },
     )
 
+@home_bp.route("/api/dashboard", methods=["GET"])
+def dashboard_summary_api():
+    try:
+        if get_dashboard_summary is None:
+            return jsonify({
+                "success": False,
+                "message": "Dashboard 資料來源尚未提供",
+            }), 503
+
+        summary = get_dashboard_summary()
+
+        response_data = {
+            "today_visitors": int(
+                summary.get("today_visitors") or 0
+            ),
+            "today_visit_count": int(
+                summary.get("today_visit_count") or 0
+            ),
+            "today_vip": int(
+                summary.get("today_vip") or 0
+            ),
+            "today_new_members": int(
+                summary.get("today_new_members") or 0
+            ),
+            "today_visitors_fixed": int(
+                summary.get("today_visitors_fixed") or 0
+            ),
+            "current_people": int(
+                summary.get("current_people") or 0
+            ),
+            "average_stay_minutes": float(
+                summary.get("average_stay_minutes") or 0
+            ),
+        }
+
+        return jsonify({
+            "success": True,
+            "data": response_data,
+        }), 200
+
+    except Exception as e:
+        print("Dashboard Summary API 執行失敗：", e)
+
+        return jsonify({
+            "success": False,
+            "message": "取得 Dashboard 統計資料失敗",
+        }), 500
 
 @home_bp.route("/coupons")
 def coupons():
