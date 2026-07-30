@@ -11,8 +11,9 @@ from routes import member
 
 
 class FakeCursor:
-    def __init__(self, active_log_id):
+    def __init__(self, active_log_id, stale_log=False):
         self.active_log_id = active_log_id
+        self.stale_log = stale_log
         self.lastrowid = 42
         self.rowcount = 0
         self._fetchone = None
@@ -36,10 +37,24 @@ class FakeCursor:
             self.rowcount = 1
         elif normalized.startswith("UPDATE visitors"):
             self.rowcount = 1
+        elif (
+            normalized.startswith("SELECT log_id, visit_time")
+            and "DATE_SUB" in normalized
+        ):
+            self._fetchone = (
+                {
+                    "log_id": self.active_log_id,
+                    "visit_time": "2026-07-28 10:00:00",
+                    "recognized_at": "2026-07-28 10:00:00",
+                    "last_seen_at": "2026-07-28 10:00:05",
+                }
+                if self.stale_log and self.active_log_id is not None
+                else None
+            )
         elif normalized.startswith("SELECT log_id"):
             self._fetchone = (
                 {"log_id": self.active_log_id}
-                if self.active_log_id is not None
+                if self.active_log_id is not None and not self.stale_log
                 else None
             )
         elif normalized.startswith("UPDATE recognition_logs"):
@@ -53,8 +68,8 @@ class FakeCursor:
 
 
 class FakeConnection:
-    def __init__(self, active_log_id):
-        self.cursor_instance = FakeCursor(active_log_id)
+    def __init__(self, active_log_id, stale_log=False):
+        self.cursor_instance = FakeCursor(active_log_id, stale_log)
         self.committed = False
         self.rolled_back = False
 
@@ -72,8 +87,8 @@ class FakeConnection:
 
 
 class VisitorConversionDatabaseTests(unittest.TestCase):
-    def run_conversion(self, active_log_id):
-        connection = FakeConnection(active_log_id)
+    def run_conversion(self, active_log_id, stale_log=False):
+        connection = FakeConnection(active_log_id, stale_log)
         with patch.object(db, "get_connection", return_value=connection):
             result = db.convert_visitor_to_member(
                 visitor_id=7,
@@ -104,6 +119,23 @@ class VisitorConversionDatabaseTests(unittest.TestCase):
         self.assertEqual(88, updates[0][1][-1])
         self.assertNotIn("visitor_id = %s", updates[0][0])
         self.assertEqual(88, result["converted_active_log_id"])
+
+    def test_stale_active_visit_is_closed_as_visitor_history(self):
+        connection, result = self.run_conversion(
+            active_log_id=77,
+            stale_log=True,
+        )
+        updates = [
+            (sql, params)
+            for sql, params in connection.cursor_instance.executed
+            if sql.startswith("UPDATE recognition_logs")
+        ]
+
+        self.assertEqual(1, len(updates))
+        self.assertIn("visit_status = 'left'", updates[0][0])
+        self.assertEqual(77, updates[0][1][-1])
+        self.assertIsNone(result["converted_active_log_id"])
+        self.assertEqual(77, result["closed_stale_log_id"])
 
 
 class VisitorConversionCacheTests(unittest.TestCase):
