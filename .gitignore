@@ -23,3 +23,6 @@ visitor_images/*
 member_images/*
 !visitor_images/.gitkeep
 !member_images/.gitkeep
+
+venv.broken-*/
+python-*.exe
