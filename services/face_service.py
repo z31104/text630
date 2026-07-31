@@ -216,6 +216,47 @@ def draw_chinese_text(
         return frame
 
 
+def draw_display_text(
+    frame,
+    text,
+    position,
+    font_size=28,
+    color=(0, 255, 0),
+):
+    """
+    ASCII 標籤直接交給 OpenCV，中文才使用 Pillow。
+
+    散客與偵測狀態大多是 ASCII，可避免每個標籤都將整張影像
+    在 OpenCV 與 Pillow 之間來回轉換。
+    """
+    text = str(text)
+
+    if not text:
+        return frame
+
+    if text.isascii():
+        x, y = position
+        cv2.putText(
+            frame,
+            text,
+            (int(x), int(y + font_size)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            max(font_size / 34.0, 0.45),
+            color,
+            2,
+            cv2.LINE_AA,
+        )
+        return frame
+
+    return draw_chinese_text(
+        frame,
+        text,
+        position,
+        font_size=font_size,
+        color=color,
+    )
+
+
 MEMBER_IMAGE_DIR = os.path.join(
     BASE_DIR,
     "member_images"
@@ -987,7 +1028,7 @@ def reload_all_faces():
     return known_members, known_visitors
 
 
-def reload_member_faces():
+def reload_member_faces(strict=False):
     """
     重新載入會員人臉資料。
 
@@ -998,6 +1039,8 @@ def reload_member_faces():
     new_data = load_member_faces()
 
     if new_data is None:
+        if strict:
+            raise RuntimeError("會員人臉資料重新載入失敗")
         print("會員人臉資料重新載入失敗，保留原本快取")
         with face_cache_lock:
             return known_members
@@ -1142,7 +1185,7 @@ def sync_converted_visitor_cache(
         return False
 
 
-def reload_visitor_faces():
+def reload_visitor_faces(strict=False):
     """
     重新載入散客人臉資料。
 
@@ -1154,6 +1197,8 @@ def reload_visitor_faces():
     new_data = load_visitor_faces()
 
     if new_data is None:
+        if strict:
+            raise RuntimeError("散客人臉資料重新載入失敗")
         print("散客人臉資料重新載入失敗，保留原本快取")
         with face_cache_lock:
             return known_visitors
@@ -1366,6 +1411,30 @@ def register_new_visitor(frame, faces, encoding=None):
         return build_result(
             confidence=0,
             recognition_status="failed"
+        )
+
+    # 只有即將建立新散客時才同步會員快取。這可補上其他
+    # Cloud Run instance 剛完成 LINE 註冊、目前 instance 尚未刷新之空窗。
+    try:
+        reload_member_faces(strict=True)
+    except Exception as error:
+        print(f"散客建檔前會員同步失敗，取消本次建檔：{error}")
+        return build_result(
+            confidence=0,
+            recognition_status="failed",
+        )
+    member_match = find_matching_member(current_encoding)
+
+    if member_match.get("matched"):
+        print(
+            "散客建檔前會員防重命中："
+            f"member_id={member_match.get('member_id')}，"
+            f"distance={member_match.get('distance')}"
+        )
+        return build_result(
+            member_data=member_match.get("member"),
+            confidence=member_match.get("confidence", 0),
+            recognition_status="recognized",
         )
 
     visitor_match = find_matching_visitor(
@@ -1734,6 +1803,67 @@ def check_duplicate_face(
             if closest_distance is not None
             else None
         )
+    }
+
+
+def find_matching_member(
+    encoding,
+    tolerance=MEMBER_MATCH_TOLERANCE,
+):
+    """使用目前會員快取尋找最接近的人臉，不在此函式進行 DB I/O。"""
+    default_result = {
+        "matched": False,
+        "member_id": None,
+        "member": None,
+        "distance": None,
+        "confidence": 0,
+    }
+
+    try:
+        encoding = np.asarray(encoding, dtype=float)
+    except (TypeError, ValueError):
+        return default_result
+
+    if encoding.shape != (128,):
+        return default_result
+
+    with face_cache_lock:
+        members_snapshot = list(known_members)
+
+    valid_members = []
+    member_encodings = []
+
+    for member in members_snapshot:
+        known_encoding = member.get("encoding")
+        if known_encoding is None:
+            continue
+
+        try:
+            known_encoding = np.asarray(known_encoding, dtype=float)
+        except (TypeError, ValueError):
+            continue
+
+        if known_encoding.shape != (128,):
+            continue
+
+        valid_members.append(member)
+        member_encodings.append(known_encoding)
+
+    if not member_encodings:
+        return default_result
+
+    distances = _locked_face_distance(member_encodings, encoding)
+    best_index = int(np.argmin(distances))
+    best_distance = float(distances[best_index])
+    best_member = valid_members[best_index]
+    confidence = max(0, min(1, 1 - best_distance))
+
+    return {
+        "matched": best_distance < tolerance and confidence >= 0.5,
+        "member_id": best_member.get("member_id"),
+        "member": best_member,
+        "distance": round(best_distance, 4),
+        "confidence": round(confidence, 2),
     }
 
 
@@ -2354,7 +2484,7 @@ def draw_face_boxes(frame, faces, result=None, current_fps=None):
     )
 
     # 姓名另外使用 Pillow，才能顯示中文
-    frame = draw_chinese_text(
+    frame = draw_display_text(
         frame,
         display_name,
         (105, 15),
@@ -2414,7 +2544,7 @@ def draw_face_boxes(frame, faces, result=None, current_fps=None):
             0
         )
 
-        frame = draw_chinese_text(
+        frame = draw_display_text(
             frame,
             box_label,
             (x, label_y),

@@ -33,6 +33,8 @@ from services.face_service import (
     close_recognition_visit,
     send_line_notify,
     reload_all_faces,
+    reload_member_faces,
+    reload_visitor_faces,
 )
 camera_bp = Blueprint("camera", __name__)
 
@@ -252,6 +254,7 @@ CAMERA_ANALYSIS_INTERVAL = max(
 )
 LAST_SEEN_UPDATE_INTERVAL = 15 # 每 15 秒更新一次資料庫
 VISIT_STATE_INTERVAL = 1.0     # 到店狀態最多每秒排入一次背景更新
+VISIT_TIMEOUT_CHECK_INTERVAL = 1.0
 VISITOR_CONVERSION_CHECK_INTERVAL = 2.0
 GUEST_LOG_INTERVAL = 60        # Guest 每 60 秒最多記錄一次，避免太頻繁
 MIN_CONFIDENCE = 0.5           # 信心值低於 0.5 的會員辨識結果先不記錄
@@ -312,20 +315,54 @@ def confirm_stable_guest(recognition_result):
     return guest_confirm_count >= GUEST_CONFIRM_REQUIRED
 
 
+def refresh_face_caches_once():
+    """
+    分別刷新會員與散客快取。
+
+    兩種資料來源互不綁定，避免其中一個查詢暫時失敗時，
+    另一個已成功載入的快取也無法更新。
+    """
+    result = {}
+
+    for cache_name, reload_faces in (
+        ("會員", reload_member_faces),
+        ("散客", reload_visitor_faces),
+    ):
+        started_at = time.monotonic()
+        try:
+            faces = reload_faces(strict=True)
+            result[cache_name] = {
+                "count": len(faces),
+                "elapsed": time.monotonic() - started_at,
+                "error": None,
+            }
+        except Exception as error:
+            result[cache_name] = {
+                "count": None,
+                "elapsed": time.monotonic() - started_at,
+                "error": str(error),
+            }
+
+    return result
+
+
 def _face_cache_refresh_worker():
     while True:
         refresh_started = time.monotonic()
-        try:
-            members, visitors = reload_all_faces()
-            elapsed = time.monotonic() - refresh_started
-            print(
-                "背景人臉快取更新完成："
-                f"會員 {len(members)} 筆，"
-                f"散客 {len(visitors)} 筆，"
-                f"耗時 {elapsed:.2f} 秒"
-            )
-        except Exception as error:
-            print(f"背景人臉快取更新失敗：{error}")
+        refresh_result = refresh_face_caches_once()
+
+        for cache_name, status in refresh_result.items():
+            if status["error"] is None:
+                print(
+                    f"背景{cache_name}人臉快取更新完成："
+                    f"{status['count']} 筆，"
+                    f"耗時 {status['elapsed']:.2f} 秒"
+                )
+            else:
+                print(
+                    f"背景{cache_name}人臉快取更新失敗："
+                    f"{status['error']}"
+                )
 
         elapsed = time.monotonic() - refresh_started
         wait_seconds = max(
@@ -850,6 +887,8 @@ def generate_frames():
         last_conversion_check_time = 0.0
         converted_visitor_ids = set()
         last_detected_faces = []
+        timeout_check_future = None
+        last_timeout_check_submit_time = 0.0
 
         # 快取由背景執行緒同步，攝影串流不等待雲端 DB。
         start_face_cache_refresh_worker()
@@ -1107,7 +1146,29 @@ def generate_frames():
 
             # 檢查已經超過離店等待時間的對象
             # 並將原本紀錄更新為 visit_status="left"
-            close_timeout_visits(current_time)
+            # 保留原有共用鎖與離店邏輯，但將雲端 DB 工作移出影格迴圈。
+            if (
+                timeout_check_future is not None
+                and timeout_check_future.done()
+            ):
+                try:
+                    timeout_check_future.result()
+                except Exception as error:
+                    print(f"背景離店檢查失敗：{error}")
+                timeout_check_future = None
+
+            if (
+                timeout_check_future is None
+                and (
+                    current_time - last_timeout_check_submit_time
+                    >= VISIT_TIMEOUT_CHECK_INTERVAL
+                )
+            ):
+                timeout_check_future = visit_db_executor.submit(
+                    close_timeout_visits,
+                    current_time,
+                )
+                last_timeout_check_submit_time = current_time
 
             # 無論有沒有人臉，都顯示目前辨識狀態與 FPS。
             # faces 為空時不會畫人臉框，只會顯示左上角資訊。

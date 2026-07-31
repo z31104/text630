@@ -101,6 +101,39 @@ class CameraAsyncPipelineTests(unittest.TestCase):
         self.assertEqual(42, result["member"]["member_id"])
         self.assertEqual(88, result["converted_active_log_id"])
 
+    def test_face_caches_refresh_independently(self):
+        with (
+            patch.object(
+                camera,
+                "reload_member_faces",
+                side_effect=RuntimeError("member database unavailable"),
+            ) as reload_members,
+            patch.object(
+                camera,
+                "reload_visitor_faces",
+                return_value=[{"visitor_id": 8}],
+            ) as reload_visitors,
+        ):
+            result = camera.refresh_face_caches_once()
+
+        reload_members.assert_called_once_with(strict=True)
+        reload_visitors.assert_called_once_with(strict=True)
+        self.assertEqual(
+            "member database unavailable",
+            result["會員"]["error"],
+        )
+        self.assertEqual(1, result["散客"]["count"])
+        self.assertIsNone(result["散客"]["error"])
+
+    def test_timeout_check_is_dispatched_to_background_executor(self):
+        source = inspect.getsource(camera.generate_frames)
+
+        self.assertIn(
+            "visit_db_executor.submit(\n"
+            "                    close_timeout_visits,",
+            source,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
