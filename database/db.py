@@ -295,6 +295,27 @@ def get_member_by_id(member_id):
     return member
 
 
+def get_member_preferences(member_id):
+    """取得會員註冊時在 LINE 勾選的喜好類別清單（member_preferences 表），依寫入順序排列。"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT preference_value
+            FROM member_preferences
+            WHERE member_id = %s
+            ORDER BY preference_id
+            """,
+            (member_id,)
+        )
+        return [row[0] for row in cursor.fetchall()]
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def insert_recognition_log(
     subject_type=None,
     member_id=None,

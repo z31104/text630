@@ -14,6 +14,7 @@ from services.visit_service import (
 from database.db import (
     get_active_visit,
     get_member_by_id,
+    get_member_preferences,
     get_visitor_by_id,
 )
 
@@ -34,6 +35,7 @@ from services.face_service import (
     send_line_notify,
     reload_all_faces,
 )
+from linebot_service.notify import notify_preference_promo
 camera_bp = Blueprint("camera", __name__)
 
 # 全域共用的攝影機物件
@@ -728,6 +730,24 @@ def update_member_visit(result, current_time):
             print(f"log_id: {log_id}")
             print(f"notification_status: {notification_status}")
             print("=======================================")
+
+        if outcome.get("subject_type") == "member":
+            try:
+                preferences = get_member_preferences(member_id)
+                promo_status = notify_preference_promo(
+                    {
+                        "name": result.get("name"),
+                        "line_user_id": result.get("line_user_id"),
+                    },
+                    preferences=preferences,
+                )
+                print("========== Preference Promo Result ==========")
+                print(f"log_id: {log_id}")
+                print(f"preferences: {preferences}")
+                print(f"promo_status: {promo_status}")
+                print("===============================================")
+            except Exception as e:
+                print(f"喜好推播失敗（member_id={member_id}）：", e)
 
     elif action == "failed":
         print(

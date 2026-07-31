@@ -170,3 +170,42 @@ def notify_new_friend(line_user_id):
 
     message = "感謝加入好友！歡迎申請成為會員，即可享有 VIP 專屬通知服務。"
     return push_message(line_user_id, message)
+
+
+# 依會員註冊時勾選的喜好類別（templates/register.html 的 preference 選項），
+# 對應到店時要推播的促銷文案。
+PREFERENCE_PROMO_MESSAGES = {
+    "家具": "🛋️ {name}，歡迎光臨！家具區本週新品優惠中，快去逛逛！",
+    "收納": "📦 {name}，歡迎光臨！收納好物特賣中，讓家裡更清爽！",
+    "燈飾": "💡 {name}，歡迎光臨！燈飾區限時優惠，點亮您的家！",
+    "餐廳": "🍽️ {name}，歡迎光臨！逛累了別忘了到餐廳享用經典瑞典肉丸！",
+}
+
+
+def notify_preference_promo(member, preferences=None):
+    """
+    觸發時機⑤：會員到店時呼叫（由 routes/camera.py 呼叫），
+    依註冊時在 LINE 勾選的喜好類別（member_preferences 表，非 members.favorite_product
+    ——後者是後台可另外手動填寫的自由文字欄位，跟註冊勾選的類別是兩回事）
+    推播對應促銷文案給會員本人。
+
+    member 格式範例：
+    {
+        "name": "王小明",
+        "line_user_id": "U123456789"
+    }
+    preferences：該會員註冊時勾選的喜好類別清單，例如 ["家具", "餐廳"]。
+    清單中第一個能對應到 PREFERENCE_PROMO_MESSAGES 的類別會被拿來發送。
+    """
+    line_user_id = member.get("line_user_id")
+
+    if not line_user_id or not preferences:
+        return None
+
+    for preference in preferences:
+        template = PREFERENCE_PROMO_MESSAGES.get(preference)
+        if template:
+            name = member.get("name") or "會員"
+            return push_message(line_user_id, template.format(name=name))
+
+    return None
