@@ -4,6 +4,7 @@
 
 {% set member_level = member.get("member_level", "") if member else "" %}
 {% set is_vip = member.get("vip") if member else false %}
+{% set line_user_id = member.get("line_user_id", "") or "" %}
 {% set latest_record = records[0] if records else {} %}
 {% set latest_visit_time = (
     member.get("last_visit_time")
@@ -78,14 +79,11 @@
 
                 <div class="detail-field">
                     <label for="member-line-user-id">LINE User ID</label>
-                    <input
+                    <output
                         id="member-line-user-id"
-                        class="detail-input"
-                        type="text"
-                        name="line_user_id"
-                        value="{{ member.get('line_user_id', '') or '' }}"
-                        readonly
-                    >
+                        class="detail-input line-user-id-display"
+                        {% if line_user_id %}title="{{ line_user_id }}"{% endif %}
+                    >{{ line_user_id | mask_line_user_id }}</output>
                 </div>
 
                 <div class="detail-field">
@@ -143,7 +141,7 @@
 
             {% if member.get("display_face_image") %}
                 <img
-                    src="{{ member.get('display_face_image') }}"
+                    src="{{ member.get('display_face_image') }}?v={{ (member.get('face_image') or member.get('updated_at') or '') | urlencode }}"
                     alt="{{ member.get('name', '會員') }} 的主要照片"
                     class="member-main-photo"
                 >

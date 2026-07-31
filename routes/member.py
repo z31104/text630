@@ -74,6 +74,36 @@ from services.face_service import (
 
 member_bp = Blueprint("member", __name__)
 
+LINE_USER_ID_MASK = "\u2022" * 6
+
+
+@member_bp.app_template_filter("mask_line_user_id")
+def mask_line_user_id(value):
+    """Mask a LINE User ID for display without changing the stored value."""
+    if value is None:
+        return "-"
+
+    line_user_id = str(value).strip()
+    if not line_user_id:
+        return "-"
+
+    if len(line_user_id) <= 4:
+        return LINE_USER_ID_MASK
+
+    if len(line_user_id) <= 10:
+        return (
+            f"{line_user_id[:2]}"
+            f"{LINE_USER_ID_MASK}"
+            f"{line_user_id[-2:]}"
+        )
+
+    return (
+        f"{line_user_id[:6]}"
+        f"{LINE_USER_ID_MASK}"
+        f"{line_user_id[-4:]}"
+    )
+
+
 BASE_DIR = os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))
 )
@@ -106,47 +136,6 @@ def allowed_image_file(filename):
     extension = filename.rsplit(".", 1)[1].lower()
 
     return extension in ALLOWED_IMAGE_EXTENSIONS
-
-
-def _safe_member_image_url(image_path):
-    if not image_path:
-        return None
-
-    normalized_path = str(image_path).replace("\\", "/")
-
-    if normalized_path.startswith(
-        ("https://", "http://")
-    ):
-        return normalized_path
-
-    static_marker = "static/"
-    member_image_marker = "member_images/"
-
-    if normalized_path.startswith(static_marker):
-        return url_for(
-            "static",
-            filename=normalized_path[len(static_marker):]
-        )
-
-    if static_marker in normalized_path:
-        return url_for(
-            "static",
-            filename=normalized_path.split(static_marker, 1)[1]
-        )
-
-    if os.path.isabs(str(image_path)):
-        if member_image_marker in normalized_path:
-            filename = normalized_path.rsplit(member_image_marker, 1)[1]
-            return url_for("member.member_image", filename=filename)
-
-        return None
-
-    if member_image_marker in normalized_path:
-        filename = normalized_path.rsplit(member_image_marker, 1)[1]
-    else:
-        filename = normalized_path
-
-    return url_for("member.member_image", filename=filename)
 
 
 def _get_member_image_paths(member_id):
@@ -223,16 +212,14 @@ def _get_member_detail(member_id):
                 line_user_id,
                 total_amount,
                 favorite_product,
-                COALESCE(
-                    NULLIF(face_image, ''),
-                    (
-                        SELECT fi.image_path
-                        FROM face_images AS fi
-                        WHERE fi.member_id = members.member_id
-                        ORDER BY fi.face_id DESC
-                        LIMIT 1
-                    )
-                ) AS face_image,
+                NULLIF(face_image, '') AS face_image,
+                (
+                    SELECT fi.image_path
+                    FROM face_images AS fi
+                    WHERE fi.member_id = members.member_id
+                    ORDER BY fi.face_id DESC
+                    LIMIT 1
+                ) AS fallback_face_image,
                 registration_source,
                 created_at,
                 updated_at
@@ -256,6 +243,7 @@ def _get_member_detail(member_id):
         )
         image_paths = _unique_image_paths(
             [member.get("face_image")],
+            [member.get("fallback_face_image")],
             [
                 row.get("image_path")
                 for row in cursor.fetchall()
@@ -362,16 +350,14 @@ def member():
                 m.line_user_id,
                 m.total_amount,
                 m.favorite_product,
-                COALESCE(
-                    NULLIF(m.face_image, ''),
-                    (
-                        SELECT fi.image_path
-                        FROM face_images AS fi
-                        WHERE fi.member_id = m.member_id
-                        ORDER BY fi.face_id DESC
-                        LIMIT 1
-                    )
-                ) AS face_image,
+                NULLIF(m.face_image, '') AS face_image,
+                (
+                    SELECT fi.image_path
+                    FROM face_images AS fi
+                    WHERE fi.member_id = m.member_id
+                    ORDER BY fi.face_id DESC
+                    LIMIT 1
+                ) AS fallback_face_image,
                 m.registration_source,
                 m.created_at,
                 m.updated_at
@@ -413,9 +399,15 @@ def member():
 
         for member_data in members:
             member_data["display_face_image"] = (
-                _safe_member_image_url(
-                    member_data.get("face_image")
+                url_for(
+                    "member.member_photo",
+                    member_id=member_data.get("member_id"),
                 )
+                if (
+                    member_data.get("face_image")
+                    or member_data.get("fallback_face_image")
+                )
+                else None
             )
 
         return render_template(
@@ -484,10 +476,17 @@ def member_photo(member_id):
     if not member:
         return "找不到會員照片", 404
 
-    image_paths = _unique_image_paths(
-        [member.get("face_image")],
-        _get_member_image_paths(member_id),
-    )
+    canonical_image_path = member.get("face_image")
+    if canonical_image_path:
+        # members.face_image 是註冊時上傳的會員主照片。
+        # 若它失效，回傳 404 讓前端顯示預設圖，不可改拿散客舊照。
+        image_paths = [canonical_image_path]
+    else:
+        # 僅供沒有主照片欄位的舊會員資料相容使用。
+        image_paths = _unique_image_paths(
+            [member.get("fallback_face_image")],
+            _get_member_image_paths(member_id),
+        )
 
     for image_path in image_paths:
         normalized = image_path.replace("\\", "/")

@@ -88,6 +88,27 @@ class MemberImageStorageTests(unittest.TestCase):
         )
         self.assertEqual(1, len(fake_blob.uploads))
 
+    def test_cloud_run_rejects_ephemeral_member_image_storage(self):
+        with (
+            patch.object(
+                image_storage,
+                "MEMBER_IMAGE_BUCKET",
+                "",
+            ),
+            patch.dict(
+                os.environ,
+                {"K_SERVICE": "smart-member"},
+            ),
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "MEMBER_IMAGE_BUCKET",
+            ):
+                image_storage.persist_member_image(
+                    "member.jpg",
+                    "member.jpg",
+                )
+
     def test_delete_local_image_only_inside_allowed_root(self):
         with tempfile.TemporaryDirectory() as allowed_root:
             image_path = os.path.join(allowed_root, "member.jpg")
@@ -119,7 +140,7 @@ class MemberImageStorageTests(unittest.TestCase):
             self.assertTrue(deleted)
             self.assertFalse(os.path.exists(image_path))
 
-    def test_member_photo_falls_back_to_existing_visitor_image(self):
+    def test_missing_member_photo_does_not_fall_back_to_visitor_image(self):
         app = Flask(__name__)
         app.register_blueprint(member.member_bp)
 
@@ -154,8 +175,8 @@ class MemberImageStorageTests(unittest.TestCase):
                     "/member/13/photo"
                 )
 
-        self.assertEqual(200, response.status_code)
-        self.assertEqual(b"visitor-photo", response.data)
+        self.assertEqual(404, response.status_code)
+        self.assertNotEqual(b"visitor-photo", response.data)
 
     def test_line_registration_photo_is_preferred_over_visitor(self):
         app = Flask(__name__)
@@ -211,6 +232,28 @@ class MemberImageStorageTests(unittest.TestCase):
             })
         )
 
+    def test_face_cache_prefers_registered_member_photo(self):
+        source = inspect.getsource(face_service.load_member_faces)
+        self.assertIn(
+            'row.get("face_image")',
+            source,
+        )
+        self.assertIn(
+            'or row.get("image_path")',
+            source,
+        )
+
+    def test_vip_notification_uses_stable_member_photo_url(self):
+        source = inspect.getsource(face_service.send_line_notify)
+        self.assertIn(
+            'f"{public_base_url}/member/{member_id}/photo"',
+            source,
+        )
+        self.assertIn(
+            "if public_base_url:",
+            source,
+        )
+
     def test_member_edit_preserves_identity_fields(self):
         edit_source = inspect.getsource(member.edit_member)
         template_path = os.path.join(
@@ -233,8 +276,12 @@ class MemberImageStorageTests(unittest.TestCase):
             'target_member.get("total_amount")',
             edit_source,
         )
-        self.assertIn('name="line_user_id"', template_source)
-        self.assertIn("readonly", template_source)
+        self.assertIn(
+            "line_user_id | mask_line_user_id",
+            template_source,
+        )
+        self.assertIn('title="{{ line_user_id }}"', template_source)
+        self.assertNotIn('name="line_user_id"', template_source)
         self.assertIn('name="total_amount"', template_source)
 
 

@@ -1,4 +1,11 @@
+.env
+.env.local
+.env.*.local
+.venv
 venv
+venv.broken-*
 .git
 __pycache__
 *.pyc
+member_images
+visitor_images

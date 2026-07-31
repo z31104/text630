@@ -8,7 +8,6 @@ import threading
 import time
 import uuid
 from datetime import datetime
-from urllib.parse import quote
 
 import cv2
 from services.image_storage import (
@@ -834,7 +833,13 @@ def load_member_faces():
                     "registration_source": row.get("registration_source"),
                     "total_amount": row.get("total_amount", 0),
                     "favorite_product": row.get("favorite_product"),
-                    "face_image": row.get("image_path"),
+                    # 通知與後台顯示一律使用 members.face_image
+                    # 這張正式註冊照；row.image_path 只供人臉比對使用，
+                    # 因為散客轉會員後同一會員可能同時有散客舊照。
+                    "face_image": (
+                        row.get("face_image")
+                        or row.get("image_path")
+                    ),
                     "created_at": row.get("member_created_at"),
                     "updated_at": row.get("member_updated_at"),
                     "encoding": np.array(
@@ -2715,20 +2720,18 @@ def send_line_notify(result, log_id=None):
     name = result.get("name") or "VIP 會員"
     public_base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
     face_image = result.get("face_image") or result.get("image_path")
-    if (
+    if public_base_url:
+        # 正式會員一律使用穩定的會員主照片網址。
+        # 散客剛轉會員時，活動中的辨識結果可能沒有 face_image，
+        # 但 members.face_image 已經存在，不應因此退化成純文字通知。
+        result["notification_image_url"] = (
+            f"{public_base_url}/member/{member_id}/photo"
+        )
+    elif (
         face_image
         and str(face_image).startswith("https://")
     ):
         result["notification_image_url"] = str(face_image)
-    elif public_base_url and face_image:
-        image_filename = os.path.basename(
-            str(face_image).replace("\\", "/")
-        )
-        if image_filename:
-            result["notification_image_url"] = (
-                f"{public_base_url}/member_images/"
-                f"{quote(image_filename)}"
-            )
 
     if db_insert_vip_notification is None:
         print(

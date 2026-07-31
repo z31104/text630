@@ -62,11 +62,21 @@
             {% for member in members %}
                 {% set member_id = member.get("member_id", "") %}
                 {% set member_level = member.get("member_level", "") %}
+                {% set line_user_id = member.get("line_user_id", "") or "" %}
                 <tr>
                     <td>{{ member_id or "-" }}</td>
                     <td>{{ member.get("name", "") or "-" }}</td>
                     <td>{{ member.get("phone", "") or "-" }}</td>
-                    <td>{{ member.get("line_user_id", "") or "-" }}</td>
+                    <td>
+                        {% if line_user_id %}
+                            <span
+                                class="line-user-id-display"
+                                title="{{ line_user_id }}"
+                            >{{ line_user_id | mask_line_user_id }}</span>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
                     <td>
                         {% if member_level == "vip" or member.get("vip") %}
                             <span class="badge vip">VIP 會員</span>

@@ -29,6 +29,10 @@ def cloud_storage_enabled():
     return bool(MEMBER_IMAGE_BUCKET)
 
 
+def running_on_cloud_run():
+    return bool(os.getenv("K_SERVICE"))
+
+
 def _get_storage_client():
     global _storage_client
 
@@ -109,6 +113,11 @@ def persist_member_image(
     本機未設定 bucket 時維持既有本機檔案行為。
     """
     if not cloud_storage_enabled():
+        if running_on_cloud_run():
+            raise RuntimeError(
+                "Cloud Run 必須設定 MEMBER_IMAGE_BUCKET，"
+                "不可將會員照片只存於暫存檔案系統"
+            )
         return local_image_path
 
     object_name = _build_object_name(filename)
