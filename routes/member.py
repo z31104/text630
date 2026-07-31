@@ -17,6 +17,7 @@ from werkzeug.utils import secure_filename
 
 from database.db import (
     convert_visitor_to_member,
+    get_all_members,
     get_connection,
     normalize_encoding_data,
     save_recognition_log,
@@ -313,6 +314,33 @@ def _get_member_visit_records(member_id):
         if conn is not None:
             conn.close()
 
+
+@member_bp.route("/api/members", methods=["GET"])
+def member_list_api():
+    """
+    回傳全部會員清單。
+    """
+    try:
+        members = get_all_members()
+
+        return jsonify({
+            "success": True,
+            "message": "會員清單取得成功",
+            "data": members or [],
+            "count": len(members or []),
+        }), 200
+
+    except Exception as e:
+        print("取得會員清單失敗：", e)
+
+        return jsonify({
+            "success": False,
+            "message": "取得會員清單失敗",
+            "data": [],
+            "count": 0,
+        }), 500
+
+
 @member_bp.route("/member")
 def member():
     keyword = request.args.get("keyword", "").strip()
@@ -566,7 +594,84 @@ def add_recognition_log():
             "detail": str(e)
         }), 500
 
-   
+
+@member_bp.route(
+    "/api/member/<int:member_id>/visits",
+    methods=["GET"]
+)
+def member_visits_api(member_id):
+    """
+    回傳指定會員的歷史到店紀錄。
+    """
+    try:
+        member = _get_member_detail(member_id)
+
+        if not member:
+            return jsonify({
+                "success": False,
+                "message": "找不到指定會員",
+                "data": None,
+            }), 404
+
+        records = _get_member_visit_records(member_id)
+
+        return jsonify({
+            "success": True,
+            "message": "會員到店紀錄取得成功",
+            "data": {
+                "member_id": member_id,
+                "member_name": member.get("name"),
+                "visit_records": records or [],
+                "visit_record_count": len(records or []),
+            },
+        }), 200
+
+    except Exception as e:
+        print("取得會員到店紀錄 API 失敗：", e)
+
+        return jsonify({
+            "success": False,
+            "message": "取得會員到店紀錄失敗",
+            "data": None,
+        }), 500
+
+
+@member_bp.route("/api/member/<int:member_id>", methods=["GET"])
+def member_detail_api(member_id):
+    """
+    回傳指定會員的詳細資料與到店紀錄。
+    """
+    try:
+        member = _get_member_detail(member_id)
+
+        if not member:
+            return jsonify({
+                "success": False,
+                "message": "找不到指定會員",
+                "data": None,
+            }), 404
+
+        records = _get_member_visit_records(member_id)
+
+        return jsonify({
+            "success": True,
+            "message": "會員詳細資料取得成功",
+            "data": {
+                "member": member,
+                "visit_records": records or [],
+                "visit_record_count": len(records or []),
+            },
+        }), 200
+
+    except Exception as e:
+        print("取得會員詳細資料 API 失敗：", e)
+
+        return jsonify({
+            "success": False,
+            "message": "取得會員詳細資料失敗",
+            "data": None,
+        }), 500
+
 
 @member_bp.route("/member/<int:member_id>")
 def member_detail(member_id):
