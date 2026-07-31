@@ -8,12 +8,16 @@ try:
         get_dashboard_summary,
         get_member_coupons,
         get_recognition_logs,
+        get_seven_day_visit_trend,
+        get_visit_hour_distribution,
     )
 except ImportError:
     get_coupon_summary = None
     get_dashboard_summary = None
     get_member_coupons = None
     get_recognition_logs = None
+    get_seven_day_visit_trend = None
+    get_visit_hour_distribution = None
 
 home_bp = Blueprint("home", __name__)
 
@@ -280,53 +284,53 @@ def dashboard():
         },
     )
 
-@home_bp.route("/api/dashboard", methods=["GET"])
-def dashboard_summary_api():
+
+@home_bp.route("/api/dashboard/charts", methods=["GET"])
+def dashboard_charts_api():
+    """
+    回傳 Dashboard 圖表需要的資料：
+    1. 最近七天到店趨勢
+    2. 每小時到店分布
+    """
+    if (
+        get_seven_day_visit_trend is None
+        or get_visit_hour_distribution is None
+    ):
+        return jsonify({
+            "success": False,
+            "message": "Dashboard 圖表資料來源尚未提供",
+            "data": {
+                "seven_day_trend": [],
+                "hourly_distribution": [],
+            },
+        }), 503
+
     try:
-        if get_dashboard_summary is None:
-            return jsonify({
-                "success": False,
-                "message": "Dashboard 資料來源尚未提供",
-            }), 503
-
-        summary = get_dashboard_summary()
-
-        response_data = {
-            "today_visitors": int(
-                summary.get("today_visitors") or 0
-            ),
-            "today_visit_count": int(
-                summary.get("today_visit_count") or 0
-            ),
-            "today_vip": int(
-                summary.get("today_vip") or 0
-            ),
-            "today_new_members": int(
-                summary.get("today_new_members") or 0
-            ),
-            "today_visitors_fixed": int(
-                summary.get("today_visitors_fixed") or 0
-            ),
-            "current_people": int(
-                summary.get("current_people") or 0
-            ),
-            "average_stay_minutes": float(
-                summary.get("average_stay_minutes") or 0
-            ),
-        }
+        seven_day_trend = get_seven_day_visit_trend()
+        hourly_distribution = get_visit_hour_distribution()
 
         return jsonify({
             "success": True,
-            "data": response_data,
+            "message": "Dashboard 圖表資料取得成功",
+            "data": {
+                "seven_day_trend": seven_day_trend or [],
+                "hourly_distribution": hourly_distribution or [],
+            },
         }), 200
 
     except Exception as e:
-        print("Dashboard Summary API 執行失敗：", e)
+        print("取得 Dashboard 圖表資料失敗：", e)
 
         return jsonify({
             "success": False,
-            "message": "取得 Dashboard 統計資料失敗",
+            "message": "取得 Dashboard 圖表資料失敗",
+            "data": {
+                "seven_day_trend": [],
+                "hourly_distribution": [],
+            },
         }), 500
+
+
 
 @home_bp.route("/coupons")
 def coupons():
