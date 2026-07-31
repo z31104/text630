@@ -238,6 +238,11 @@ def get_member_coupons_by_id(member_id):
         include_redemption=False,
     )
 
+    def _iso(text):
+        # prepare_member_coupon_rows() 給的是 "YYYY-MM-DD HH:MM:SS"（會員專區頁面共用格式），
+        # 這裡只把空格換成 "T"，符合團隊規定的 ISO 8601，不動到共用函式本身。
+        return text.replace(" ", "T", 1) if text else text
+
     return jsonify({
         "success": True,
         "count": len(prepared_coupons),
@@ -247,8 +252,8 @@ def get_member_coupons_by_id(member_id):
                 "coupon_name": coupon.get("coupon_name"),
                 "description": coupon.get("description"),
                 "discount_text": coupon.get("discount_text"),
-                "receive_time": coupon.get("receive_time_text"),
-                "end_at": coupon.get("end_at_text"),
+                "receive_time": _iso(coupon.get("receive_time_text")),
+                "end_at": _iso(coupon.get("end_at_text")),
                 "used": coupon.get("status_key") == "used",
                 "status": coupon.get("status_key"),
                 "status_label": coupon.get("status_label"),

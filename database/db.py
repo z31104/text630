@@ -2729,7 +2729,54 @@ def get_member_lottery_records(member_id):
             cursor.close()
 
         if conn and conn.is_connected():
-            conn.close()                      
+            conn.close()
+
+
+def get_member_prize(member_id):
+    """
+    查詢會員在目前活動（LOTTERY_CAMPAIGN_CODE）抽中的最終獎項與兌換資訊。
+    跟 draw_lottery_for_member() 裡「已抽過」那段查的是同一張 member_prizes，
+    這裡抽成獨立函式給 GET /api/lottery/result/<member_id> 用，沒有實際查詢邏輯的改動。
+    沒抽過的話回傳 None。
+    """
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT
+                mp.member_prize_id,
+                mp.member_id,
+                mp.prize_id,
+                mp.campaign_code,
+                mp.prize_code,
+                mp.redeem_token,
+                mp.status,
+                mp.issued_at,
+                mp.expires_at,
+                mp.redeemed_at,
+                mp.redeemed_by,
+                lp.prize_name,
+                lp.prize_type,
+                lp.prize_value
+            FROM member_prizes mp
+            JOIN lottery_prizes lp
+                ON mp.prize_id = lp.prize_id
+            WHERE mp.member_id = %s
+              AND mp.campaign_code = %s
+            LIMIT 1
+            """,
+            (member_id, LOTTERY_CAMPAIGN_CODE)
+        )
+        return cursor.fetchone()
+    finally:
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
 
 
 def draw_lottery_for_member(member_id):

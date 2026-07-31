@@ -20,11 +20,19 @@ from database.db import (
     register_member_with_face,
     convert_visitor_to_member,
     draw_lottery_for_member,
+    get_member_prize,
+    get_lottery_prize_display_name,
+    REDEMPTION_BASE_URL,
     get_latest_unconverted_visitor,
     get_redemption_by_token,
     redeem_member_prize,
 )
-from linebot_service.notify import push_message, notify_lottery_result, notify_vip_upgrade
+from linebot_service.notify import (
+    push_message,
+    notify_lottery_result,
+    notify_vip_upgrade,
+    notify_vip_recognition,
+)
 from services.face_service import (
     validate_member_face_image,
     check_duplicate_face,
@@ -659,6 +667,59 @@ def register_from_line():
     })
 
 
+@line_bp.route("/api/notify/vip", methods=["POST"])
+def notify_vip():
+    """
+    文件版 VIP Notify API（LINE 組 API 2）：POST /api/notify/vip
+    功能：發送 VIP 到店通知。
+
+    實際辨識流程中，攝影機辨識到 VIP 時是由 services/face_service.py
+    直接呼叫 linebot_service.notify.notify_vip_recognition() 通知店員，
+    同一個 process 內直接呼叫函式，沒有繞一次 HTTP。
+
+    這支端點是額外補的可獨立測試入口：帶 member_id，內部查一次會員資料、
+    確認真的是 VIP 後才觸發同一個通知函式，方便組長／其他組不用真的對著
+    攝影機也能測試「VIP 到店通知」這個功能、拿到真實的成功/失敗 JSON。
+    """
+    data = request.get_json(silent=True) or {}
+    member_id = data.get("member_id")
+
+    if not member_id:
+        return jsonify({"success": False, "message": "缺少 member_id"}), 400
+
+    try:
+        member = _fetch_member_by_id(member_id)
+    except Exception as e:
+        print(f"查詢會員失敗（member_id={member_id}）：", e)
+        return jsonify({"success": False, "message": "查詢會員失敗"}), 500
+
+    if member is None:
+        return jsonify({"success": False, "message": "找不到這位會員"}), 404
+
+    if not member.get("vip"):
+        return jsonify({
+            "success": True,
+            "notified": False,
+            "message": "此會員不是 VIP，未發送通知",
+        })
+
+    notify_status = notify_vip_recognition({
+        "member_id": member.get("member_id"),
+        "name": member.get("name"),
+        "vip": member.get("vip"),
+        "member_level": member.get("member_level"),
+        "line_user_id": member.get("line_user_id"),
+        "confidence": data.get("confidence", 1.0),
+        "notification_image_url": data.get("notification_image_url"),
+    })
+
+    return jsonify({
+        "success": True,
+        "notified": True,
+        "status": notify_status,
+    })
+
+
 @line_bp.route("/api/lottery/draw", methods=["POST"])
 def lottery_draw():
     """
@@ -686,6 +747,63 @@ def lottery_draw():
             notify_lottery_result(member.get("line_user_id"), member.get("name"), result)
 
     return jsonify(result)
+
+
+@line_bp.route("/api/lottery/result/<int:member_id>", methods=["GET"])
+def lottery_result(member_id):
+    """
+    文件版 Lottery Result API（LINE 組 API 5）：GET /api/lottery/result/{member_id}
+    回傳：抽中獎項、QR Code、Redeem Token、是否已兌換。
+
+    查的是 member_prizes（會員抽到「最終獎項」後才會寫入的那張表），
+    跟 POST /api/lottery/draw 對「已經抽過」的會員回傳的內容是同一份資料，
+    這支只是額外提供一個不用真的觸發抽獎、單純查詢結果的 GET 端點。
+    """
+    try:
+        prize_record = get_member_prize(member_id)
+    except Exception as e:
+        print(f"查詢會員抽獎結果失敗（member_id={member_id}）：", e)
+        return jsonify({
+            "success": False,
+            "message": "查詢抽獎結果失敗",
+        }), 500
+
+    if prize_record is None:
+        return jsonify({
+            "success": True,
+            "has_result": False,
+            "data": None,
+        })
+
+    prize_name = get_lottery_prize_display_name(
+        prize_record["prize_code"],
+        prize_record["prize_name"],
+    )
+    redeem_token = prize_record["redeem_token"]
+    qr_value = f"{REDEMPTION_BASE_URL}/redeem/{redeem_token}"
+
+    def _iso(value):
+        # 統一輸出 ISO 8601（team 規定的日期格式），
+        # 不用 jsonify() 對 datetime 的預設格式（RFC 1123，例如 "Sun, 30 Aug..."）
+        return value.isoformat() if value else None
+
+    return jsonify({
+        "success": True,
+        "has_result": True,
+        "data": {
+            "prize_code": prize_record["prize_code"],
+            "prize_name": prize_name,
+            "prize_type": prize_record["prize_type"],
+            "prize_value": prize_record["prize_value"],
+            "qr_code": qr_value,
+            "redeem_token": redeem_token,
+            "redeemed": prize_record["status"] == "redeemed",
+            "status": prize_record["status"],
+            "issued_at": _iso(prize_record["issued_at"]),
+            "expires_at": _iso(prize_record["expires_at"]),
+            "redeemed_at": _iso(prize_record["redeemed_at"]),
+        },
+    })
 
 
 @line_bp.route("/redeem/<token>", methods=["GET", "POST"])
