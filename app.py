@@ -7,6 +7,7 @@ from routes.home import home_bp
 from routes.camera import camera_bp
 from routes.member import member_bp
 from routes.line import line_bp
+from routes.coupon import coupon_bp
 
 app = Flask(__name__)
 
@@ -19,6 +20,7 @@ app.register_blueprint(home_bp)
 app.register_blueprint(camera_bp)
 app.register_blueprint(member_bp)
 app.register_blueprint(line_bp)
+app.register_blueprint(coupon_bp)
 
 
 @app.errorhandler(413)

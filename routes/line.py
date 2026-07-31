@@ -1,7 +1,7 @@
 import json
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 import traceback
 
 import requests
@@ -20,7 +20,6 @@ from database.db import (
     register_member_with_face,
     convert_visitor_to_member,
     draw_lottery_for_member,
-    get_member_coupons,
     get_latest_unconverted_visitor,
     get_redemption_by_token,
     redeem_member_prize,
@@ -35,7 +34,6 @@ from services.face_service import (
     sync_converted_visitor_cache,
     MEMBER_IMAGE_DIR,
 )
-from routes.home import prepare_member_coupon_rows
 from services.image_storage import (
     delete_member_image,
     persist_member_image,
@@ -90,12 +88,8 @@ LIFF_ID_COUPONS = os.getenv("LIFF_ID_COUPONS", "")
 
 # LIFF ID 格式固定是「{LINE Login channel id}-{liff app id}」，
 # 驗證 ID Token 的 aud/client_id 要用前半段的 channel id。
+# （LIFF_COUPONS_CHANNEL_ID 搬到 routes/coupon.py 了，那邊是唯一用到它的地方）
 LIFF_CHANNEL_ID = LIFF_ID.split("-")[0] if LIFF_ID else ""
-LIFF_COUPONS_CHANNEL_ID = (
-    LIFF_ID_COUPONS.split("-")[0]
-    if LIFF_ID_COUPONS
-    else ""
-)
 
 LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify"
 
@@ -692,174 +686,6 @@ def lottery_draw():
             notify_lottery_result(member.get("line_user_id"), member.get("name"), result)
 
     return jsonify(result)
-
-
-COUPON_EXPIRING_SOON_DAYS = 7
-
-
-def _fetch_member_coupons_without_redemption(member_id, limit=500):
-    """
-    舊版正式資料庫的 member_prizes 尚未有 member_coupon_id 時使用。
-
-    會員專區仍可顯示身分與優惠券；只有依賴該欄位的兌換資訊留空。
-    """
-    conn = None
-    cursor = None
-    try:
-        conn = get_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute(
-            """
-            SELECT
-                mc.member_coupon_id,
-                mc.member_id,
-                m.name AS member_name,
-                mc.coupon_id,
-                c.coupon_name,
-                c.description,
-                c.discount_type,
-                c.discount_value,
-                c.start_at,
-                c.end_at,
-                c.status AS coupon_status,
-                mc.source,
-                mc.status,
-                mc.receive_time,
-                mc.used_time,
-                NULL AS redeem_token,
-                NULL AS redemption_status,
-                NULL AS redemption_expires_at
-            FROM member_coupons mc
-            JOIN members m
-                ON mc.member_id = m.member_id
-            JOIN coupons c
-                ON mc.coupon_id = c.coupon_id
-            WHERE mc.member_id = %s
-            ORDER BY mc.receive_time DESC,
-                     mc.member_coupon_id DESC
-            LIMIT %s
-            """,
-            (member_id, min(max(int(limit), 1), 500)),
-        )
-        return cursor.fetchall()
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
-
-
-@line_bp.route("/api/coupons/me", methods=["POST"])
-def get_my_coupon_summary():
-    """
-    優惠券頁面（/coupons）用：依 LIFF ID Token 驗證出真正的 line_user_id，
-    再查「這個 LINE 使用者自己」的優惠券統計。
-
-    刻意不接受前端直接傳 member_id 或 line_user_id 當參數——一律從已驗證的
-    id_token 解出 line_user_id，避免有人竄改請求內容看到別人的優惠券資料。
-    """
-    data = request.get_json(silent=True) or {}
-    id_token = (data.get("id_token") or "").strip()
-
-    line_user_id, error = _decode_line_id_token(
-        id_token,
-        channel_id=LIFF_COUPONS_CHANNEL_ID,
-    )
-
-    if error:
-        return jsonify({"success": False, "message": error}), 401
-
-    try:
-        member = _fetch_member_by_line_user_id(line_user_id)
-    except Exception as e:
-        print("查詢會員失敗：", e)
-        return jsonify({"success": False, "message": "查詢失敗，請稍後再試"}), 500
-
-    if member is None:
-        return jsonify({
-            "success": True,
-            "bound": False,
-            "message": "此 LINE 帳號尚未綁定會員，請先完成會員註冊",
-        })
-
-    try:
-        coupons = get_member_coupons(member_id=member["member_id"], limit=500)
-    except Exception as e:
-        error_text = str(e)
-        if (
-            "Unknown column" in error_text
-            and "mp.member_coupon_id" in error_text
-        ):
-            try:
-                coupons = _fetch_member_coupons_without_redemption(
-                    member_id=member["member_id"],
-                    limit=500,
-                )
-            except Exception as fallback_error:
-                print("相容模式查詢會員優惠券失敗：", fallback_error)
-                return jsonify({
-                    "success": False,
-                    "message": "查詢失敗，請稍後再試",
-                }), 500
-        else:
-            print("查詢會員優惠券失敗：", e)
-            return jsonify({
-                "success": False,
-                "message": "查詢失敗，請稍後再試",
-            }), 500
-
-    now = datetime.now()
-    soon = now + timedelta(days=COUPON_EXPIRING_SOON_DAYS)
-
-    prepared_coupons = prepare_member_coupon_rows(
-        coupons,
-        now=now,
-        include_redemption=True
-    )
-    usable = 0
-    expiring_soon = 0
-
-    for coupon in prepared_coupons:
-        if coupon.get("status_key") != "available":
-            continue
-
-        usable += 1
-
-        end_at = coupon.get("end_at")
-        if end_at and now <= end_at <= soon:
-            expiring_soon += 1
-
-    return jsonify({
-        "success": True,
-        "bound": True,
-        "total": len(coupons),
-        "usable": usable,
-        "expiring_soon": expiring_soon,
-        "coupons": [
-            {
-                "member_coupon_id": coupon.get(
-                    "member_coupon_id"
-                ),
-                "coupon_name": coupon.get("coupon_name"),
-                "description": coupon.get("description"),
-                "discount_text": coupon.get("discount_text"),
-                "receive_time": coupon.get("receive_time_text"),
-                "end_at": coupon.get("end_at_text"),
-                "status": coupon.get("status_key"),
-                "status_label": coupon.get("status_label"),
-                "used_time": coupon.get("used_time_text"),
-                "redemption_info": coupon.get(
-                    "redemption_info"
-                ),
-                "can_open_redemption": coupon.get(
-                    "can_open_redemption",
-                    False
-                ),
-                "redeem_url": coupon.get("redeem_url"),
-            }
-            for coupon in prepared_coupons
-        ],
-    })
 
 
 @line_bp.route("/redeem/<token>", methods=["GET", "POST"])
