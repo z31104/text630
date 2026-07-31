@@ -1,5 +1,7 @@
+import io
 import os
 import uuid
+from urllib.parse import urlparse
 
 from flask import (
     Blueprint,
@@ -8,6 +10,7 @@ from flask import (
     jsonify,
     render_template,
     url_for,
+    send_file,
     send_from_directory,
 )
 from werkzeug.utils import secure_filename
@@ -20,6 +23,15 @@ from database.db import (
     register_member_with_face,
 )
 from linebot_service.notify import notify_vip_upgrade
+from services.image_storage import (
+    MEMBER_IMAGE_BUCKET,
+    MEMBER_IMAGE_PREFIX,
+    build_gcs_uri,
+    cloud_storage_enabled,
+    delete_member_image,
+    persist_member_image,
+    read_member_image,
+)
 
 # 累積消費達到這個門檻，自動升級 VIP 並推播通知。
 # 跟 routes/line.py 的 VIP_UPGRADE_THRESHOLD 是同一個門檻值，
@@ -57,6 +69,7 @@ from services.face_service import (
     reload_member_faces,
     reload_visitor_faces,
     refresh_member,
+    VISITOR_IMAGE_DIR,
 )
 
 member_bp = Blueprint("member", __name__)
@@ -136,6 +149,58 @@ def _safe_member_image_url(image_path):
     return url_for("member.member_image", filename=filename)
 
 
+def _get_member_image_paths(member_id):
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT image_path
+            FROM face_images
+            WHERE member_id = %s
+            ORDER BY face_id DESC
+            """,
+            (member_id,),
+        )
+        return [
+            row[0]
+            for row in cursor.fetchall()
+            if row and row[0]
+        ]
+    finally:
+        if cursor is not None:
+            cursor.close()
+        if conn is not None:
+            conn.close()
+
+
+def _unique_image_paths(*path_groups):
+    unique_paths = []
+    seen = set()
+
+    for path_group in path_groups:
+        for image_path in path_group:
+            normalized = str(image_path or "").strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            unique_paths.append(normalized)
+
+    return unique_paths
+
+
+def _cleanup_local_temp(local_path, stored_path=None):
+    if (
+        local_path
+        and local_path != stored_path
+        and os.path.isfile(local_path)
+    ):
+        os.remove(local_path)
+
+
 def _get_member_detail(member_id):
     conn = None
     cursor = None
@@ -180,8 +245,29 @@ def _get_member_detail(member_id):
         if member is None:
             return None
 
-        member["display_face_image"] = _safe_member_image_url(
-            member.get("face_image")
+        cursor.execute(
+            """
+            SELECT image_path
+            FROM face_images
+            WHERE member_id = %s
+            ORDER BY face_id DESC
+            """,
+            (member_id,),
+        )
+        image_paths = _unique_image_paths(
+            [member.get("face_image")],
+            [
+                row.get("image_path")
+                for row in cursor.fetchall()
+            ],
+        )
+        member["display_face_image"] = (
+            url_for(
+                "member.member_photo",
+                member_id=member_id,
+            )
+            if image_paths
+            else None
         )
 
         return member
@@ -358,7 +444,103 @@ def member():
 
 @member_bp.route("/member_images/<path:filename>")
 def member_image(filename):
+    if cloud_storage_enabled():
+        safe_filename = os.path.basename(filename)
+        object_name = (
+            f"{MEMBER_IMAGE_PREFIX}/{safe_filename}"
+            if MEMBER_IMAGE_PREFIX
+            else safe_filename
+        )
+        try:
+            image_result = read_member_image(
+                build_gcs_uri(
+                    MEMBER_IMAGE_BUCKET,
+                    object_name,
+                )
+            )
+        except Exception as image_error:
+            print("讀取 Cloud Storage 會員照片失敗：", image_error)
+        else:
+            if image_result is not None:
+                image_content, content_type = image_result
+                return send_file(
+                    io.BytesIO(image_content),
+                    mimetype=content_type,
+                    max_age=300,
+                )
+
     return send_from_directory(MEMBER_IMAGE_DIR, filename)
+
+
+@member_bp.route("/member/<int:member_id>/photo")
+def member_photo(member_id):
+    """
+    以穩定網址提供會員主要照片。
+
+    新照片優先從 Cloud Storage 讀取；舊資料則回退到仍存在、
+    且確實位於會員或散客照片目錄內的本機檔案。
+    """
+    member = _get_member_detail(member_id)
+    if not member:
+        return "找不到會員照片", 404
+
+    image_paths = _unique_image_paths(
+        [member.get("face_image")],
+        _get_member_image_paths(member_id),
+    )
+
+    for image_path in image_paths:
+        normalized = image_path.replace("\\", "/")
+        parsed_image_url = urlparse(normalized)
+        is_legacy_member_url = (
+            parsed_image_url.scheme == "https"
+            and "/member_images/" in parsed_image_url.path
+            and os.path.basename(parsed_image_url.path).startswith(
+                ("line_", "member_")
+            )
+        )
+        if is_legacy_member_url:
+            return redirect(normalized)
+
+        is_cloud_image = (
+            normalized.startswith("gs://")
+            or "storage.googleapis.com/" in normalized
+            or ".storage.googleapis.com/" in normalized
+        )
+        is_safe_local_image = (
+            is_path_within_directory(
+                image_path,
+                MEMBER_IMAGE_DIR,
+            )
+            or is_path_within_directory(
+                image_path,
+                VISITOR_IMAGE_DIR,
+            )
+        )
+
+        if not is_cloud_image and not is_safe_local_image:
+            continue
+
+        try:
+            image_result = read_member_image(image_path)
+        except Exception as image_error:
+            print(
+                "讀取會員照片失敗："
+                f"path={image_path}, error={image_error}"
+            )
+            continue
+
+        if image_result is None:
+            continue
+
+        image_content, content_type = image_result
+        return send_file(
+            io.BytesIO(image_content),
+            mimetype=content_type,
+            max_age=300,
+        )
+
+    return "會員照片檔案不存在", 404
 
 
 @member_bp.route("/member/recognition_log", methods=["POST"])
@@ -402,6 +584,8 @@ def member_detail(member_id):
 def add_member_page():
     if request.method == "POST":
         saved_image_path = None
+        stored_image_path = None
+        member_registered = False
 
         try:
             # 1. 接收上傳照片
@@ -452,6 +636,16 @@ def add_member_page():
 
                 return "會員照片沒有產生人臉特徵資料", 400
 
+            stored_image_path = persist_member_image(
+                saved_image_path,
+                new_filename,
+                content_type=image_file.mimetype,
+            )
+            _cleanup_local_temp(
+                saved_image_path,
+                stored_image_path,
+            )
+
             # 6. 整理會員欄位
             vip = request.form.get("vip") == "1"
             member_level = "vip" if vip else "normal"
@@ -471,7 +665,7 @@ def add_member_page():
                     member_level=member_level,
                     line_user_id=line_user_id,
                     registration_source="backend_visitor_conversion",
-                    registration_image_path=saved_image_path,
+                    registration_image_path=stored_image_path,
                     registration_encoding=encoding_data,
                     updated_by="backend",
                     total_amount=request.form.get("total_amount") or 0,
@@ -480,6 +674,7 @@ def add_member_page():
                     ),
                 )
                 member_id = convert_result["member_id"]
+                member_registered = True
 
                 reload_member_faces()
                 reload_visitor_faces()
@@ -487,7 +682,7 @@ def add_member_page():
                     visitor_id=visitor_match["visitor_id"],
                     member_id=member_id,
                     registration_encoding=encoding_data,
-                    registration_image_path=saved_image_path,
+                    registration_image_path=stored_image_path,
                 )
 
                 from routes.camera import convert_visitor_active_visit
@@ -503,7 +698,7 @@ def add_member_page():
                     ),
                 )
             else:
-                register_member_with_face(
+                register_result = register_member_with_face(
                     name=name,
                     phone=request.form.get("phone"),
                     birthday=request.form.get("birthday") or None,
@@ -518,11 +713,13 @@ def add_member_page():
                     favorite_product=request.form.get(
                         "favorite_product"
                     ),
-                    face_image=saved_image_path,
+                    face_image=stored_image_path,
                     registration_source="backend",
-                    image_path=saved_image_path,
+                    image_path=stored_image_path,
                     encoding_data=encoding_data
                 )
+                member_id = register_result["member_id"]
+                member_registered = True
 
             # 8. 資料庫成功後，重新載入 AI 會員人臉名單
             reload_member_faces()
@@ -530,13 +727,22 @@ def add_member_page():
             return redirect("/member")
 
         except Exception as e:
-            # register_member_with_face 會自行 rollback；
-            # 這裡只清除已存到硬碟的照片。
-            if (
-                saved_image_path
-                and os.path.exists(saved_image_path)
-            ):
-                os.remove(saved_image_path)
+            # 資料庫尚未成功才清除這次上傳的照片；
+            # 已提交成功時不可留下資料列卻刪除照片物件。
+            if not member_registered:
+                try:
+                    delete_member_image(
+                        stored_image_path,
+                        local_roots=(MEMBER_IMAGE_DIR,),
+                    )
+                except Exception as cleanup_error:
+                    print("清除未使用會員照片失敗：", cleanup_error)
+
+                if (
+                    saved_image_path
+                    and os.path.isfile(saved_image_path)
+                ):
+                    os.remove(saved_image_path)
 
             print("新增會員失敗：", e)
             return f"新增會員失敗：{e}", 500
@@ -611,14 +817,22 @@ def delete_member(member_id):
         cursor = conn.cursor()
 
         cursor.execute(
-            "SELECT image_path FROM face_images WHERE member_id = %s",
-            (member_id,)
+            """
+            SELECT face_image
+            FROM members
+            WHERE member_id = %s
+            UNION ALL
+            SELECT image_path
+            FROM face_images
+            WHERE member_id = %s
+            """,
+            (member_id, member_id),
         )
-        member_image_paths = [
+        member_image_paths = _unique_image_paths([
             row[0]
             for row in cursor.fetchall()
             if row and row[0]
-        ]
+        ])
 
         cursor.execute("DELETE FROM vip_notifications WHERE member_id = %s", (member_id,))
         cursor.execute("DELETE FROM recognition_logs WHERE member_id = %s", (member_id,))
@@ -631,16 +845,12 @@ def delete_member(member_id):
         reload_visitor_faces()
 
         for image_path in member_image_paths:
-            if not is_path_within_directory(
-                image_path,
-                MEMBER_IMAGE_DIR
-            ):
-                continue
-
             try:
-                if os.path.isfile(image_path):
-                    os.remove(image_path)
-            except OSError as image_error:
+                delete_member_image(
+                    image_path,
+                    local_roots=(MEMBER_IMAGE_DIR,),
+                )
+            except Exception as image_error:
                 print(
                     "刪除會員照片失敗："
                     f"path={image_path}, error={image_error}"
@@ -672,6 +882,7 @@ def edit_member(member_id):
     conn = None
     cursor = None
     new_image_path = None
+    new_stored_image_path = None
     old_image_path = None
     database_committed = False
 
@@ -721,9 +932,15 @@ def edit_member(member_id):
             name = (request.form.get("name") or "").strip()
             phone = (request.form.get("phone") or "").strip()
             birthday = request.form.get("birthday") or None
-            line_user_id = (
-                request.form.get("line_user_id") or ""
-            ).strip() or None
+            submitted_line_user_id = request.form.get(
+                "line_user_id"
+            )
+            if submitted_line_user_id is None:
+                line_user_id = target_member.get("line_user_id")
+            else:
+                line_user_id = (
+                    submitted_line_user_id.strip() or None
+                )
 
             favorite_product = (
                 request.form.get("favorite_product") or ""
@@ -733,10 +950,16 @@ def edit_member(member_id):
                 request.form.get("vip") == "1"
             )
 
-            try:
-                new_total_amount = float(
-                    request.form.get("total_amount") or 0
+            submitted_total_amount = request.form.get(
+                "total_amount"
+            )
+            if submitted_total_amount is None:
+                submitted_total_amount = (
+                    target_member.get("total_amount") or 0
                 )
+
+            try:
+                new_total_amount = float(submitted_total_amount)
             except (TypeError, ValueError):
                 return redirect(url_for(
                     "member.member_detail",
@@ -905,6 +1128,16 @@ def edit_member(member_id):
                         )
                     ))
 
+                new_stored_image_path = persist_member_image(
+                    new_image_path,
+                    new_filename,
+                    content_type=image_file.mimetype,
+                )
+                _cleanup_local_temp(
+                    new_image_path,
+                    new_stored_image_path,
+                )
+
             # -----------------------------
             # 4. 更新會員基本資料
             # -----------------------------
@@ -967,7 +1200,7 @@ def edit_member(member_id):
                             encoding_data = %s
                         WHERE face_id = %s
                     """, (
-                        new_image_path,
+                        new_stored_image_path,
                         encoding_json,
                         current_face["face_id"]
                     ))
@@ -986,7 +1219,7 @@ def edit_member(member_id):
                         VALUES (%s, %s, %s)
                     """, (
                         member_id,
-                        new_image_path,
+                        new_stored_image_path,
                         encoding_json
                     ))
 
@@ -995,7 +1228,7 @@ def edit_member(member_id):
                     SET face_image = %s
                     WHERE member_id = %s
                 """, (
-                    new_image_path,
+                    new_stored_image_path,
                     member_id
                 ))
 
@@ -1066,17 +1299,14 @@ def edit_member(member_id):
             if (
                 has_new_image
                 and old_image_path
-                and old_image_path != new_image_path
-                and is_path_within_directory(
-                    old_image_path,
-                    MEMBER_IMAGE_DIR
-                )
+                and old_image_path != new_stored_image_path
             ):
                 try:
-                    if os.path.isfile(old_image_path):
-                        os.remove(old_image_path)
-
-                except OSError as image_error:
+                    delete_member_image(
+                        old_image_path,
+                        local_roots=(MEMBER_IMAGE_DIR,),
+                    )
+                except Exception as image_error:
                     print(
                         "刪除會員舊照片失敗："
                         f"path={old_image_path}, "
@@ -1118,10 +1348,19 @@ def edit_member(member_id):
 
         # 資料庫尚未成功時，
         # 刪除這次新上傳但未使用的照片。
+        if new_stored_image_path and not database_committed:
+            try:
+                delete_member_image(
+                    new_stored_image_path,
+                    local_roots=(MEMBER_IMAGE_DIR,),
+                )
+            except Exception:
+                pass
+
         if (
             new_image_path
             and not database_committed
-            and os.path.exists(new_image_path)
+            and os.path.isfile(new_image_path)
         ):
             try:
                 os.remove(new_image_path)

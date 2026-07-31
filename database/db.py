@@ -2,9 +2,11 @@ import os
 import json
 import random
 import secrets
+import threading
 from datetime import datetime, timedelta
 
 import mysql.connector
+from mysql.connector import pooling
 from dotenv import load_dotenv
 
 
@@ -149,24 +151,67 @@ def normalize_encoding_data(encoding_data):
         ensure_ascii=False
     )
 
-def get_connection():
-    # Cloud Run
-    if os.getenv("INSTANCE_CONNECTION_NAME"):
-        return mysql.connector.connect(
-            user=clean_env(os.getenv("DB_USER")),
-            password=clean_env(os.getenv("DB_PASSWORD")),
-            database=clean_env(os.getenv("DB_NAME")),
-            unix_socket=f"/cloudsql/{clean_env(os.getenv('INSTANCE_CONNECTION_NAME'))}"
+_connection_pool = None
+_connection_pool_lock = threading.Lock()
+
+
+def _get_connection_config():
+    config = {
+        "user": clean_env(os.getenv("DB_USER", "root")),
+        "password": clean_env(os.getenv("DB_PASSWORD", "")),
+        "database": clean_env(
+            os.getenv("DB_NAME", "smart_member_system")
+        ),
+        "connection_timeout": int(
+            clean_env(os.getenv("DB_CONNECTION_TIMEOUT", "10"))
+        ),
+    }
+
+    instance_connection_name = clean_env(
+        os.getenv("INSTANCE_CONNECTION_NAME")
+    )
+    if instance_connection_name:
+        config["unix_socket"] = (
+            f"/cloudsql/{instance_connection_name}"
+        )
+    else:
+        config["host"] = clean_env(
+            os.getenv("DB_HOST", "localhost")
+        )
+        config["port"] = int(
+            clean_env(os.getenv("DB_PORT", "3306"))
         )
 
-    # 本機
-    return mysql.connector.connect(
-        host=clean_env(os.getenv("DB_HOST", "localhost")),
-        port=int(clean_env(os.getenv("DB_PORT", "3306"))),
-        user=clean_env(os.getenv("DB_USER", "root")),
-        password=clean_env(os.getenv("DB_PASSWORD", "")),
-        database=clean_env(os.getenv("DB_NAME", "smart_member_system"))
-    )
+    return config
+
+
+def get_connection():
+    """
+    透過連線池重用雲端 MySQL 連線。
+
+    測試或特殊環境可設定 DB_POOL_ENABLED=false，
+    回到每次建立獨立連線的行為。
+    """
+    global _connection_pool
+
+    config = _get_connection_config()
+    if not to_bool(os.getenv("DB_POOL_ENABLED", "true")):
+        return mysql.connector.connect(**config)
+
+    if _connection_pool is None:
+        with _connection_pool_lock:
+            if _connection_pool is None:
+                _connection_pool = pooling.MySQLConnectionPool(
+                    pool_name=f"smart_member_{os.getpid()}",
+                    pool_size=max(
+                        int(os.getenv("DB_POOL_SIZE", "5")),
+                        1,
+                    ),
+                    pool_reset_session=True,
+                    **config,
+                )
+
+    return _connection_pool.get_connection()
 
 
 def get_all_members():
@@ -815,6 +860,8 @@ def update_recognition_last_seen(log_id, last_seen_at):
             recognition_status = %s,
             visit_status = %s
         WHERE log_id = %s
+          AND leave_time IS NULL
+          AND visit_status IN (%s, %s)
         """
 
         cursor.execute(
@@ -823,7 +870,9 @@ def update_recognition_last_seen(log_id, last_seen_at):
                 last_seen_at,
                 RECOGNITION_STATUS_RECOGNIZED,
                 VISIT_STATUS_STAYING,
-                log_id
+                log_id,
+                VISIT_STATUS_ARRIVED,
+                VISIT_STATUS_STAYING,
             )
         )
 
@@ -2172,12 +2221,17 @@ def get_dashboard_summary():
                   AND recognition_status = 'recognized'
             ) AS today_visitors,
             (
-                SELECT COUNT(DISTINCT member_id)
-                FROM recognition_logs
-                WHERE DATE(visit_time) = CURDATE()
-                  AND subject_type = 'member'
-                  AND recognition_status = 'recognized'
-                  AND vip = TRUE
+                SELECT COUNT(DISTINCT rl.member_id)
+                FROM recognition_logs AS rl
+                JOIN members AS m
+                  ON m.member_id = rl.member_id
+                WHERE DATE(rl.visit_time) = CURDATE()
+                  AND rl.subject_type = 'member'
+                  AND rl.recognition_status = 'recognized'
+                  AND (
+                      m.vip = TRUE
+                      OR m.member_level = 'vip'
+                  )
             ) AS today_vip,
             (
                 SELECT COUNT(DISTINCT visitor_id)
@@ -2299,28 +2353,43 @@ def get_recent_recognitions(limit=10):
 
         sql = """
         SELECT
-            log_id,
-            subject_type,
-            member_id,
-            visitor_id,
-            visitor_code,
-            name,
-            vip,
-            member_level,
-            confidence,
-            recognition_status,
-            visit_status,
-            camera_id,
-            camera_location,
-            visit_time,
-            recognized_at,
-            last_seen_at,
-            leave_time,
-            stay_seconds,
-            ROUND(stay_seconds / 60.0, 2) AS stay_minutes,
-            created_at
-        FROM recognition_logs
-        ORDER BY recognized_at DESC, log_id DESC
+            rl.log_id,
+            rl.subject_type,
+            rl.member_id,
+            rl.visitor_id,
+            rl.visitor_code,
+            CASE
+                WHEN rl.subject_type = 'member'
+                    THEN COALESCE(m.name, rl.name)
+                ELSE rl.name
+            END AS name,
+            CASE
+                WHEN rl.subject_type = 'member'
+                    THEN COALESCE(m.vip, rl.vip)
+                ELSE rl.vip
+            END AS vip,
+            CASE
+                WHEN rl.subject_type = 'member'
+                    THEN COALESCE(m.member_level, rl.member_level)
+                ELSE rl.member_level
+            END AS member_level,
+            rl.confidence,
+            rl.recognition_status,
+            rl.visit_status,
+            rl.camera_id,
+            rl.camera_location,
+            rl.visit_time,
+            rl.recognized_at,
+            rl.last_seen_at,
+            rl.leave_time,
+            rl.stay_seconds,
+            ROUND(rl.stay_seconds / 60.0, 2) AS stay_minutes,
+            rl.created_at
+        FROM recognition_logs AS rl
+        LEFT JOIN members AS m
+          ON m.member_id = rl.member_id
+         AND rl.subject_type = 'member'
+        ORDER BY rl.recognized_at DESC, rl.log_id DESC
         LIMIT %s
         """
 
@@ -3317,18 +3386,18 @@ def get_recognition_logs(
 
         sql = """
         SELECT
-            log_id,
-            subject_type,
-            member_id,
-            visitor_id,
-            visitor_code,
-            camera_id,
-            camera_location,
+            rl.log_id,
+            rl.subject_type,
+            rl.member_id,
+            rl.visitor_id,
+            rl.visitor_code,
+            rl.camera_id,
+            rl.camera_location,
             (
                 SELECT source_visitor.visitor_id
                 FROM visitors AS source_visitor
                 WHERE source_visitor.converted_member_id =
-                    recognition_logs.member_id
+                    rl.member_id
                 ORDER BY source_visitor.visitor_id ASC
                 LIMIT 1
             ) AS source_visitor_id,
@@ -3336,56 +3405,71 @@ def get_recognition_logs(
                 SELECT source_visitor.visitor_code
                 FROM visitors AS source_visitor
                 WHERE source_visitor.converted_member_id =
-                    recognition_logs.member_id
+                    rl.member_id
                 ORDER BY source_visitor.visitor_id ASC
                 LIMIT 1
             ) AS source_visitor_code,
-            name,
-            vip,
-            line_user_id,
-            confidence,
-            member_level,
-            recognition_status,
-            visit_status,
-            visit_time,
-            recognized_at,
-            last_seen_at,
-            leave_time,
-            stay_seconds,
-            ROUND(stay_seconds / 60.0, 2) AS stay_minutes,
-            created_at
-        FROM recognition_logs
+            CASE
+                WHEN rl.subject_type = 'member'
+                    THEN COALESCE(m.name, rl.name)
+                ELSE rl.name
+            END AS name,
+            CASE
+                WHEN rl.subject_type = 'member'
+                    THEN COALESCE(m.vip, rl.vip)
+                ELSE rl.vip
+            END AS vip,
+            rl.line_user_id,
+            rl.confidence,
+            CASE
+                WHEN rl.subject_type = 'member'
+                    THEN COALESCE(m.member_level, rl.member_level)
+                ELSE rl.member_level
+            END AS member_level,
+            rl.recognition_status,
+            rl.visit_status,
+            rl.visit_time,
+            rl.recognized_at,
+            rl.last_seen_at,
+            rl.leave_time,
+            rl.stay_seconds,
+            ROUND(rl.stay_seconds / 60.0, 2) AS stay_minutes,
+            rl.created_at
+        FROM recognition_logs AS rl
+        LEFT JOIN members AS m
+          ON m.member_id = rl.member_id
+         AND rl.subject_type = 'member'
         WHERE 1 = 1
         """
 
         params = []
 
         if subject_type:
-            sql += " AND subject_type = %s"
+            sql += " AND rl.subject_type = %s"
             params.append(subject_type)
 
         if visit_status:
-            sql += " AND visit_status = %s"
+            sql += " AND rl.visit_status = %s"
             params.append(visit_status)
 
         if member_id is not None:
-            sql += " AND member_id = %s"
+            sql += " AND rl.member_id = %s"
             params.append(member_id)
 
         if visitor_id is not None:
-            sql += " AND visitor_id = %s"
+            sql += " AND rl.visitor_id = %s"
             params.append(visitor_id)
 
         if start_date:
-            sql += " AND DATE(visit_time) >= %s"
+            sql += " AND DATE(rl.visit_time) >= %s"
             params.append(start_date)
 
         if end_date:
-            sql += " AND DATE(visit_time) <= %s"
+            sql += " AND DATE(rl.visit_time) <= %s"
             params.append(end_date)
 
         sql += """
-        ORDER BY visit_time DESC, log_id DESC
+        ORDER BY rl.visit_time DESC, rl.log_id DESC
         LIMIT %s
         """
         params.append(limit)

@@ -1,7 +1,9 @@
 import os
 import cv2
+import numpy as np
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from flask import Blueprint, Response, jsonify
 from services.visit_service import (
@@ -9,7 +11,11 @@ from services.visit_service import (
     handle_recognition,
     close_timeout_visits as close_timeout_visits_service,
 )
-from database.db import get_active_visit
+from database.db import (
+    get_active_visit,
+    get_member_by_id,
+    get_visitor_by_id,
+)
 
 try:
     from dotenv import load_dotenv
@@ -21,13 +27,12 @@ from services.face_service import (
     detect_face,
     recognize_face,
     register_new_visitor,
-    reload_member_faces,
-    reload_visitor_faces,
     draw_face_boxes,
     log_recognition_result,
     update_recognition_last_seen,
     close_recognition_visit,
     send_line_notify,
+    reload_all_faces,
 )
 camera_bp = Blueprint("camera", __name__)
 
@@ -41,6 +46,25 @@ camera_instance_lock = threading.Lock()
 # 同一時間只允許一個 /camera/video_feed 串流執行，
 # 避免重新整理或開啟多個分頁時同時搶用攝影機。
 camera_stream_lock = threading.Lock()
+
+# 雲端 I/O 不可阻塞 MJPEG 影格產生器。
+face_cache_worker_lock = threading.Lock()
+face_cache_worker_started = False
+face_cache_refresh_wakeup = threading.Event()
+visit_db_executor = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="visit-db",
+)
+visit_update_pending = set()
+visit_update_pending_lock = threading.Lock()
+camera_ai_executor = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="camera-ai",
+)
+visitor_conversion_executor = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="visitor-conversion",
+)
 
 # =============================
 # 攝影機連線狀態
@@ -158,15 +182,6 @@ def convert_visitor_active_visit(
     with active_visits_lock:
         visit_data = active_visits.pop(visitor_key, None)
 
-        if converted_active_log_id is None:
-            if (
-                last_result.get("subject_type") == "visitor"
-                and last_result.get("visitor_id") == visitor_id
-            ):
-                last_result = {}
-            last_recognition_time = 0
-            return False
-
         converted_result = {}
         if visit_data:
             converted_result.update(visit_data.get("result") or {})
@@ -175,6 +190,8 @@ def convert_visitor_active_visit(
             and last_result.get("visitor_id") == visitor_id
         ):
             converted_result.update(last_result)
+
+        effective_log_id = converted_active_log_id
 
         converted_result.update({
             "subject_type": "member",
@@ -189,26 +206,36 @@ def convert_visitor_active_visit(
                 else "一般會員"
             ),
             "recognition_status": "recognized",
-            "log_id": converted_active_log_id,
         })
+        if effective_log_id is not None:
+            converted_result["log_id"] = effective_log_id
 
-        if visit_data is None:
+        if visit_data is None or effective_log_id is None:
             last_result = converted_result
+            last_recognition_time = 0
             return True
 
-        visit_data["log_id"] = converted_active_log_id
+        visit_data["log_id"] = effective_log_id
         visit_data["result"] = converted_result
         active_visits[member_key] = visit_data
         last_result = converted_result
+        last_recognition_time = 0
         return True
 # 訪客上一次產生 recognition log 的時間
 last_guest_log_time = 0
 
 # Guest 必須連續辨識幾次才正式確認
 guest_confirm_count = 0
+guest_candidate_encoding = None
 
 # 連續 2 次辨識為 Guest 才正式顯示與記錄
-GUEST_CONFIRM_REQUIRED = 2
+GUEST_CONFIRM_REQUIRED = max(
+    get_int_env("GUEST_CONFIRM_REQUIRED", 3),
+    2,
+)
+GUEST_STABILITY_TOLERANCE = float(
+    os.getenv("GUEST_STABILITY_TOLERANCE", "0.45")
+)
 
 # 連續幾幀沒有偵測到人臉，
 # 才正式切換成 no_face，避免眨眼或瞬間轉頭造成畫面閃爍。
@@ -219,17 +246,269 @@ NO_FACE_CONFIRM_REQUIRED = 5
 
 # 設定參數
 RECOGNITION_INTERVAL = 2       # 每 2 秒做一次人臉比對
-FACE_DETECTION_FRAME_INTERVAL = 4  # HOG 人臉偵測不需要每一幀執行。每 4 幀偵測一次，其餘畫面沿用上一次的人臉位置。
+CAMERA_ANALYSIS_INTERVAL = max(
+    float(os.getenv("CAMERA_ANALYSIS_INTERVAL", "0.15")),
+    0.05,
+)
 LAST_SEEN_UPDATE_INTERVAL = 15 # 每 15 秒更新一次資料庫
+VISIT_STATE_INTERVAL = 1.0     # 到店狀態最多每秒排入一次背景更新
+VISITOR_CONVERSION_CHECK_INTERVAL = 2.0
 GUEST_LOG_INTERVAL = 60        # Guest 每 60 秒最多記錄一次，避免太頻繁
 MIN_CONFIDENCE = 0.5           # 信心值低於 0.5 的會員辨識結果先不記錄
 LEAVE_TIMEOUT = 60             # 超過 60 秒沒再看到同一會員，就先視為離店
 FACE_CACHE_REFRESH_INTERVAL = max(
-    get_int_env("FACE_CACHE_REFRESH_INTERVAL", 5),
-    1
+    get_int_env("FACE_CACHE_REFRESH_INTERVAL", 60),
+    10
 )
 CAMERA_ID = os.getenv("CAMERA_ID", "camera_1")
 CAMERA_LOCATION = os.getenv("CAMERA_LOCATION", "入口")
+
+
+def reset_guest_confirmation():
+    global guest_confirm_count
+    global guest_candidate_encoding
+
+    guest_confirm_count = 0
+    guest_candidate_encoding = None
+
+
+def confirm_stable_guest(recognition_result):
+    """只有連續數次 encoding 都像同一張臉，才允許建立散客。"""
+    global guest_confirm_count
+    global guest_candidate_encoding
+
+    encoding = recognition_result.get("_face_encoding")
+    if encoding is None:
+        reset_guest_confirmation()
+        return False
+
+    try:
+        encoding = np.asarray(encoding, dtype=float)
+    except (TypeError, ValueError):
+        reset_guest_confirmation()
+        return False
+
+    if encoding.shape != (128,):
+        reset_guest_confirmation()
+        return False
+
+    if guest_candidate_encoding is None:
+        guest_confirm_count = 1
+    else:
+        distance = float(
+            np.linalg.norm(
+                guest_candidate_encoding - encoding
+            )
+        )
+        if distance <= GUEST_STABILITY_TOLERANCE:
+            guest_confirm_count += 1
+        else:
+            guest_confirm_count = 1
+
+    guest_candidate_encoding = np.array(
+        encoding,
+        dtype=float
+    )
+    return guest_confirm_count >= GUEST_CONFIRM_REQUIRED
+
+
+def _face_cache_refresh_worker():
+    while True:
+        refresh_started = time.monotonic()
+        try:
+            members, visitors = reload_all_faces()
+            elapsed = time.monotonic() - refresh_started
+            print(
+                "背景人臉快取更新完成："
+                f"會員 {len(members)} 筆，"
+                f"散客 {len(visitors)} 筆，"
+                f"耗時 {elapsed:.2f} 秒"
+            )
+        except Exception as error:
+            print(f"背景人臉快取更新失敗：{error}")
+
+        elapsed = time.monotonic() - refresh_started
+        wait_seconds = max(
+            FACE_CACHE_REFRESH_INTERVAL - elapsed,
+            1,
+        )
+        face_cache_refresh_wakeup.wait(wait_seconds)
+        face_cache_refresh_wakeup.clear()
+
+
+def start_face_cache_refresh_worker():
+    global face_cache_worker_started
+
+    with face_cache_worker_lock:
+        if face_cache_worker_started:
+            return False
+
+        worker = threading.Thread(
+            target=_face_cache_refresh_worker,
+            name="face-cache-refresh",
+            daemon=True,
+        )
+        face_cache_worker_started = True
+        worker.start()
+        return True
+
+
+def queue_recognition_last_seen(log_id, last_seen_at):
+    """將週期性 last_seen 寫入交給單一背景執行緒。"""
+    visit_db_executor.submit(
+        update_recognition_last_seen,
+        log_id,
+        last_seen_at,
+    )
+    return True
+
+
+def queue_member_visit_update(result, current_time):
+    subject_key = build_subject_key(
+        subject_type=result.get("subject_type"),
+        member_id=result.get("member_id"),
+        visitor_id=result.get("visitor_id"),
+    )
+    if subject_key is None:
+        return False
+
+    with visit_update_pending_lock:
+        if subject_key in visit_update_pending:
+            return False
+        visit_update_pending.add(subject_key)
+
+    def run_update():
+        try:
+            update_member_visit(
+                dict(result),
+                current_time,
+            )
+        finally:
+            with visit_update_pending_lock:
+                visit_update_pending.discard(subject_key)
+
+    visit_db_executor.submit(run_update)
+    return True
+
+
+def check_visitor_conversion(visitor_id):
+    """
+    跨 Flask／Cloud Run 執行個體檢查散客是否已由 LINE 轉成會員。
+    """
+    visitor = get_visitor_by_id(visitor_id)
+    if not visitor:
+        return None
+
+    member_id = visitor.get("converted_member_id")
+    if member_id is None:
+        return None
+
+    member = get_member_by_id(member_id)
+    if not member:
+        return None
+
+    active_visit = get_active_visit(
+        subject_type="member",
+        subject_id=member_id,
+        camera_id=CAMERA_ID,
+    )
+
+    return {
+        "visitor_id": visitor_id,
+        "member": member,
+        "converted_active_log_id": (
+            active_visit.get("log_id")
+            if active_visit
+            else None
+        ),
+    }
+
+
+def build_camera_display_result(
+    recognition_status,
+    name,
+    member_level_text,
+):
+    return {
+        "subject_type": "none",
+        "member_id": None,
+        "visitor_id": None,
+        "visitor_code": None,
+        "name": name,
+        "phone": None,
+        "vip": False,
+        "member_level": "guest",
+        "total_visit_count": 0,
+        "last_visit_time": None,
+        "total_visit_time": 0,
+        "updated_by": None,
+        "visitor_visit_count": 0,
+        "converted_member_id": None,
+        "best_face_image": None,
+        "line_user_id": None,
+        "registration_source": None,
+        "total_amount": 0,
+        "favorite_product": None,
+        "face_image": None,
+        "confidence": 0,
+        "recognition_status": recognition_status,
+        "member_level_text": member_level_text,
+    }
+
+
+def process_camera_recognition(frame, faces):
+    """
+    在 camera-ai 背景執行緒完成 encoding、比對與散客建檔。
+    MJPEG 串流只讀取完成結果，不等待這些高成本工作。
+    """
+    recognition_result = recognize_face(frame, faces)
+    recognition_status = recognition_result.get(
+        "recognition_status"
+    )
+
+    if recognition_status == "recognized":
+        reset_guest_confirmation()
+        return recognition_result
+
+    if recognition_status == "guest":
+        if confirm_stable_guest(recognition_result):
+            print("未知人臉連續確認完成，開始建立固定散客")
+            visitor_result = register_new_visitor(
+                frame,
+                faces,
+                encoding=recognition_result.get("_face_encoding"),
+            )
+            reset_guest_confirmation()
+            return visitor_result
+
+        return build_camera_display_result(
+            recognition_status="detecting",
+            name="Detecting",
+            member_level_text="Detecting",
+        )
+
+    reset_guest_confirmation()
+    return recognition_result
+
+
+def analyze_camera_frame(frame, perform_recognition):
+    """
+    背景分析單張快照。偵測每輪執行，完整辨識依既有 2 秒間隔執行。
+    """
+    faces = detect_face(frame)
+    result = None
+
+    if perform_recognition and faces:
+        result = process_camera_recognition(
+            frame,
+            faces,
+        )
+
+    return {
+        "faces": faces,
+        "result": result,
+    }
+
 
 def update_camera_status(
     connected,
@@ -418,7 +697,7 @@ def update_member_visit(result, current_time):
         last_seen_update_interval=LAST_SEEN_UPDATE_INTERVAL,
         get_active_visit_fn=get_active_visit,
         create_log_fn=log_recognition_result,
-        update_last_seen_fn=update_recognition_last_seen,
+        update_last_seen_fn=queue_recognition_last_seen,
         close_visit_fn=close_recognition_visit,
         notify_fn=send_line_notify,
     )
@@ -526,6 +805,7 @@ def generate_frames():
     global last_result
     global last_guest_log_time
     global guest_confirm_count
+    global guest_candidate_encoding
     global no_face_frame_count
 
     # 嘗試取得攝影機串流鎖。
@@ -561,17 +841,18 @@ def generate_frames():
         # 實際顯示在攝影機畫面上的 FPS。
         current_fps = 0.0
 
-        # HOG 偵測幀數控制
-        face_detection_frame_count = 0
-        
-        # 未執行 HOG 的畫面，沿用上一次偵測結果
+        # AI 分析在背景執行；串流沿用最近一次完成的結果。
+        analysis_future = None
+        last_analysis_submit_time = 0.0
+        last_visit_dispatch_time = 0.0
+        conversion_future = None
+        conversion_visitor_id = None
+        last_conversion_check_time = 0.0
+        converted_visitor_ids = set()
         last_detected_faces = []
 
-        # Camera 與 LINE 可能運行在不同 Flask process。
-        # 串流啟動時先載入一次，之後定期從共用 DB 同步。
-        reload_member_faces()
-        reload_visitor_faces()
-        last_face_cache_refresh_time = time.monotonic()
+        # 快取由背景執行緒同步，攝影串流不等待雲端 DB。
+        start_face_cache_refresh_worker()
 
         while True:
             time.sleep(0.01)
@@ -589,16 +870,6 @@ def generate_frames():
                 
                 break
 
-            monotonic_now = time.monotonic()
-            if (
-                monotonic_now - last_face_cache_refresh_time
-                >= FACE_CACHE_REFRESH_INTERVAL
-            ):
-                reload_member_faces()
-                reload_visitor_faces()
-                last_face_cache_refresh_time = monotonic_now
-                last_recognition_time = 0
-            
             # 每成功取得一張畫面，就累積一幀。
             fps_frame_count += 1
             
@@ -620,161 +891,155 @@ def generate_frames():
                 fps_frame_count = 0
                 fps_start_time = time.monotonic()
 
-            # 累計目前處理的畫面數量
-            face_detection_frame_count += 1
-            
-            # 每隔指定幀數才執行一次 HOG 人臉偵測
+            # 先接收背景 AI 已完成的分析，不等待尚未完成的 future。
             if (
-                face_detection_frame_count
-                >= FACE_DETECTION_FRAME_INTERVAL
+                analysis_future is not None
+                and analysis_future.done()
             ):
-                last_detected_faces = detect_face(frame)
-                face_detection_frame_count = 0
-            
-            # 其他幀沿用上一次的人臉位置
-            faces = last_detected_faces
-            has_face = len(faces) > 0
-        
-            
-            # 畫面沒有偵測到人臉
-            if not has_face:
-                no_face_frame_count += 1
-                guest_confirm_count = 0
-                
-                # 連續多幀沒有臉才切換 no_face，
-                # 避免眨眼、低頭或短暫側臉造成畫面閃爍。
-                if (
-                    no_face_frame_count
-                    >= NO_FACE_CONFIRM_REQUIRED
-                ):
-                    last_result = {
-                        "subject_type": "none",
-                        "member_id": None,
-                        "visitor_id": None,
-                        "visitor_code": None,
-                        "name": "No Face",
-                        "phone": None,
-                        "vip": False,
-                        "member_level": "guest",
-                        "total_visit_count": 0,
-    "last_visit_time": None,
-    "total_visit_time": 0,
-    "updated_by": None,
-    "visitor_visit_count": 0,
-    "converted_member_id": None,
-    "best_face_image": None,
-                        "line_user_id": None,
-                        "registration_source": None,
-                        "total_amount": 0,
-                        "favorite_product": None,
-                        "face_image": None,
-                        "confidence": 0,
-                        "recognition_status": "no_face",
-                        "member_level_text": "No Face"
-                        }
-            
-            # 畫面重新偵測到人臉
-            else:
-                no_face_frame_count = 0
-                
-                # 超過辨識間隔才執行會員與散客比對
-                if (
+                try:
+                    analysis_result = analysis_future.result()
+                    last_detected_faces = analysis_result.get(
+                        "faces",
+                        [],
+                    )
+                    completed_result = analysis_result.get("result")
+
+                    if last_detected_faces:
+                        no_face_frame_count = 0
+                        completed_visitor_id = (
+                            completed_result.get("visitor_id")
+                            if completed_result
+                            else None
+                        )
+                        is_stale_visitor_result = (
+                            completed_result is not None
+                            and completed_result.get("subject_type")
+                            == "visitor"
+                            and completed_visitor_id
+                            in converted_visitor_ids
+                        )
+                        if (
+                            completed_result is not None
+                            and not is_stale_visitor_result
+                        ):
+                            last_result = completed_result
+                    else:
+                        no_face_frame_count += 1
+                        reset_guest_confirmation()
+
+                        if (
+                            no_face_frame_count
+                            >= NO_FACE_CONFIRM_REQUIRED
+                        ):
+                            last_result = build_camera_display_result(
+                                recognition_status="no_face",
+                                name="No Face",
+                                member_level_text="No Face",
+                            )
+
+                except Exception as analysis_error:
+                    print(f"背景攝影辨識失敗：{analysis_error}")
+                finally:
+                    analysis_future = None
+
+            monotonic_now = time.monotonic()
+            if (
+                analysis_future is None
+                and monotonic_now - last_analysis_submit_time
+                >= CAMERA_ANALYSIS_INTERVAL
+            ):
+                perform_recognition = (
                     current_time - last_recognition_time
                     >= RECOGNITION_INTERVAL
-                ):
-                    recognition_result = recognize_face(
-                        frame,
-                        faces
-                    )
-                    
+                )
+
+                if perform_recognition:
                     last_recognition_time = current_time
-                    
-                    recognition_status = recognition_result.get(
-                        "recognition_status"
+
+                analysis_future = camera_ai_executor.submit(
+                    analyze_camera_frame,
+                    frame.copy(),
+                    perform_recognition,
+                )
+                last_analysis_submit_time = monotonic_now
+
+            # 串流不等待背景工作，沿用最近一次人臉框與辨識結果。
+            faces = last_detected_faces
+            has_face = len(faces) > 0
+
+            if (
+                conversion_future is not None
+                and conversion_future.done()
+            ):
+                try:
+                    conversion_result = conversion_future.result()
+                    if conversion_result:
+                        converted_visitor_id = (
+                            conversion_result["visitor_id"]
+                        )
+                        converted_member = conversion_result["member"]
+                        converted_visitor_ids.add(
+                            converted_visitor_id
+                        )
+                        convert_visitor_active_visit(
+                            visitor_id=converted_visitor_id,
+                            member_id=converted_member["member_id"],
+                            name=converted_member.get("name"),
+                            vip=converted_member.get("vip", False),
+                            member_level=converted_member.get(
+                                "member_level",
+                                "normal",
+                            ),
+                            line_user_id=converted_member.get(
+                                "line_user_id"
+                            ),
+                            converted_active_log_id=(
+                                conversion_result.get(
+                                    "converted_active_log_id"
+                                )
+                            ),
+                        )
+                        face_cache_refresh_wakeup.set()
+                        print(
+                            "攝影頁已同步散客轉會員："
+                            f"visitor_id={converted_visitor_id}，"
+                            f"member_id="
+                            f"{converted_member['member_id']}"
+                        )
+                except Exception as conversion_error:
+                    print(
+                        "檢查散客轉會員失敗："
+                        f"{conversion_error}"
                     )
-                    
-                    # 成功辨識會員或既有散客
-                    if recognition_status == "recognized":
-                        guest_confirm_count = 0
-                        last_result = recognition_result
-                        
-                    # 第一次辨識為 Guest 時先顯示 Detecting
-                    elif recognition_status == "guest":
-                        guest_confirm_count += 1
-                        
-                        # 同一張未知人臉連續確認達標後，
-                        # 才正式建立固定 visitor。
-                        if (
-                            guest_confirm_count
-                            >= GUEST_CONFIRM_REQUIRED
-                        ):
-                            print(
-                                "未知人臉連續確認完成，"
-                                "開始建立固定散客"
-                            )
-                            
-                            visitor_result = register_new_visitor(
-                                frame,
-                                faces
-                            )
-                            
-                            if (
-                                visitor_result.get("subject_type")
-                                == "visitor"
-                                and visitor_result.get("visitor_id")
-                                is not None
-                            ):
-                                last_result = visitor_result
-                                
-                                print(
-                                    "固定散客建立成功："
-                                    f"visitor_id="
-                                    f"{visitor_result.get('visitor_id')}"
-                                )
-                            
-                            else:
-                                last_result = visitor_result
-                                
-                                print(
-                                    "固定散客建立失敗，"
-                                    "本次不寫入到店紀錄"
-                                )
-                            
-                            # 不論成功或失敗，
-                            # 結束本輪 Guest 確認。
-                            guest_confirm_count = 0
-                            
-                        else:
-                            last_result = {
-                                "subject_type": "unknown",
-                                "member_id": None,
-                                "visitor_id": None,
-                                "visitor_code": None,
-                                "name": "Detecting",
-                                "phone": None,
-                                "vip": False,
-                                "member_level": "guest",
-                                "total_visit_count": 0,
-    "last_visit_time": None,
-    "total_visit_time": 0,
-    "updated_by": None,
-    "visitor_visit_count": 0,
-    "converted_member_id": None,
-    "best_face_image": None,
-                                "line_user_id": None,
-                                "registration_source": None,
-                                "total_amount": 0,
-                                "favorite_product": None,
-                                "face_image": None,
-                                "confidence": 0,
-                                "recognition_status": "detecting",
-                                "member_level_text": "Detecting"
-                            }
-                    
-                    # failed 或其他狀態
-                    else:
-                        guest_confirm_count = 0
-                        last_result = recognition_result
+                finally:
+                    conversion_future = None
+                    conversion_visitor_id = None
+
+            current_visitor_for_conversion = (
+                last_result.get("visitor_id")
+                if last_result.get("subject_type") == "visitor"
+                else None
+            )
+            if (
+                current_visitor_for_conversion is not None
+                and current_visitor_for_conversion
+                not in converted_visitor_ids
+                and conversion_future is None
+                and (
+                    current_time - last_conversion_check_time
+                    >= VISITOR_CONVERSION_CHECK_INTERVAL
+                )
+            ):
+                conversion_visitor_id = (
+                    current_visitor_for_conversion
+                )
+                conversion_future = (
+                    visitor_conversion_executor.submit(
+                        check_visitor_conversion,
+                        conversion_visitor_id,
+                    )
+                )
+                last_conversion_check_time = current_time
 
 
             current_member_id = last_result.get("member_id")
@@ -807,11 +1072,17 @@ def generate_frames():
                 and current_member_id is not None
                 and current_confidence >= MIN_CONFIDENCE
                 and current_recognition_status == "recognized"
+                and (
+                    current_time - last_visit_dispatch_time
+                    >= VISIT_STATE_INTERVAL
+                )
             ):
-                update_member_visit(
+                queued = queue_member_visit_update(
                     last_result,
                     current_time
                 )
+                if queued:
+                    last_visit_dispatch_time = current_time
             
             
             # ----------------------------------------
@@ -822,11 +1093,17 @@ def generate_frames():
                 and current_subject_type == "visitor"
                 and current_visitor_id is not None
                 and current_recognition_status == "recognized"
+                and (
+                    current_time - last_visit_dispatch_time
+                    >= VISIT_STATE_INTERVAL
+                )
             ):
-                update_member_visit(
+                queued = queue_member_visit_update(
                     last_result,
                     current_time
                 )
+                if queued:
+                    last_visit_dispatch_time = current_time
 
             # 檢查已經超過離店等待時間的對象
             # 並將原本紀錄更新為 visit_status="left"
@@ -990,7 +1267,8 @@ def get_camera_status():
             "status": camera_status["status"],
             "message": camera_status["message"]
         })
-    
+
+
 
 @camera_bp.route("/camera/reload-faces", methods=["POST"])
 def reload_faces():
@@ -998,8 +1276,7 @@ def reload_faces():
     重新載入正式資料庫的人臉資料
     """
     try:
-        members = reload_member_faces()
-        visitors = reload_visitor_faces()
+        members, visitors = reload_all_faces()
 
         print("========== Face Reload API ==========")
         print(f"Member Faces : {len(members)}")
@@ -1014,9 +1291,11 @@ def reload_faces():
         }, 200
 
     except Exception as e:
+        print(f"Face Reload API 失敗：{e}")
+
         return {
             "success": False,
-            "message": str(e),
+            "message": "Face data reload failed.",
         }, 500
 
 
