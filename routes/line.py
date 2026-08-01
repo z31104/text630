@@ -3,6 +3,7 @@ import os
 import uuid
 from datetime import datetime, timedelta
 import traceback
+from routes.llm_service import ask_llm
 
 import requests
 from flask import Blueprint, request, abort, jsonify, redirect
@@ -185,17 +186,22 @@ if LINE_ENABLED:
         user_id = event.source.user_id
         text = event.message.text.strip()
 
-        # 先印出來，方便你確認有沒有收到訊息、順便記下自己的 userId
         print("收到訊息:", text)
         print("使用者 userId:", user_id)
 
+        # 註冊關鍵字保留原本的註冊流程，不送給 LLM。
         if text in REGISTER_KEYWORDS:
-            line_bot_api.reply_message(event.reply_token, build_register_message(user_id))
+            line_bot_api.reply_message(
+                event.reply_token,
+                build_register_message(user_id)
+            )
             return
 
+        # 其他訊息交給 LLM。
+        reply_text = ask_llm(text)
         line_bot_api.reply_message(
             event.reply_token,
-            TextSendMessage(text=event.message.text)
+            TextSendMessage(text=reply_text)
         )
 
 
