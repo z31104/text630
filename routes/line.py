@@ -46,6 +46,7 @@ from services.image_storage import (
     delete_member_image,
     persist_member_image,
 )
+from services.llm_service import ask_llm
 
 ALLOWED_FACE_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 ALLOWED_FACE_IMAGE_MIME_TYPES = {"image/jpeg", "image/png"}
@@ -223,9 +224,10 @@ if LINE_ENABLED:
             line_bot_api.reply_message(event.reply_token, build_register_message(user_id))
             return
 
+        answer = ask_llm(text)
         line_bot_api.reply_message(
             event.reply_token,
-            TextSendMessage(text=event.message.text)
+            TextSendMessage(text=answer)
         )
 
 

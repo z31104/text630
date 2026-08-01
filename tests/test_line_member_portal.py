@@ -54,10 +54,10 @@ class LineMemberPortalTests(unittest.TestCase):
 
     def test_member_coupon_api_falls_back_for_legacy_prize_schema(self):
         from flask import Flask
-        from routes import line
+        from routes import coupon
 
         app = Flask(__name__)
-        app.register_blueprint(line.line_bp)
+        app.register_blueprint(coupon.coupon_bp)
         legacy_schema_error = Exception(
             "1054 (42S22): Unknown column "
             "'mp.member_coupon_id' in 'on clause'"
@@ -65,22 +65,22 @@ class LineMemberPortalTests(unittest.TestCase):
 
         with (
             patch.object(
-                line,
+                coupon,
                 "_decode_line_id_token",
                 return_value=("U-member", None),
             ),
             patch.object(
-                line,
+                coupon,
                 "_fetch_member_by_line_user_id",
                 return_value={"member_id": 7},
             ),
             patch.object(
-                line,
+                coupon,
                 "get_member_coupons",
                 side_effect=legacy_schema_error,
             ),
             patch.object(
-                line,
+                coupon,
                 "_fetch_member_coupons_without_redemption",
                 return_value=[],
             ) as fallback,
