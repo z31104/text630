@@ -186,7 +186,7 @@ class VisitorConversionCacheTests(unittest.TestCase):
         self.assertEqual("V-ORIGINAL-CODE", visit["result"]["visitor_code"])
         self.assertEqual("member", camera.last_result["subject_type"])
 
-    def test_closed_visit_is_cleared_for_next_member_entry(self):
+    def test_closed_visit_updates_display_without_reusing_log(self):
         camera.active_visits["visitor:7"] = {
             "log_id": 77,
             "result": {"subject_type": "visitor", "visitor_id": 7},
@@ -200,9 +200,10 @@ class VisitorConversionCacheTests(unittest.TestCase):
             converted_active_log_id=None,
         )
 
-        self.assertFalse(converted)
+        self.assertTrue(converted)
         self.assertEqual({}, camera.active_visits)
-        self.assertEqual({}, camera.last_result)
+        self.assertEqual("member", camera.last_result["subject_type"])
+        self.assertEqual(42, camera.last_result["member_id"])
         self.assertEqual(0, camera.last_recognition_time)
 
 

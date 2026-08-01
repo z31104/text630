@@ -22,9 +22,9 @@ LEFT_TOP_COLOR = (37, 99, 235)      # #2563eb
 LEFT_BOTTOM_COLOR = (29, 78, 216)   # #1d4ed8
 LEFT_LIGHT = (191, 219, 254)        # #bfdbfe
 
-RIGHT_TOP_COLOR = (217, 119, 6)     # #d97706
-RIGHT_BOTTOM_COLOR = (180, 83, 9)   # #b45309
-RIGHT_LIGHT = (254, 215, 170)       # #fed7aa
+RIGHT_TOP_COLOR = (22, 163, 74)      # #16a34a
+RIGHT_BOTTOM_COLOR = (21, 128, 61)   # #15803d
+RIGHT_LIGHT = (187, 247, 208)        # #bbf7d0
 
 FONT_BOLD = "C:/Windows/Fonts/msjhbd.ttc"
 FONT_REGULAR = "C:/Windows/Fonts/msjh.ttc"
@@ -156,15 +156,15 @@ def render_half(width, height, top_color, bottom_color, light_color,
     icon_fn(draw, 250, height / 2 - 230, 380)
 
     title_font = ImageFont.truetype(FONT_BOLD, 118)
-    subtitle_font = ImageFont.truetype(FONT_REGULAR, 50)
-    tag_font = ImageFont.truetype(FONT_BOLD, 38)
+    subtitle_font = ImageFont.truetype(FONT_REGULAR, 66)
+    tag_font = ImageFont.truetype(FONT_BOLD, 66)
 
     text_x = 500
 
     draw.text((text_x, 300), title, font=title_font, fill=WHITE)
     draw.text((text_x, 460), subtitle, font=subtitle_font, fill=light_color)
 
-    draw_tag(draw, text_x, 570, tag_text, tag_font, top_color)
+    draw_tag(draw, text_x, 590, tag_text, tag_font, top_color)
 
     return img.convert("RGB")
 

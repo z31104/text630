@@ -123,6 +123,16 @@ class VisitorRegistrationGuardTests(unittest.TestCase):
                 ),
                 patch.object(
                     face_service,
+                    "reload_member_faces",
+                    return_value=[],
+                ),
+                patch.object(
+                    face_service,
+                    "find_matching_member",
+                    return_value={"matched": False},
+                ),
+                patch.object(
+                    face_service,
                     "db_register_visitor_with_face",
                 ) as insert_visitor,
             ):
@@ -138,6 +148,59 @@ class VisitorRegistrationGuardTests(unittest.TestCase):
         finally:
             with face_service.face_cache_lock:
                 face_service.known_visitors[:] = original_visitors
+
+    def test_member_is_reused_before_visitor_insert(self):
+        frame = np.random.default_rng(7).integers(
+            0,
+            256,
+            size=(240, 240, 3),
+            dtype=np.uint8,
+        )
+        encoding = np.zeros(128)
+        member = {
+            "member_id": 23,
+            "name": "測試會員",
+            "member_level": "member",
+            "encoding": encoding,
+        }
+
+        with (
+            patch.object(
+                face_service,
+                "_get_face_recognition",
+                return_value=Mock(),
+            ),
+            patch.object(
+                face_service,
+                "reload_member_faces",
+                return_value=[member],
+            ) as reload_members,
+            patch.object(
+                face_service,
+                "find_matching_member",
+                return_value={
+                    "matched": True,
+                    "member_id": 23,
+                    "member": member,
+                    "distance": 0.2581,
+                    "confidence": 0.74,
+                },
+            ),
+            patch.object(
+                face_service,
+                "db_register_visitor_with_face",
+            ) as insert_visitor,
+        ):
+            result = face_service.register_new_visitor(
+                frame,
+                [(70, 70, 100, 100)],
+                encoding=encoding,
+            )
+
+        reload_members.assert_called_once_with(strict=True)
+        insert_visitor.assert_not_called()
+        self.assertEqual("member", result["subject_type"])
+        self.assertEqual(23, result["member_id"])
 
 
 if __name__ == "__main__":

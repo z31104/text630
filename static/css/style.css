@@ -1346,6 +1346,10 @@ body {
     color: #1f2937;
 }
 
+.line-user-id-display {
+    letter-spacing: 0.04em;
+}
+
 .member-detail-layout {
     display: grid;
     grid-template-columns: 2fr 1fr;
@@ -1409,6 +1413,11 @@ body {
     background-color: #ffffff;
     color: #1f2937;
     font: inherit;
+}
+
+.detail-input.line-user-id-display {
+    display: flex;
+    align-items: center;
 }
 
 .detail-input:focus {
