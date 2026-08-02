@@ -1,5 +1,6 @@
 import os
 import uuid
+from io import BytesIO
 
 from flask import (
     Blueprint,
@@ -9,6 +10,7 @@ from flask import (
     render_template,
     url_for,
     send_from_directory,
+    send_file,
 )
 from werkzeug.utils import secure_filename
 
@@ -20,6 +22,10 @@ from database.db import (
     register_member_with_face,
 )
 from linebot_service.notify import notify_vip_upgrade
+from services.member_image_storage import (
+    download_member_image,
+    upload_member_image,
+)
 
 # 累積消費達到這個門檻，自動升級 VIP 並推播通知。
 # 跟 routes/line.py 的 VIP_UPGRADE_THRESHOLD 是同一個門檻值，
@@ -358,7 +364,24 @@ def member():
 
 @member_bp.route("/member_images/<path:filename>")
 def member_image(filename):
-    return send_from_directory(MEMBER_IMAGE_DIR, filename)
+    safe_filename = os.path.basename(filename.replace("\\", "/"))
+    if not safe_filename or safe_filename != filename:
+        return "找不到會員照片", 404
+
+    local_path = os.path.join(MEMBER_IMAGE_DIR, safe_filename)
+    if os.path.isfile(local_path):
+        return send_from_directory(MEMBER_IMAGE_DIR, safe_filename)
+
+    stored_image = download_member_image(safe_filename)
+    if stored_image is None:
+        return "找不到會員照片", 404
+
+    image_bytes, content_type = stored_image
+    return send_file(
+        BytesIO(image_bytes),
+        mimetype=content_type,
+        max_age=3600,
+    )
 
 
 @member_bp.route("/member/recognition_log", methods=["POST"])
@@ -443,6 +466,14 @@ def add_member_page():
                     ),
                     400
                 )
+
+            try:
+                upload_member_image(saved_image_path)
+            except Exception as image_storage_error:
+                if os.path.exists(saved_image_path):
+                    os.remove(saved_image_path)
+                print("會員照片上傳至永久儲存失敗：", image_storage_error)
+                return "照片儲存服務暫時無法使用，請稍後再試", 503
 
             encoding_data = face_check_result.get("encoding")
 
@@ -852,6 +883,19 @@ def edit_member(member_id):
                                 "原照片已保留。"
                             )
                         )
+                    ))
+
+                try:
+                    upload_member_image(new_image_path)
+                except Exception as image_storage_error:
+                    if os.path.exists(new_image_path):
+                        os.remove(new_image_path)
+                    new_image_path = None
+                    print("會員照片上傳至永久儲存失敗：", image_storage_error)
+                    return redirect(url_for(
+                        "member.member_detail",
+                        member_id=member_id,
+                        error="照片儲存服務暫時無法使用，請稍後再試",
                     ))
 
                 encoding_data = face_check_result.get(

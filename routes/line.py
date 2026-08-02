@@ -22,6 +22,7 @@ from database.db import (
     convert_visitor_to_member,
     draw_lottery_for_member,
     get_member_coupons,
+    get_member_non_coupon_prizes,
     get_latest_unconverted_visitor,
     get_redemption_by_token,
     redeem_member_prize,
@@ -35,6 +36,10 @@ from services.face_service import (
     reload_visitor_faces,
     sync_converted_visitor_cache,
     MEMBER_IMAGE_DIR,
+)
+from services.member_image_storage import (
+    delete_member_image,
+    upload_member_image,
 )
 from routes.home import prepare_member_coupon_rows
 
@@ -77,6 +82,7 @@ LIFF_COUPONS_CHANNEL_ID = (
 )
 
 LINE_VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify"
+LINE_PROFILE_URL = "https://api.line.me/v2/profile"
 
 # 累積消費金額達到這個門檻，自動升級 VIP 並推播通知
 VIP_UPGRADE_THRESHOLD = 10000
@@ -152,6 +158,12 @@ def line_config():
 @line_bp.route("/member-area")
 def member_portal():
     """LINE Rich Menu 的穩定會員專區入口。"""
+    if LIFF_ID_COUPONS:
+        return redirect(
+            f"https://liff.line.me/{LIFF_ID_COUPONS}",
+            code=302,
+        )
+
     return redirect("/coupons", code=302)
 
 
@@ -280,6 +292,50 @@ def _fetch_member_by_id(member_id):
             conn.close()
 
 
+def _bind_unbound_member_line(member_id, line_user_id, phone):
+    """Bind a face-matched legacy member without allowing account takeover."""
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT member_id, phone, line_user_id FROM members "
+            "WHERE member_id = %s FOR UPDATE",
+            (member_id,),
+        )
+        member = cursor.fetchone()
+        if not member or member.get("line_user_id"):
+            conn.rollback()
+            return False
+        stored_phone = (member.get("phone") or "").strip()
+        if not phone or not stored_phone or phone.strip() != stored_phone:
+            conn.rollback()
+            return False
+        cursor.execute(
+            "SELECT member_id FROM members WHERE line_user_id = %s LIMIT 1",
+            (line_user_id,),
+        )
+        if cursor.fetchone() is not None:
+            conn.rollback()
+            return False
+        cursor.execute(
+            "UPDATE members SET line_user_id = %s, updated_by = %s, "
+            "updated_at = NOW() WHERE member_id = %s AND line_user_id IS NULL",
+            (line_user_id, "line_secure_rebind", member_id),
+        )
+        if cursor.rowcount != 1:
+            conn.rollback()
+            return False
+        conn.commit()
+        return True
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
 def _fetch_member_by_phone(phone):
     conn = None
     cursor = None
@@ -364,6 +420,32 @@ def _decode_line_id_token(id_token, channel_id=None):
         return None, "LINE 登入驗證失敗，請重新登入後再試"
 
     line_user_id = payload.get("sub")
+    if not line_user_id:
+        return None, "LINE 登入驗證失敗，請重新登入後再試"
+
+    return line_user_id, None
+
+
+def _decode_line_access_token(access_token):
+    """使用 LINE access token 查詢本人 profile，安全取得 line_user_id。"""
+    if not access_token:
+        return None, "缺少 LINE 登入憑證，請從 LINE 官方帳號重新開啟頁面"
+
+    try:
+        resp = requests.get(
+            LINE_PROFILE_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=5,
+        )
+    except requests.RequestException as e:
+        print("LINE Profile 驗證服務呼叫失敗：", e)
+        return None, "LINE 登入驗證服務暫時無法使用，請稍後再試"
+
+    if resp.status_code != 200:
+        print("LINE Profile 驗證失敗：", resp.status_code, resp.text)
+        return None, "LINE 登入已過期或無效，請重新登入後再試"
+
+    line_user_id = (resp.json().get("userId") or "").strip()
     if not line_user_id:
         return None, "LINE 登入驗證失敗，請重新登入後再試"
 
@@ -479,8 +561,43 @@ def register_from_line():
         os.remove(image_path)
         return jsonify({"success": False, "message": face_check.get("message", "照片驗證失敗")}), 400
 
+    try:
+        upload_member_image(image_path)
+    except Exception as e:
+        print("會員照片上傳至永久儲存失敗：", e)
+        if os.path.exists(image_path):
+            os.remove(image_path)
+        return jsonify({
+            "success": False,
+            "message": "照片儲存服務暫時無法使用，請稍後再試",
+        }), 503
+
     duplicate_result = check_duplicate_face(face_check.get("encoding"))
     if duplicate_result.get("is_duplicate"):
+        duplicate_member_id = duplicate_result.get("member_id")
+        duplicate_member = _fetch_member_by_id(duplicate_member_id)
+        if (
+            duplicate_member
+            and not duplicate_member.get("line_user_id")
+            and _bind_unbound_member_line(
+                duplicate_member_id,
+                line_user_id,
+                phone,
+            )
+        ):
+            if os.path.exists(image_path):
+                os.remove(image_path)
+            try:
+                delete_member_image(saved_filename)
+            except Exception as cleanup_error:
+                print("清除重複註冊照片失敗：", cleanup_error)
+            member = _fetch_member_by_id(duplicate_member_id)
+            return jsonify({
+                "success": True,
+                "message": "已確認原會員身分並完成 LINE 綁定",
+                "is_new": False,
+                "member": member,
+            })
         os.remove(image_path)
         return jsonify({
             "success": False,
@@ -627,9 +744,40 @@ def lottery_draw():
     """
     data = request.get_json(silent=True) or {}
     member_id = data.get("member_id")
+    id_token = (data.get("id_token") or "").strip()
+    access_token = (data.get("access_token") or "").strip()
 
     if not member_id:
         return jsonify({"success": False, "message": "缺少 member_id"}), 400
+
+    if id_token:
+        authenticated_line_user_id, auth_error = _decode_line_id_token(
+            id_token,
+            channel_id=LIFF_CHANNEL_ID,
+        )
+        if auth_error and access_token:
+            authenticated_line_user_id, auth_error = _decode_line_access_token(
+                access_token
+            )
+    else:
+        authenticated_line_user_id, auth_error = _decode_line_access_token(
+            access_token
+        )
+
+    if auth_error:
+        return jsonify({"success": False, "message": auth_error}), 401
+
+    member = _fetch_member_by_id(member_id)
+    if not member or not member.get("line_user_id"):
+        return jsonify({
+            "success": False,
+            "message": "此會員尚未綁定 LINE，請先完成會員綁定再抽獎",
+        }), 409
+    if member.get("line_user_id") != authenticated_line_user_id:
+        return jsonify({
+            "success": False,
+            "message": "LINE 登入身分與會員資料不一致，無法抽獎",
+        }), 403
 
     try:
         result = draw_lottery_for_member(member_id)
@@ -640,7 +788,6 @@ def lottery_draw():
         return jsonify({"success": False, "message": "抽獎失敗，請稍後再試"}), 500
 
     if result.get("success"):
-        member = _fetch_member_by_id(member_id)
         if member:
             notify_lottery_result(member.get("line_user_id"), member.get("name"), result)
 
@@ -653,19 +800,30 @@ COUPON_EXPIRING_SOON_DAYS = 7
 @line_bp.route("/api/coupons/me", methods=["POST"])
 def get_my_coupon_summary():
     """
-    優惠券頁面（/coupons）用：依 LIFF ID Token 驗證出真正的 line_user_id，
+    優惠券頁面（/coupons）用：依 LIFF ID Token 或 access token 驗證出
+    真正的 line_user_id，
     再查「這個 LINE 使用者自己」的優惠券統計。
 
     刻意不接受前端直接傳 member_id 或 line_user_id 當參數——一律從已驗證的
-    id_token 解出 line_user_id，避免有人竄改請求內容看到別人的優惠券資料。
+    LINE 官方回傳的身分解出 line_user_id，避免有人竄改請求內容看到別人的
+    優惠券資料。
     """
     data = request.get_json(silent=True) or {}
     id_token = (data.get("id_token") or "").strip()
+    access_token = (data.get("access_token") or "").strip()
 
-    line_user_id, error = _decode_line_id_token(
-        id_token,
-        channel_id=LIFF_COUPONS_CHANNEL_ID,
-    )
+    if id_token:
+        line_user_id, error = _decode_line_id_token(
+            id_token,
+            channel_id=LIFF_COUPONS_CHANNEL_ID,
+        )
+        # 有些 LINE 內建瀏覽器會保留過期的 ID Token，但同一個 LIFF
+        # session 的 access token 仍有效。此時改向 LINE Profile API
+        # 驗證，避免使用者卡在反覆重新登入。
+        if error and access_token:
+            line_user_id, error = _decode_line_access_token(access_token)
+    else:
+        line_user_id, error = _decode_line_access_token(access_token)
 
     if error:
         return jsonify({"success": False, "message": error}), 401
@@ -685,6 +843,10 @@ def get_my_coupon_summary():
 
     try:
         coupons = get_member_coupons(member_id=member["member_id"], limit=500)
+        prizes = get_member_non_coupon_prizes(
+            member_id=member["member_id"],
+            limit=500,
+        )
     except Exception as e:
         print("查詢會員優惠券失敗：", e)
         return jsonify({"success": False, "message": "查詢失敗，請稍後再試"}), 500
@@ -739,6 +901,27 @@ def get_my_coupon_summary():
                 "redeem_url": coupon.get("redeem_url"),
             }
             for coupon in prepared_coupons
+        ],
+        "prizes": [
+            {
+                "member_prize_id": prize.get("member_prize_id"),
+                "prize_name": prize.get("prize_name"),
+                "prize_code": prize.get("prize_code"),
+                "status": prize.get("status"),
+                "issued_at": (
+                    prize.get("issued_at").strftime("%Y-%m-%d %H:%M:%S")
+                    if prize.get("issued_at") else ""
+                ),
+                "expires_at": (
+                    prize.get("expires_at").strftime("%Y-%m-%d %H:%M:%S")
+                    if prize.get("expires_at") else ""
+                ),
+                "redeem_url": (
+                    f"/redeem/{prize.get('redeem_token')}"
+                    if prize.get("redeem_token") else None
+                ),
+            }
+            for prize in prizes
         ],
     })
 

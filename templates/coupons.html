@@ -83,6 +83,25 @@
 
         <section
             class="member-coupon-panel member-coupon-list-panel"
+            id="prizeListPanel"
+            aria-labelledby="prizeListTitle"
+            hidden
+        >
+            <div class="member-coupon-heading">
+                <div>
+                    <p class="tag">MY PRIZES</p>
+                    <h2 id="prizeListTitle">我的獎品</h2>
+                    <p class="member-coupon-list-note">非優惠券獎品可在這裡查看並開啟門市兌換入口。</p>
+                </div>
+            </div>
+            <div class="member-coupon-list" id="prizeList" aria-live="polite"></div>
+            <div class="member-coupon-empty member-coupon-list-empty" id="prizeListEmpty" role="status">
+                目前沒有其他獎品。
+            </div>
+        </section>
+
+        <section
+            class="member-coupon-panel member-coupon-list-panel"
             id="couponListPanel"
             aria-labelledby="couponListTitle"
             {% if not selected_member_id %}hidden{% endif %}
@@ -171,6 +190,6 @@
     </main>
 
     <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-    <script src="{{ url_for('static', filename='js/coupons.js', v='20260729-1') }}"></script>
+    <script src="{{ url_for('static', filename='js/coupons.js', v='20260802-1') }}"></script>
 </body>
 </html>
