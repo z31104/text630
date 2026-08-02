@@ -3545,7 +3545,20 @@ def get_member_coupons(member_id=None, status=None, limit=100):
         JOIN coupons c
             ON mc.coupon_id = c.coupon_id
         LEFT JOIN member_prizes mp
-            ON mp.member_coupon_id = mc.member_coupon_id
+            ON mp.member_prize_id = (
+                SELECT matched_prize.member_prize_id
+                FROM member_prizes AS matched_prize
+                WHERE matched_prize.member_id = mc.member_id
+                  AND matched_prize.campaign_code = mc.source
+                ORDER BY
+                    ABS(TIMESTAMPDIFF(
+                        SECOND,
+                        matched_prize.issued_at,
+                        mc.receive_time
+                    )) ASC,
+                    matched_prize.member_prize_id DESC
+                LIMIT 1
+            )
         WHERE 1 = 1
         """
 
@@ -3581,6 +3594,45 @@ def get_member_coupons(member_id=None, status=None, limit=100):
         if cursor:
             cursor.close()
 
+        if conn and conn.is_connected():
+            conn.close()
+
+
+def get_member_non_coupon_prizes(member_id, limit=100):
+    """Return redeemable lottery prizes which are not backed by coupons."""
+    conn = None
+    cursor = None
+    try:
+        limit = max(1, min(int(limit), 500))
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT
+                mp.member_prize_id,
+                mp.prize_code,
+                mp.redeem_token,
+                mp.status,
+                mp.issued_at,
+                mp.expires_at,
+                mp.redeemed_at,
+                lp.prize_name,
+                lp.prize_type,
+                lp.prize_value
+            FROM member_prizes AS mp
+            JOIN lottery_prizes AS lp
+                ON lp.prize_id = mp.prize_id
+            WHERE mp.member_id = %s
+              AND lp.coupon_id IS NULL
+            ORDER BY mp.issued_at DESC, mp.member_prize_id DESC
+            LIMIT %s
+            """,
+            (member_id, limit),
+        )
+        return cursor.fetchall()
+    finally:
+        if cursor:
+            cursor.close()
         if conn and conn.is_connected():
             conn.close()
 

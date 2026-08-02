@@ -47,10 +47,8 @@ class LineMemberPortalTests(unittest.TestCase):
 
         liff_url = "https://liff.line.me/${LIFF_ID_COUPONS}"
         self.assertIn(liff_url, source)
-        self.assertIn(
-            "redirectUri: (\n                        `${window.location.origin}/coupons`",
-            source,
-        )
+        self.assertIn("liff.login();", source)
+        self.assertNotIn("redirectUri:", source)
 
     def test_member_coupon_api_falls_back_for_legacy_prize_schema(self):
         from flask import Flask

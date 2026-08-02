@@ -9,6 +9,9 @@ const couponUnboundMessage = document.getElementById("couponUnboundMessage");
 const couponListPanel = document.getElementById("couponListPanel");
 const couponList = document.getElementById("couponList");
 const couponListEmpty = document.getElementById("couponListEmpty");
+const prizeListPanel = document.getElementById("prizeListPanel");
+const prizeList = document.getElementById("prizeList");
+const prizeListEmpty = document.getElementById("prizeListEmpty");
 
 const couponStatLabels = [
     document.getElementById("couponStatLabel1"),
@@ -164,6 +167,61 @@ function renderCouponList(coupons) {
     });
 }
 
+function buildPrizeCard(prize) {
+    const card = document.createElement("article");
+    card.className = "member-coupon-card";
+    const header = document.createElement("div");
+    header.className = "member-coupon-card-header";
+    const titleGroup = document.createElement("div");
+    const code = document.createElement("p");
+    code.className = "member-coupon-code";
+    code.textContent = prize.prize_code || `獎品 #${prize.member_prize_id}`;
+    const title = document.createElement("h3");
+    title.textContent = prize.prize_name || "未命名獎品";
+    titleGroup.append(code, title);
+    const status = document.createElement("span");
+    const isAvailable = prize.status === "unused";
+    status.className = `member-coupon-status is-${isAvailable ? "available" : "used"}`;
+    status.textContent = isAvailable ? "可兌換" : (prize.status === "redeemed" ? "已兌換" : "已失效");
+    header.append(titleGroup, status);
+    card.appendChild(header);
+
+    const meta = document.createElement("dl");
+    meta.className = "member-coupon-meta";
+    appendCouponMeta(meta, "取得時間", prize.issued_at);
+    appendCouponMeta(meta, "到期時間", prize.expires_at || "無期限");
+    card.appendChild(meta);
+
+    if (isAvailable && prize.redeem_url) {
+        const redemption = document.createElement("div");
+        redemption.className = "member-coupon-redemption";
+        const label = document.createElement("strong");
+        label.textContent = "請至門市出示兌換碼";
+        const link = document.createElement("a");
+        link.className = "member-coupon-redeem-link";
+        link.href = prize.redeem_url;
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.textContent = "查看兌換入口";
+        redemption.append(label, link);
+        card.appendChild(redemption);
+    }
+    return card;
+}
+
+function renderPrizeList(prizes) {
+    if (!prizeListPanel || !prizeList || !prizeListEmpty) {
+        return;
+    }
+    const rows = Array.isArray(prizes) ? prizes : [];
+    prizeList.replaceChildren();
+    prizeListPanel.hidden = false;
+    prizeListEmpty.hidden = rows.length > 0;
+    rows.forEach(function (prize) {
+        prizeList.appendChild(buildPrizeCard(prize || {}));
+    });
+}
+
 function showMemberCoupons(data) {
     if (couponHeroTitle) {
         couponHeroTitle.textContent = "我的優惠券";
@@ -182,6 +240,7 @@ function showMemberCoupons(data) {
     setStat(1, "可使用", data.usable, "尚未使用");
     setStat(2, "即將過期", data.expiring_soon, "7 日內到期");
     renderCouponList(data.coupons);
+    renderPrizeList(data.prizes);
 
     if (couponUnboundNotice) {
         couponUnboundNotice.hidden = true;
@@ -194,6 +253,9 @@ function showUnbound(message) {
     }
     if (couponListPanel) {
         couponListPanel.hidden = true;
+    }
+    if (prizeListPanel) {
+        prizeListPanel.hidden = true;
     }
 }
 
@@ -213,14 +275,17 @@ async function restartCouponsLogin() {
     }
 }
 
-function fetchMyCoupons(idToken) {
+function fetchMyCoupons(idToken, accessToken) {
     return fetch("/api/coupons/me", {
         method: "POST",
         cache: "no-store",
         headers: {
             "Content-Type": "application/json"
         },
-        body: JSON.stringify({ id_token: idToken })
+        body: JSON.stringify({
+            id_token: idToken || "",
+            access_token: accessToken || ""
+        })
     })
         .then(function (res) {
             return res.json().then(function (result) {
@@ -280,22 +345,22 @@ function initLiffCoupons() {
         })
         .then(function () {
             if (!liff.isLoggedIn()) {
-                liff.login({
-                    redirectUri: (
-                        `${window.location.origin}/coupons`
-                    )
-                });
+                // 不自訂 redirectUri，讓 LIFF 回到 Developers Console
+                // 已登記的 Endpoint URL，避免網域不符時登入後落到 404。
+                liff.login();
                 return;
             }
 
             const idToken = liff.getIDToken();
+            const accessToken = liff.getAccessToken();
 
-            if (!idToken) {
-                console.warn("無法取得 LIFF ID Token");
+            if (!idToken && !accessToken) {
+                console.warn("無法取得 LIFF 登入憑證");
+                restartCouponsLogin();
                 return;
             }
 
-            fetchMyCoupons(idToken);
+            fetchMyCoupons(idToken, accessToken);
         })
         .catch(function (error) {
             console.warn("LIFF 初始化失敗，維持未登入畫面", error);

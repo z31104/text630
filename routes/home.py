@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta
 
-from flask import Blueprint, render_template, request, url_for
+from flask import Blueprint, jsonify, render_template, request, url_for
 
 try:
     from database.db import (
@@ -8,12 +8,16 @@ try:
         get_dashboard_summary,
         get_member_coupons,
         get_recognition_logs,
+        get_seven_day_visit_trend,
+        get_visit_hour_distribution,
     )
 except ImportError:
     get_coupon_summary = None
     get_dashboard_summary = None
     get_member_coupons = None
     get_recognition_logs = None
+    get_seven_day_visit_trend = None
+    get_visit_hour_distribution = None
 
 home_bp = Blueprint("home", __name__)
 
@@ -279,6 +283,53 @@ def dashboard():
             "recognitions": recognition_error,
         },
     )
+
+
+@home_bp.route("/api/dashboard/charts", methods=["GET"])
+def dashboard_charts_api():
+    """
+    回傳 Dashboard 圖表需要的資料：
+    1. 最近七天到店趨勢
+    2. 每小時到店分布
+    """
+    if (
+        get_seven_day_visit_trend is None
+        or get_visit_hour_distribution is None
+    ):
+        return jsonify({
+            "success": False,
+            "message": "Dashboard 圖表資料來源尚未提供",
+            "data": {
+                "seven_day_trend": [],
+                "hourly_distribution": [],
+            },
+        }), 503
+
+    try:
+        seven_day_trend = get_seven_day_visit_trend()
+        hourly_distribution = get_visit_hour_distribution()
+
+        return jsonify({
+            "success": True,
+            "message": "Dashboard 圖表資料取得成功",
+            "data": {
+                "seven_day_trend": seven_day_trend or [],
+                "hourly_distribution": hourly_distribution or [],
+            },
+        }), 200
+
+    except Exception as e:
+        print("取得 Dashboard 圖表資料失敗：", e)
+
+        return jsonify({
+            "success": False,
+            "message": "取得 Dashboard 圖表資料失敗",
+            "data": {
+                "seven_day_trend": [],
+                "hourly_distribution": [],
+            },
+        }), 500
+
 
 
 @home_bp.route("/coupons")

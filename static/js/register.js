@@ -221,6 +221,17 @@ async function requestLotteryDraw(memberId) {
         throw new Error("找不到會員編號，請先完成會員註冊");
     }
 
+    const idToken = (
+        typeof liff !== "undefined" && liff.isLoggedIn()
+            ? (liff.getIDToken() || "")
+            : ""
+    );
+    const accessToken = (
+        typeof liff !== "undefined" && liff.isLoggedIn()
+            ? (liff.getAccessToken() || "")
+            : ""
+    );
+
     const response = await fetch("/api/lottery/draw", {
         method: "POST",
         cache: "no-store",
@@ -228,7 +239,9 @@ async function requestLotteryDraw(memberId) {
             "Content-Type": "application/json"
         },
         body: JSON.stringify({
-            member_id: memberId
+            member_id: memberId,
+            id_token: idToken,
+            access_token: accessToken
         })
     });
 
