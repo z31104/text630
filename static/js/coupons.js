@@ -1,4 +1,6 @@
 let LIFF_ID_COUPONS = "";
+let currentIdToken = "";
+let currentAccessToken = "";
 
 const couponHeroTitle = document.getElementById("couponHeroTitle");
 const couponHeroSubtitle = document.getElementById("couponHeroSubtitle");
@@ -143,6 +145,64 @@ function buildCouponCard(coupon) {
         redemption.appendChild(redemptionLink);
     }
 
+    if (
+        coupon.can_redeem_directly === true
+        && coupon.member_coupon_id
+    ) {
+        const redeemButton = document.createElement("button");
+        redeemButton.type = "button";
+        redeemButton.className = "member-coupon-redeem-link";
+        redeemButton.textContent = "門市確認兌換";
+        redeemButton.addEventListener("click", function () {
+            const confirmed = window.confirm(
+                "確定要兌換這張 100 元折價券嗎？兌換後將立即失效，無法復原。"
+            );
+            if (!confirmed) {
+                return;
+            }
+
+            redeemButton.disabled = true;
+            redeemButton.textContent = "兌換中...";
+            fetch(`/api/coupons/${coupon.member_coupon_id}/redeem`, {
+                method: "POST",
+                cache: "no-store",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({
+                    id_token: currentIdToken,
+                    access_token: currentAccessToken
+                })
+            })
+                .then(function (response) {
+                    return response.json().then(function (result) {
+                        return {status: response.status, result: result};
+                    });
+                })
+                .then(function (response) {
+                    if (response.status === 401) {
+                        restartCouponsLogin();
+                        return;
+                    }
+                    if (!response.result || response.result.success !== true) {
+                        window.alert(
+                            (response.result && response.result.message)
+                            || "兌換失敗，請稍後再試。"
+                        );
+                        redeemButton.disabled = false;
+                        redeemButton.textContent = "門市確認兌換";
+                        return;
+                    }
+                    window.alert("100 元折價券兌換成功。");
+                    fetchMyCoupons(currentIdToken, currentAccessToken);
+                })
+                .catch(function () {
+                    window.alert("兌換失敗，請稍後再試。");
+                    redeemButton.disabled = false;
+                    redeemButton.textContent = "門市確認兌換";
+                });
+        });
+        redemption.appendChild(redeemButton);
+    }
+
     card.appendChild(redemption);
     return card;
 }
@@ -276,6 +336,8 @@ async function restartCouponsLogin() {
 }
 
 function fetchMyCoupons(idToken, accessToken) {
+    currentIdToken = idToken || "";
+    currentAccessToken = accessToken || "";
     return fetch("/api/coupons/me", {
         method: "POST",
         cache: "no-store",

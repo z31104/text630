@@ -295,6 +295,28 @@ VALUES
     'active'
 );
 
+INSERT INTO coupons (
+    coupon_name,
+    description,
+    discount_type,
+    discount_value,
+    start_at,
+    end_at,
+    status
+)
+SELECT
+    '新會員 100 元註冊禮',
+    '完成會員註冊後贈送，消費時可折抵 100 元',
+    'amount',
+    100,
+    NOW(),
+    NULL,
+    'active'
+WHERE NOT EXISTS (
+    SELECT 1 FROM coupons
+    WHERE coupon_name = '新會員 100 元註冊禮'
+);
+
 CREATE TABLE IF NOT EXISTS lottery_prizes (
     prize_id INT AUTO_INCREMENT PRIMARY KEY,
 

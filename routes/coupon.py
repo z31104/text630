@@ -19,6 +19,8 @@ from database.db import (
     get_member_coupons,
     get_member_non_coupon_prizes,
     get_lottery_prize_display_name,
+    redeem_member_coupon,
+    REGISTRATION_WELCOME_COUPON_SOURCE,
 )
 from routes.home import prepare_member_coupon_rows
 from routes.line import (
@@ -221,6 +223,11 @@ def get_my_coupon_summary():
                     False
                 ),
                 "redeem_url": coupon.get("redeem_url"),
+                "can_redeem_directly": (
+                    coupon.get("status_key") == "available"
+                    and coupon.get("source")
+                    == REGISTRATION_WELCOME_COUPON_SOURCE
+                ),
             }
             for coupon in prepared_coupons
         ],
@@ -249,6 +256,50 @@ def get_my_coupon_summary():
             for prize in prizes
         ],
     })
+
+
+@coupon_bp.route(
+    "/api/coupons/<int:member_coupon_id>/redeem",
+    methods=["POST"],
+)
+def redeem_my_coupon(member_coupon_id):
+    """由 LIFF 驗證目前會員後，將自己的 100 元註冊禮核銷。"""
+    data = request.get_json(silent=True) or {}
+    id_token = (data.get("id_token") or "").strip()
+    access_token = (data.get("access_token") or "").strip()
+
+    if id_token:
+        line_user_id, error = _decode_line_id_token(
+            id_token,
+            channel_id=LIFF_COUPONS_CHANNEL_ID,
+        )
+        if error and access_token:
+            line_user_id, error = _decode_line_access_token(access_token)
+    else:
+        line_user_id, error = _decode_line_access_token(access_token)
+
+    if error:
+        return jsonify({"success": False, "message": error}), 401
+
+    try:
+        member = _fetch_member_by_line_user_id(line_user_id)
+        if member is None:
+            return jsonify({
+                "success": False,
+                "message": "此 LINE 帳號尚未綁定會員",
+            }), 404
+        result = redeem_member_coupon(
+            member_coupon_id=member_coupon_id,
+            member_id=member["member_id"],
+        )
+    except Exception as error:
+        print("會員優惠券核銷失敗：", error)
+        return jsonify({
+            "success": False,
+            "message": "兌換失敗，請稍後再試",
+        }), 500
+
+    return jsonify(result), (200 if result.get("success") else 409)
 
 
 @coupon_bp.route("/api/member/<int:member_id>/coupons", methods=["GET"])

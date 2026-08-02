@@ -39,6 +39,8 @@ def get_member_level_text(member_level):
 
 # 抽獎活動設定
 LOTTERY_CAMPAIGN_CODE = "WELCOME_2026"
+REGISTRATION_WELCOME_COUPON_SOURCE = "registration_welcome"
+REGISTRATION_WELCOME_COUPON_NAME = "新會員 100 元註冊禮"
 
 LOTTERY_PRIZE_DISPLAY_NAMES = {
     "WELCOME_50": "$50 折價券",
@@ -314,6 +316,131 @@ def get_member_preferences(member_id):
     finally:
         cursor.close()
         conn.close()
+
+
+def issue_registration_welcome_coupon(member_id):
+    """發送一次性的 100 元註冊禮；重複呼叫會沿用原券。"""
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT member_id FROM members WHERE member_id = %s FOR UPDATE",
+            (member_id,),
+        )
+        if cursor.fetchone() is None:
+            raise ValueError("找不到要發送註冊禮的會員")
+
+        cursor.execute(
+            "SELECT coupon_id FROM coupons "
+            "WHERE coupon_name = %s AND status = 'active' LIMIT 1",
+            (REGISTRATION_WELCOME_COUPON_NAME,),
+        )
+        coupon = cursor.fetchone()
+        if coupon is None:
+            raise RuntimeError("尚未建立新會員 100 元註冊禮，請先執行資料庫 migration")
+
+        cursor.execute(
+            "SELECT member_coupon_id FROM member_coupons "
+            "WHERE member_id = %s AND source = %s LIMIT 1",
+            (member_id, REGISTRATION_WELCOME_COUPON_SOURCE),
+        )
+        existing = cursor.fetchone()
+        if existing is not None:
+            conn.commit()
+            return {
+                "member_coupon_id": existing["member_coupon_id"],
+                "issued": False,
+            }
+
+        cursor.execute(
+            "INSERT INTO member_coupons "
+            "(member_id, coupon_id, source, status, receive_time, used_time) "
+            "VALUES (%s, %s, %s, 'unused', NOW(), NULL)",
+            (
+                member_id,
+                coupon["coupon_id"],
+                REGISTRATION_WELCOME_COUPON_SOURCE,
+            ),
+        )
+        member_coupon_id = cursor.lastrowid
+        conn.commit()
+        return {"member_coupon_id": member_coupon_id, "issued": True}
+    except Exception:
+        if conn:
+            conn.rollback()
+        raise
+    finally:
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
+
+
+def redeem_member_coupon(member_coupon_id, member_id):
+    """由已驗證的會員本人將一張可用優惠券核銷為已使用。"""
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT mc.member_coupon_id, mc.status, mc.source,
+                   c.coupon_name, c.status AS coupon_status,
+                   c.start_at, c.end_at
+            FROM member_coupons AS mc
+            JOIN coupons AS c ON c.coupon_id = mc.coupon_id
+            WHERE mc.member_coupon_id = %s AND mc.member_id = %s
+            FOR UPDATE
+            """,
+            (member_coupon_id, member_id),
+        )
+        coupon = cursor.fetchone()
+        if coupon is None:
+            conn.rollback()
+            return {"success": False, "message": "找不到這張優惠券"}
+        if coupon.get("source") != REGISTRATION_WELCOME_COUPON_SOURCE:
+            conn.rollback()
+            return {"success": False, "message": "這張優惠券不支援按鈕兌換"}
+        if coupon.get("status") == "used":
+            conn.rollback()
+            return {"success": False, "message": "這張優惠券已經兌換"}
+        if coupon.get("status") != "unused" or coupon.get("coupon_status") != "active":
+            conn.rollback()
+            return {"success": False, "message": "這張優惠券目前無法兌換"}
+
+        now = datetime.now()
+        if coupon.get("start_at") and coupon["start_at"] > now:
+            conn.rollback()
+            return {"success": False, "message": "這張優惠券尚未生效"}
+        if coupon.get("end_at") and coupon["end_at"] < now:
+            conn.rollback()
+            return {"success": False, "message": "這張優惠券已經過期"}
+
+        cursor.execute(
+            "UPDATE member_coupons SET status = 'used', used_time = NOW() "
+            "WHERE member_coupon_id = %s AND member_id = %s AND status = 'unused'",
+            (member_coupon_id, member_id),
+        )
+        if cursor.rowcount != 1:
+            raise RuntimeError("優惠券核銷狀態更新失敗")
+        conn.commit()
+        return {
+            "success": True,
+            "message": "100 元折價券兌換成功",
+            "member_coupon_id": member_coupon_id,
+        }
+    except Exception:
+        if conn:
+            conn.rollback()
+        raise
+    finally:
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
 
 
 def insert_recognition_log(

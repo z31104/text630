@@ -23,6 +23,7 @@ from database.db import (
     draw_lottery_for_member,
     get_member_coupons,
     get_member_non_coupon_prizes,
+    issue_registration_welcome_coupon,
     get_member_prize,
     get_lottery_prize_display_name,
     REDEMPTION_BASE_URL,
@@ -405,6 +406,14 @@ def _insert_member_preferences(member_id, preferences):
             conn.close()
 
 
+def _issue_registration_welcome_coupon_safely(member_id):
+    try:
+        return issue_registration_welcome_coupon(member_id)
+    except Exception as error:
+        print(f"新會員 100 元註冊禮發送失敗（member_id={member_id}）：", error)
+        return None
+
+
 def _decode_line_id_token(id_token, channel_id=None):
     """
     向 LINE 官方驗證 ID Token 是否有效，成功時回傳 token 本身認證出的 line_user_id
@@ -702,6 +711,8 @@ def register_from_line():
         if preferences:
             _insert_member_preferences(member_id, preferences)
 
+        welcome_coupon = _issue_registration_welcome_coupon_safely(member_id)
+
         member = _fetch_member_by_id(member_id)
 
         push_message(
@@ -718,6 +729,7 @@ def register_from_line():
             "visitor_code": visitor_match["visitor_code"],
             "member_id": member_id,
             "member": member,
+            "welcome_coupon": welcome_coupon,
         })
 
     try:
@@ -756,6 +768,8 @@ def register_from_line():
     if preferences:
         _insert_member_preferences(member_id, preferences)
 
+    welcome_coupon = _issue_registration_welcome_coupon_safely(member_id)
+
     member = _fetch_member_by_id(member_id)
 
     push_message(
@@ -768,6 +782,7 @@ def register_from_line():
         "message": "會員註冊成功",
         "is_new": True,
         "member": member,
+        "welcome_coupon": welcome_coupon,
     })
 
 
