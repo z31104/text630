@@ -18,6 +18,7 @@ from database.db import (
     get_connection,
     get_member_coupons,
     get_member_non_coupon_prizes,
+    get_lottery_prize_display_name,
 )
 from routes.home import prepare_member_coupon_rows
 from routes.line import (
@@ -226,7 +227,10 @@ def get_my_coupon_summary():
         "prizes": [
             {
                 "member_prize_id": prize.get("member_prize_id"),
-                "prize_name": prize.get("prize_name"),
+                "prize_name": get_lottery_prize_display_name(
+                    prize.get("prize_code"),
+                    prize.get("prize_name"),
+                ),
                 "prize_code": prize.get("prize_code"),
                 "status": prize.get("status"),
                 "issued_at": (

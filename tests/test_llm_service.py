@@ -95,6 +95,53 @@ class LlmServiceTests(unittest.TestCase):
 
         self.assertEqual("目前智慧客服暫時無法使用，請稍後再試。", answer)
 
+    def test_preference_recommendation_uses_all_registered_preferences(self):
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "choices": [{
+                "message": {"content": "王小明您好，歡迎到家具與燈飾區逛逛！"},
+            }],
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "LLM_API_KEY": "test-key",
+                "LLM_BASE_URL": "https://llm.example/v1/",
+                "LLM_MODEL": "test-model",
+            },
+            clear=True,
+        ), patch.object(
+            llm_service.requests,
+            "post",
+            return_value=response,
+        ) as mocked_post:
+            answer = llm_service.generate_preference_recommendation(
+                "王小明",
+                ["家具", "燈飾"],
+            )
+
+        self.assertEqual("王小明您好，歡迎到家具與燈飾區逛逛！", answer)
+        prompt = mocked_post.call_args.kwargs["json"]["messages"][1]["content"]
+        self.assertIn("王小明", prompt)
+        self.assertIn("家具、燈飾", prompt)
+        self.assertNotIn("line_user_id", prompt)
+        self.assertEqual(120, mocked_post.call_args.kwargs["json"]["max_completion_tokens"])
+
+    def test_preference_recommendation_without_api_key_uses_fallback(self):
+        with patch.dict(os.environ, {}, clear=True), patch.object(
+            llm_service.requests,
+            "post",
+        ) as mocked_post:
+            answer = llm_service.generate_preference_recommendation(
+                "王小明",
+                ["家具"],
+            )
+
+        self.assertIsNone(answer)
+        mocked_post.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

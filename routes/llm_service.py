@@ -80,3 +80,63 @@ def ask_llm(user_message: str) -> str:
         return _UNAVAILABLE_MESSAGE
 
     return answer or _UNAVAILABLE_MESSAGE
+
+
+def generate_preference_recommendation(name, preferences):
+    """依會員註冊喜好產生到店推薦；失敗時回傳 None 供固定文案備援。"""
+    cleaned_preferences = [
+        str(preference).strip()
+        for preference in (preferences or [])
+        if str(preference).strip()
+    ]
+    if not cleaned_preferences:
+        return None
+
+    api_key = os.getenv("LLM_API_KEY", "").strip()
+    if not api_key:
+        return None
+
+    base_url = (
+        os.getenv("LLM_BASE_URL", "").strip()
+        or _DEFAULT_BASE_URL
+    ).rstrip("/")
+    model = os.getenv("LLM_MODEL", "").strip() or _DEFAULT_MODEL
+    member_name = str(name or "會員").strip() or "會員"
+    preference_text = "、".join(cleaned_preferences[:5])
+    prompt = (
+        "請根據會員註冊時選擇的喜好，產生一則到店 LINE 推薦。"
+        f"會員稱呼：{member_name}；喜好：{preference_text}。"
+        "請使用繁體中文，語氣親切自然，限 2 句、80 字內。"
+        "可以推薦前往相關商品區，但不可捏造折扣、價格、庫存、"
+        "優惠券或會員權益，也不要提到你是 AI。"
+    )
+
+    try:
+        response = requests.post(
+            f"{base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "你是門市的個人化到店推薦助理。",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                "max_completion_tokens": 120,
+                "enable_thinking": False,
+                "stream": False,
+            },
+            timeout=_REQUEST_TIMEOUT,
+            allow_redirects=False,
+        )
+        response.raise_for_status()
+        answer = _extract_answer(response.json())
+    except (requests.RequestException, ValueError):
+        return None
+
+    return answer

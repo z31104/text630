@@ -2,6 +2,7 @@ import os
 from linebot import LineBotApi
 from linebot.exceptions import LineBotApiError
 from linebot.models import ImageSendMessage, TextSendMessage
+from routes.llm_service import generate_preference_recommendation
 
 # 延後初始化 LineBotApi：若環境變數未設定，將停用 LINE 推播而不造成例外
 # 顧客用 LINE 官方帳號
@@ -202,10 +203,17 @@ def notify_preference_promo(member, preferences=None):
     if not line_user_id or not preferences:
         return None
 
+    name = member.get("name") or "會員"
+    recommendation = generate_preference_recommendation(
+        name,
+        preferences,
+    )
+    if recommendation:
+        return push_message(line_user_id, recommendation)
+
     for preference in preferences:
         template = PREFERENCE_PROMO_MESSAGES.get(preference)
         if template:
-            name = member.get("name") or "會員"
             return push_message(line_user_id, template.format(name=name))
 
     return None
