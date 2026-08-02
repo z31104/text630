@@ -982,6 +982,27 @@ def edit_member(member_id):
                 member_id
             ))
 
+            # 會員目前仍在店內時，當次 active 紀錄要立即反映後台異動；
+            # 已離店的歷史紀錄保留當時快照，不進行回寫。
+            cursor.execute("""
+                UPDATE recognition_logs
+                SET
+                    name = %s,
+                    vip = %s,
+                    member_level = %s,
+                    line_user_id = %s
+                WHERE member_id = %s
+                  AND subject_type = 'member'
+                  AND leave_time IS NULL
+                  AND visit_status IN ('arrived', 'staying')
+            """, (
+                name,
+                final_vip,
+                member_level,
+                line_user_id,
+                member_id
+            ))
+
             # -----------------------------
             # 5. 有新照片才更新 face_images
             # -----------------------------
@@ -1103,6 +1124,16 @@ def edit_member(member_id):
 
                 if not refreshed:
                     reload_member_faces()
+
+            # 同步攝影機程序內的 active visit 與目前畫面快取。
+            from routes.camera import refresh_active_member_status
+            refresh_active_member_status(
+                member_id=member_id,
+                name=name,
+                vip=final_vip,
+                member_level=member_level,
+                line_user_id=line_user_id,
+            )
 
             # -----------------------------
             # 8. 資料成功後刪除舊照片

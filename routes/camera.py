@@ -109,6 +109,41 @@ active_visits = {}
 active_visits_lock = threading.Lock()
 
 
+def refresh_active_member_status(
+    member_id,
+    name,
+    vip,
+    member_level,
+    line_user_id=None,
+):
+    """Synchronize an in-store member after backend profile changes."""
+    global last_result
+    member_key = build_subject_key(
+        subject_type="member",
+        member_id=member_id,
+    )
+    updates = {
+        "name": name,
+        "vip": bool(vip),
+        "member_level": member_level,
+        "member_level_text": (
+            "VIP 會員" if bool(vip) or member_level == "vip"
+            else "一般會員"
+        ),
+        "line_user_id": line_user_id,
+    }
+    with active_visits_lock:
+        visit_data = active_visits.get(member_key)
+        if visit_data is not None:
+            visit_data.setdefault("result", {}).update(updates)
+        if (
+            last_result.get("subject_type") == "member"
+            and last_result.get("member_id") == member_id
+        ):
+            last_result.update(updates)
+        return visit_data is not None
+
+
 def clear_visitor_active_visit(visitor_id):
     """散客轉會員後清除舊狀態，讓下一幀立即重新辨識。"""
     global last_result
