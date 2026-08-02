@@ -295,6 +295,27 @@ def get_member_by_id(member_id):
     return member
 
 
+def get_member_preferences(member_id):
+    """取得會員註冊時在 LINE 勾選的喜好類別清單（member_preferences 表），依寫入順序排列。"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            SELECT preference_value
+            FROM member_preferences
+            WHERE member_id = %s
+            ORDER BY preference_id
+            """,
+            (member_id,)
+        )
+        return [row[0] for row in cursor.fetchall()]
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def insert_recognition_log(
     subject_type=None,
     member_id=None,
@@ -2708,7 +2729,54 @@ def get_member_lottery_records(member_id):
             cursor.close()
 
         if conn and conn.is_connected():
-            conn.close()                      
+            conn.close()
+
+
+def get_member_prize(member_id):
+    """
+    查詢會員在目前活動（LOTTERY_CAMPAIGN_CODE）抽中的最終獎項與兌換資訊。
+    跟 draw_lottery_for_member() 裡「已抽過」那段查的是同一張 member_prizes，
+    這裡抽成獨立函式給 GET /api/lottery/result/<member_id> 用，沒有實際查詢邏輯的改動。
+    沒抽過的話回傳 None。
+    """
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT
+                mp.member_prize_id,
+                mp.member_id,
+                mp.prize_id,
+                mp.campaign_code,
+                mp.prize_code,
+                mp.redeem_token,
+                mp.status,
+                mp.issued_at,
+                mp.expires_at,
+                mp.redeemed_at,
+                mp.redeemed_by,
+                lp.prize_name,
+                lp.prize_type,
+                lp.prize_value
+            FROM member_prizes mp
+            JOIN lottery_prizes lp
+                ON mp.prize_id = lp.prize_id
+            WHERE mp.member_id = %s
+              AND mp.campaign_code = %s
+            LIMIT 1
+            """,
+            (member_id, LOTTERY_CAMPAIGN_CODE)
+        )
+        return cursor.fetchone()
+    finally:
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
 
 
 def draw_lottery_for_member(member_id):

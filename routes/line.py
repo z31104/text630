@@ -23,11 +23,19 @@ from database.db import (
     draw_lottery_for_member,
     get_member_coupons,
     get_member_non_coupon_prizes,
+    get_member_prize,
+    get_lottery_prize_display_name,
+    REDEMPTION_BASE_URL,
     get_latest_unconverted_visitor,
     get_redemption_by_token,
     redeem_member_prize,
 )
-from linebot_service.notify import push_message, notify_lottery_result, notify_vip_upgrade
+from linebot_service.notify import (
+    push_message,
+    notify_lottery_result,
+    notify_vip_upgrade,
+    notify_vip_recognition,
+)
 from services.face_service import (
     validate_member_face_image,
     check_duplicate_face,
@@ -763,6 +771,45 @@ def register_from_line():
     })
 
 
+@line_bp.route("/api/notify/vip", methods=["POST"])
+def notify_vip():
+    """提供不經攝影機也能測試 VIP 到店通知的 API。"""
+    data = request.get_json(silent=True) or {}
+    member_id = data.get("member_id")
+    if not member_id:
+        return jsonify({"success": False, "message": "缺少 member_id"}), 400
+
+    try:
+        member = _fetch_member_by_id(member_id)
+    except Exception as e:
+        print(f"查詢會員失敗（member_id={member_id}）：", e)
+        return jsonify({"success": False, "message": "查詢會員失敗"}), 500
+
+    if member is None:
+        return jsonify({"success": False, "message": "找不到這位會員"}), 404
+    if not member.get("vip"):
+        return jsonify({
+            "success": True,
+            "notified": False,
+            "message": "此會員不是 VIP，未發送通知",
+        })
+
+    notify_status = notify_vip_recognition({
+        "member_id": member.get("member_id"),
+        "name": member.get("name"),
+        "vip": member.get("vip"),
+        "member_level": member.get("member_level"),
+        "line_user_id": member.get("line_user_id"),
+        "confidence": data.get("confidence", 1.0),
+        "notification_image_url": data.get("notification_image_url"),
+    })
+    return jsonify({
+        "success": True,
+        "notified": True,
+        "status": notify_status,
+    })
+
+
 @line_bp.route("/api/lottery/draw", methods=["POST"])
 def lottery_draw():
     """
@@ -822,6 +869,54 @@ def lottery_draw():
     return jsonify(result)
 
 
+@line_bp.route("/api/lottery/result/<int:member_id>", methods=["GET"])
+def lottery_result(member_id):
+    """取得會員既有的抽獎結果與兌換資料。"""
+    try:
+        prize_record = get_member_prize(member_id)
+    except Exception as e:
+        print(f"查詢會員抽獎結果失敗（member_id={member_id}）：", e)
+        return jsonify({
+            "success": False,
+            "message": "查詢抽獎結果失敗",
+        }), 500
+
+    if prize_record is None:
+        return jsonify({
+            "success": True,
+            "has_result": False,
+            "data": None,
+        })
+
+    prize_name = get_lottery_prize_display_name(
+        prize_record["prize_code"],
+        prize_record["prize_name"],
+    )
+    redeem_token = prize_record["redeem_token"]
+    qr_value = f"{REDEMPTION_BASE_URL}/redeem/{redeem_token}"
+
+    def _iso(value):
+        return value.isoformat() if value else None
+
+    return jsonify({
+        "success": True,
+        "has_result": True,
+        "data": {
+            "prize_code": prize_record["prize_code"],
+            "prize_name": prize_name,
+            "prize_type": prize_record["prize_type"],
+            "prize_value": prize_record["prize_value"],
+            "qr_code": qr_value,
+            "redeem_token": redeem_token,
+            "redeemed": prize_record["status"] == "redeemed",
+            "status": prize_record["status"],
+            "issued_at": _iso(prize_record["issued_at"]),
+            "expires_at": _iso(prize_record["expires_at"]),
+            "redeemed_at": _iso(prize_record["redeemed_at"]),
+        },
+    })
+
+
 COUPON_EXPIRING_SOON_DAYS = 7
 
 
@@ -877,7 +972,6 @@ def _fetch_member_coupons_without_redemption(member_id, limit=500):
             conn.close()
 
 
-@line_bp.route("/api/coupons/me", methods=["POST"])
 def get_my_coupon_summary():
     """
     優惠券頁面（/coupons）用：依 LIFF ID Token 或 access token 驗證出
