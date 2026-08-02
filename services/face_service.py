@@ -5,11 +5,16 @@ AI 人臉偵測與會員比對服務
 
 import os
 import threading
+import time
 import uuid
 from datetime import datetime
 from urllib.parse import quote
 
 import cv2
+from services.image_storage import (
+    parse_gcs_uri,
+    parse_google_storage_url,
+)
 import numpy as np
 from PIL import (
     Image,
@@ -245,9 +250,14 @@ def is_path_within_directory(image_path, directory):
 
 def is_member_registration_face(member):
     """只接受明確存放於 member_images 的正式註冊人臉。"""
-    return is_path_within_directory(
-        member.get("image_path"),
-        MEMBER_IMAGE_DIR
+    image_path = member.get("image_path")
+    return (
+        is_path_within_directory(
+            image_path,
+            MEMBER_IMAGE_DIR,
+        )
+        or parse_gcs_uri(image_path) is not None
+        or parse_google_storage_url(image_path) is not None
     )
 
 
@@ -266,6 +276,18 @@ MEMBER_MATCH_TOLERANCE = 0.5
 
 # 散客使用稍嚴格門檻，降低兩位陌生人被當成同一 visitor 的風險
 VISITOR_MATCH_TOLERANCE = 0.55
+VISITOR_REGISTRATION_MATCH_TOLERANCE = float(
+    os.getenv("VISITOR_REGISTRATION_MATCH_TOLERANCE", "0.60")
+)
+VISITOR_REGISTRATION_MIN_SHARPNESS = float(
+    os.getenv("VISITOR_REGISTRATION_MIN_SHARPNESS", "40")
+)
+VISITOR_REGISTRATION_MIN_FACE_SIZE = int(
+    os.getenv("VISITOR_REGISTRATION_MIN_FACE_SIZE", "80")
+)
+RECENT_VISITOR_REGISTRATION_SECONDS = int(
+    os.getenv("RECENT_VISITOR_REGISTRATION_SECONDS", "60")
+)
 
 # 保護會員與散客人臉快取的替換及快照讀取。
 face_cache_lock = threading.RLock()
@@ -926,6 +948,38 @@ def load_visitor_faces():
 # Camera 串流啟動時會 reload；註冊防重與散客比對則按需載入。
 known_members = []
 known_visitors = []
+recent_visitor_registrations = []
+
+
+def reload_all_faces():
+    """
+    重新載入全部會員與散客人臉，兩邊都成功後才替換快取。
+
+    任一資料來源載入失敗時會拋出例外，並保留原本快取，
+    供 Reload Faces API 正確回傳失敗狀態。
+    """
+
+    new_members = load_member_faces()
+
+    if new_members is None:
+        raise RuntimeError("會員人臉資料載入失敗")
+
+    new_visitors = load_visitor_faces()
+
+    if new_visitors is None:
+        raise RuntimeError("散客人臉資料載入失敗")
+
+    with face_cache_lock:
+        known_members[:] = new_members
+        known_visitors[:] = new_visitors
+
+    print(
+        "全部人臉資料已重新載入："
+        f"會員 {len(known_members)} 筆，"
+        f"散客 {len(known_visitors)} 筆"
+    )
+
+    return known_members, known_visitors
 
 
 def reload_member_faces():
@@ -1130,7 +1184,7 @@ def generate_visitor_code():
     return f"V{timestamp_text}{random_text}"
 
 
-def register_new_visitor(frame, faces):
+def register_new_visitor(frame, faces, encoding=None):
     """
     將目前鏡頭中的未知人臉建立為固定散客。
 
@@ -1219,6 +1273,37 @@ def register_new_visitor(frame, faces):
             recognition_status="failed"
         )
 
+    if (
+        face_crop.shape[0] < VISITOR_REGISTRATION_MIN_FACE_SIZE
+        or face_crop.shape[1] < VISITOR_REGISTRATION_MIN_FACE_SIZE
+    ):
+        print("散客建檔暫緩：臉部尺寸不足")
+        return build_result(
+            confidence=0,
+            recognition_status="detecting"
+        )
+
+    grayscale_crop = cv2.cvtColor(
+        face_crop,
+        cv2.COLOR_BGR2GRAY
+    )
+    sharpness = float(
+        cv2.Laplacian(
+            grayscale_crop,
+            cv2.CV_64F
+        ).var()
+    )
+
+    if sharpness < VISITOR_REGISTRATION_MIN_SHARPNESS:
+        print(
+            "散客建檔暫緩：畫面清晰度不足，"
+            f"sharpness={round(sharpness, 2)}"
+        )
+        return build_result(
+            confidence=0,
+            recognition_status="detecting"
+        )
+
     rgb_frame = cv2.cvtColor(
         frame,
         cv2.COLOR_BGR2RGB
@@ -1231,29 +1316,41 @@ def register_new_visitor(frame, faces):
         x
     )
 
-    try:
-        encodings = _locked_face_encodings(
-            rgb_frame,
-            [face_location]
-        )
+    if encoding is None:
+        try:
+            encodings = _locked_face_encodings(
+                rgb_frame,
+                [face_location]
+            )
 
-    except Exception as e:
-        print(f"建立散客人臉 encoding 失敗：{e}")
+        except Exception as e:
+            print(f"建立散客人臉 encoding 失敗：{e}")
 
-        return build_result(
-            confidence=0,
-            recognition_status="failed"
-        )
+            return build_result(
+                confidence=0,
+                recognition_status="failed"
+            )
 
-    if len(encodings) == 0:
-        print("建立新散客失敗：無法產生人臉 encoding")
+        if len(encodings) == 0:
+            print("建立新散客失敗：無法產生人臉 encoding")
 
-        return build_result(
-            confidence=0,
-            recognition_status="failed"
-        )
+            return build_result(
+                confidence=0,
+                recognition_status="failed"
+            )
 
-    current_encoding = encodings[0]
+        current_encoding = encodings[0]
+    else:
+        try:
+            current_encoding = np.asarray(
+                encoding,
+                dtype=float
+            )
+        except (TypeError, ValueError):
+            return build_result(
+                confidence=0,
+                recognition_status="failed"
+            )
 
     if len(current_encoding) != 128:
         print(
@@ -1264,6 +1361,74 @@ def register_new_visitor(frame, faces):
         return build_result(
             confidence=0,
             recognition_status="failed"
+        )
+
+    visitor_match = find_matching_visitor(
+        current_encoding,
+        tolerance=VISITOR_REGISTRATION_MATCH_TOLERANCE
+    )
+
+    if visitor_match.get("matched"):
+        matched_visitor_id = visitor_match.get("visitor_id")
+
+        with face_cache_lock:
+            matched_visitor = next(
+                (
+                    dict(visitor)
+                    for visitor in known_visitors
+                    if visitor.get("visitor_id")
+                    == matched_visitor_id
+                ),
+                None,
+            )
+
+        if matched_visitor is None:
+            matched_visitor = {
+                "visitor_id": matched_visitor_id,
+                "visitor_code": visitor_match.get("visitor_code"),
+                "display_name": visitor_match.get("visitor_code"),
+            }
+
+        print(
+            "散客建檔前防重命中，沿用既有散客："
+            f"visitor_id={matched_visitor_id}"
+        )
+        return build_result(
+            visitor_data=matched_visitor,
+            confidence=visitor_match.get("confidence", 0),
+            recognition_status="recognized"
+        )
+
+    recent_cutoff = (
+        time.monotonic()
+        - RECENT_VISITOR_REGISTRATION_SECONDS
+    )
+    with face_cache_lock:
+        recent_visitor_registrations[:] = [
+            item
+            for item in recent_visitor_registrations
+            if item["created_at"] >= recent_cutoff
+        ]
+        recent_snapshot = list(recent_visitor_registrations)
+
+    for recent in recent_snapshot:
+        distance = float(
+            _locked_face_distance(
+                [recent["encoding"]],
+                current_encoding
+            )[0]
+        )
+        if distance >= VISITOR_REGISTRATION_MATCH_TOLERANCE:
+            continue
+
+        print(
+            "散客建檔冷卻防重命中，沿用最近散客："
+            f"visitor_id={recent['visitor'].get('visitor_id')}"
+        )
+        return build_result(
+            visitor_data=recent["visitor"],
+            confidence=round(max(0, 1 - distance), 2),
+            recognition_status="recognized"
         )
 
     visitor_code = generate_visitor_code()
@@ -1340,6 +1505,21 @@ def register_new_visitor(frame, faces):
                 "first_seen_at": datetime.now(),
                 "last_seen_at": datetime.now()
             }
+
+        visitor_data["encoding"] = np.array(
+            current_encoding,
+            dtype=float
+        )
+
+        with face_cache_lock:
+            recent_visitor_registrations.append({
+                "created_at": time.monotonic(),
+                "encoding": np.array(
+                    current_encoding,
+                    dtype=float
+                ),
+                "visitor": dict(visitor_data),
+            })
 
         print("========== New Visitor Created ==========")
         print(f"visitor_id: {visitor_id}")
@@ -2023,10 +2203,15 @@ def recognize_face(frame, faces):
     # 第三層：會員與既有散客都沒有命中
     # ==================================================
 
-    return build_result(
+    guest_result = build_result(
         confidence=0,
         recognition_status="guest"
     )
+    guest_result["_face_encoding"] = np.array(
+        current_encoding,
+        dtype=float
+    )
+    return guest_result
 
 # -----------------------------
 # 畫面顯示

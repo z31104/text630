@@ -37,16 +37,34 @@ from services.face_service import (
     sync_converted_visitor_cache,
     MEMBER_IMAGE_DIR,
 )
-from services.member_image_storage import (
-    delete_member_image,
-    upload_member_image,
-)
 from routes.home import prepare_member_coupon_rows
+from services.image_storage import (
+    delete_member_image,
+    persist_member_image,
+)
 
 ALLOWED_FACE_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 ALLOWED_FACE_IMAGE_MIME_TYPES = {"image/jpeg", "image/png"}
 
 line_bp = Blueprint("line", __name__)
+
+
+def _cleanup_registration_image(local_path, stored_path=None):
+    if stored_path:
+        try:
+            delete_member_image(
+                stored_path,
+                local_roots=(MEMBER_IMAGE_DIR,),
+            )
+        except Exception as cleanup_error:
+            print("清除會員註冊照片失敗：", cleanup_error)
+
+    if (
+        local_path
+        and local_path != stored_path
+        and os.path.isfile(local_path)
+    ):
+        os.remove(local_path)
 
 REGISTER_KEYWORDS = {"註冊", "會員", "加入會員", "register"}
 
@@ -548,29 +566,14 @@ def register_from_line():
     os.makedirs(MEMBER_IMAGE_DIR, exist_ok=True)
     saved_filename = f"line_{uuid.uuid4().hex}{ext}"
     image_path = os.path.join(MEMBER_IMAGE_DIR, saved_filename)
+    stored_image_path = None
+    member_registered = False
     face_image_file.save(image_path)
-    public_base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
-    display_face_image = (
-        f"{public_base_url}/member_images/{saved_filename}"
-        if public_base_url
-        else image_path
-    )
 
     face_check = validate_member_face_image(image_path)
     if not face_check.get("success"):
         os.remove(image_path)
         return jsonify({"success": False, "message": face_check.get("message", "照片驗證失敗")}), 400
-
-    try:
-        upload_member_image(image_path)
-    except Exception as e:
-        print("會員照片上傳至永久儲存失敗：", e)
-        if os.path.exists(image_path):
-            os.remove(image_path)
-        return jsonify({
-            "success": False,
-            "message": "照片儲存服務暫時無法使用，請稍後再試",
-        }), 503
 
     duplicate_result = check_duplicate_face(face_check.get("encoding"))
     if duplicate_result.get("is_duplicate"):
@@ -587,10 +590,6 @@ def register_from_line():
         ):
             if os.path.exists(image_path):
                 os.remove(image_path)
-            try:
-                delete_member_image(saved_filename)
-            except Exception as cleanup_error:
-                print("清除重複註冊照片失敗：", cleanup_error)
             member = _fetch_member_by_id(duplicate_member_id)
             return jsonify({
                 "success": True,
@@ -605,6 +604,26 @@ def register_from_line():
             "duplicate_member_id": duplicate_result.get("member_id"),
         }), 409
 
+    try:
+        stored_image_path = persist_member_image(
+            image_path,
+            saved_filename,
+            content_type=face_image_file.mimetype,
+        )
+        if (
+            stored_image_path != image_path
+            and os.path.isfile(image_path)
+        ):
+            os.remove(image_path)
+    except Exception as storage_error:
+        if os.path.isfile(image_path):
+            os.remove(image_path)
+        print("會員照片持久化失敗：", storage_error)
+        return jsonify({
+            "success": False,
+            "message": "照片儲存失敗，請稍後再試",
+        }), 500
+
     # 用註冊照片的人臉比對是否為既有散客
     visitor_match = find_matching_visitor(
         face_check.get("encoding")
@@ -618,18 +637,22 @@ def register_from_line():
                 birthday=birthday,
                 line_user_id=line_user_id,
                 registration_source="line_visitor_conversion",
-                registration_image_path=image_path,
+                registration_image_path=stored_image_path,
                 registration_encoding=face_check.get("encoding"),
-                display_face_image=display_face_image,
+                display_face_image=stored_image_path,
             )
         except ValueError as e:
-            if os.path.exists(image_path):
-                os.remove(image_path)
+            _cleanup_registration_image(
+                image_path,
+                stored_image_path,
+            )
             print("散客轉會員失敗：", e)
             return jsonify({"success": False, "message": str(e)}), 409
         except Exception as e:
-            if os.path.exists(image_path):
-                os.remove(image_path)
+            _cleanup_registration_image(
+                image_path,
+                stored_image_path,
+            )
             print("散客轉會員發生未預期錯誤：", flush=True)
             traceback.print_exc()
             return jsonify({
@@ -640,13 +663,14 @@ def register_from_line():
             }), 500
 
         member_id = convert_result["member_id"]
+        member_registered = True
         reload_member_faces()
         reload_visitor_faces()
         sync_converted_visitor_cache(
             visitor_id=visitor_match["visitor_id"],
             member_id=member_id,
             registration_encoding=face_check.get("encoding"),
-            registration_image_path=image_path,
+            registration_image_path=stored_image_path,
         )
 
         # 延遲匯入以避免 routes 模組載入時產生循環依賴。
@@ -695,14 +719,17 @@ def register_from_line():
             birthday=birthday,
             member_level="normal",
             line_user_id=line_user_id,
-            face_image=display_face_image,
+            face_image=stored_image_path,
             registration_source="line",
-            image_path=image_path,
+            image_path=stored_image_path,
             encoding_data=face_check.get("encoding"),
         )
     except Exception as e:
-        if os.path.exists(image_path):
-            os.remove(image_path)
+        if not member_registered:
+            _cleanup_registration_image(
+                image_path,
+                stored_image_path,
+            )
 
         print("========== 會員與人臉註冊完整錯誤 ==========", flush=True)
         traceback.print_exc()
@@ -715,6 +742,7 @@ def register_from_line():
         }), 500
 
     member_id = register_result["member_id"]
+    member_registered = True
     reload_member_faces()
 
     if preferences:
@@ -797,6 +825,58 @@ def lottery_draw():
 COUPON_EXPIRING_SOON_DAYS = 7
 
 
+def _fetch_member_coupons_without_redemption(member_id, limit=500):
+    """
+    舊版正式資料庫的 member_prizes 尚未有 member_coupon_id 時使用。
+
+    會員專區仍可顯示身分與優惠券；只有依賴該欄位的兌換資訊留空。
+    """
+    conn = None
+    cursor = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT
+                mc.member_coupon_id,
+                mc.member_id,
+                m.name AS member_name,
+                mc.coupon_id,
+                c.coupon_name,
+                c.description,
+                c.discount_type,
+                c.discount_value,
+                c.start_at,
+                c.end_at,
+                c.status AS coupon_status,
+                mc.source,
+                mc.status,
+                mc.receive_time,
+                mc.used_time,
+                NULL AS redeem_token,
+                NULL AS redemption_status,
+                NULL AS redemption_expires_at
+            FROM member_coupons mc
+            JOIN members m
+                ON mc.member_id = m.member_id
+            JOIN coupons c
+                ON mc.coupon_id = c.coupon_id
+            WHERE mc.member_id = %s
+            ORDER BY mc.receive_time DESC,
+                     mc.member_coupon_id DESC
+            LIMIT %s
+            """,
+            (member_id, min(max(int(limit), 1), 500)),
+        )
+        return cursor.fetchall()
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+
 @line_bp.route("/api/coupons/me", methods=["POST"])
 def get_my_coupon_summary():
     """
@@ -841,6 +921,7 @@ def get_my_coupon_summary():
             "message": "此 LINE 帳號尚未綁定會員，請先完成會員註冊",
         })
 
+    prizes = []
     try:
         coupons = get_member_coupons(member_id=member["member_id"], limit=500)
         prizes = get_member_non_coupon_prizes(
@@ -848,8 +929,28 @@ def get_my_coupon_summary():
             limit=500,
         )
     except Exception as e:
-        print("查詢會員優惠券失敗：", e)
-        return jsonify({"success": False, "message": "查詢失敗，請稍後再試"}), 500
+        error_text = str(e)
+        if (
+            "Unknown column" in error_text
+            and "mp.member_coupon_id" in error_text
+        ):
+            try:
+                coupons = _fetch_member_coupons_without_redemption(
+                    member_id=member["member_id"],
+                    limit=500,
+                )
+            except Exception as fallback_error:
+                print("相容模式查詢會員優惠券失敗：", fallback_error)
+                return jsonify({
+                    "success": False,
+                    "message": "查詢失敗，請稍後再試",
+                }), 500
+        else:
+            print("查詢會員優惠券失敗：", e)
+            return jsonify({
+                "success": False,
+                "message": "查詢失敗，請稍後再試",
+            }), 500
 
     now = datetime.now()
     soon = now + timedelta(days=COUPON_EXPIRING_SOON_DAYS)

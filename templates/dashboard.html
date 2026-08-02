@@ -55,16 +55,6 @@
 {%- endif -%}
 {%- endmacro %}
 
-{% macro vip_badge(value) -%}
-{%- if value is undefined or value is none -%}
-—
-{%- elif value -%}
-<span class="badge vip">VIP</span>
-{%- else -%}
-<span class="badge normal">一般</span>
-{%- endif -%}
-{%- endmacro %}
-
 {% macro visitor_source_label(visitor_id, visitor_code) -%}
 <span
     class="visitor-label"
@@ -208,7 +198,6 @@ normal
                         <th>身分</th>
                         <th>會員 ID</th>
                         <th>會員來源</th>
-                        <th>VIP</th>
                         <th>本次到店開始</th>
                         <th>辨識紀錄建立</th>
                         <th>最後辨識時間</th>
@@ -250,13 +239,6 @@ normal
                                 —
                             {% endif %}
                         </td>
-                        <td data-label="VIP">
-                            {% if row.subject_type == "visitor" %}
-                                <span class="badge normal">不適用</span>
-                            {% else %}
-                                {{ vip_badge(row.vip|default(none)) }}
-                            {% endif %}
-                        </td>
                         <td data-label="本次到店開始">{{ format_datetime(row.visit_time) }}</td>
                         <td data-label="辨識紀錄建立">{{ format_datetime(row.recognized_at) }}</td>
                         <td data-label="最後辨識時間">{{ format_datetime(row.last_seen_at) }}</td>
@@ -271,7 +253,7 @@ normal
                     </tr>
                     {% else %}
                     <tr class="table-empty-row">
-                        <td colspan="18">
+                        <td colspan="16">
                             {% if dashboard_errors.recognitions %}
                             辨識紀錄載入失敗，請稍後重新整理。
                             {% else %}

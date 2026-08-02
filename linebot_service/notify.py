@@ -128,7 +128,7 @@ def notify_vip_upgrade(member):
     if not line_user_id:
         return None
 
-    message = f"恭喜 {name}，您已成功升級為 VIP 會員！"
+    message = f"恭喜 {name}，您的累積消費金額超過 10,000 元，已成功升級為 VIP 會員！"
     return push_message(line_user_id, message)
 
 
