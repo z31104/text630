@@ -23,6 +23,7 @@ from database.db import (
     draw_lottery_for_member,
     get_member_coupons,
     get_member_non_coupon_prizes,
+    get_member_preferences,
     issue_registration_welcome_coupon,
     get_member_prize,
     get_lottery_prize_display_name,
@@ -236,10 +237,12 @@ if LINE_ENABLED:
             )
             return
 
-        # 其他訊息交給 LLM；先查真實會員資料與優惠券明細一併提供，避免被問
+        # 其他訊息交給 LLM；先查真實會員資料、優惠券明細與註冊喜好一併提供，避免被問
         # 「我的會員等級」「我有哪些優惠券」「怎麼升級」之類問題時，因為沒有資料而答不出來。
         member = _fetch_member_by_line_user_id(user_id)
         coupons = None
+        preferences = None
+        lottery_prize = None
         if member:
             try:
                 coupons = prepare_member_coupon_rows(
@@ -252,10 +255,35 @@ if LINE_ENABLED:
             except Exception as e:
                 print("查詢會員優惠券明細失敗：", e)
 
+            try:
+                preferences = get_member_preferences(member["member_id"])
+            except Exception as e:
+                print("查詢會員喜好類別失敗：", e)
+
+            try:
+                raw_prize = get_member_prize(member["member_id"])
+                if raw_prize:
+                    expires_at = raw_prize.get("expires_at")
+                    lottery_prize = {
+                        "prize_name": get_lottery_prize_display_name(
+                            raw_prize.get("prize_code"),
+                            raw_prize.get("prize_name"),
+                        ),
+                        "status": raw_prize.get("status"),
+                        "expires_at_text": (
+                            expires_at.strftime("%Y-%m-%d %H:%M:%S")
+                            if expires_at else ""
+                        ),
+                    }
+            except Exception as e:
+                print("查詢會員抽獎結果失敗：", e)
+
         reply_text = ask_llm(
             text,
             member=member,
             coupons=coupons,
+            preferences=preferences,
+            lottery_prize=lottery_prize,
             vip_upgrade_threshold=VIP_UPGRADE_THRESHOLD,
         )
         line_bot_api.reply_message(

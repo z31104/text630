@@ -17,6 +17,10 @@ _SYSTEM_PROMPT = """你是智慧會員系統的 LINE 客服助理。
 如果對話中有提供「目前使用者的會員資料」，代表這是系統查證過的真實資料；
 只有在使用者的問題確實需要查會員等級、優惠券、消費金額或 VIP 升級進度時，
 才根據這份資料回答，不要說自己查不到或無法查詢會員系統。
+只回答使用者這次問題實際問到的項目就好，不要順便補充其他沒被問到的
+會員資料細項（例如使用者只問優惠券，就不要在同一則回覆裡順便講
+VIP 升級進度、抽獎結果或到店次數），除非使用者的問題本來就一次問了
+多個項目。
 使用者只是打招呼、閒聊或問跟會員資料無關的問題時，不要主動列出或提及
 會員資料的任何內容，回一句自然的寒暄或回答就好。
 如果沒有提供會員資料，或使用者問的是會員系統相關但超出提供資料範圍的內容，
@@ -33,10 +37,19 @@ def _format_amount(value) -> str:
     return f"{number:g}"
 
 
+_LOTTERY_PRIZE_STATUS_LABELS = {
+    "unused": "可兌換",
+    "redeemed": "已兌換",
+    "expired": "已過期",
+}
+
+
 def _format_member_context(
     member: dict,
     coupons: list | None = None,
     vip_upgrade_threshold: int | None = None,
+    preferences: list | None = None,
+    lottery_prize: dict | None = None,
 ) -> str:
     vip_text = "VIP 會員" if member.get("vip") else "一般會員"
     level = member.get("member_level") or "normal"
@@ -48,6 +61,9 @@ def _format_member_context(
         f"- 累積到店次數：{member.get('visit_count', 0)}",
         f"- 累積消費金額：{_format_amount(total_amount)} 元",
     ]
+
+    if preferences:
+        lines.append(f"- 註冊時勾選的喜好類別：{'、'.join(preferences)}")
 
     if vip_upgrade_threshold is not None:
         if member.get("vip"):
@@ -81,6 +97,19 @@ def _format_member_context(
         if remaining > 0:
             lines.append(f"  - （其餘 {remaining} 張未列出，請提醒使用者到會員專區查看完整清單）")
 
+    if lottery_prize:
+        status_text = _LOTTERY_PRIZE_STATUS_LABELS.get(
+            lottery_prize.get("status"),
+            lottery_prize.get("status") or "",
+        )
+        expires_text = lottery_prize.get("expires_at_text") or "無期限資料"
+        lines.append(
+            f"- 抽獎結果：已抽中「{lottery_prize.get('prize_name')}」，"
+            f"狀態：{status_text}，兌換期限至 {expires_text}"
+        )
+    else:
+        lines.append("- 抽獎結果：尚未抽中最終獎項（可能還沒抽獎，或抽獎流程尚未完成）")
+
     return "\n".join(lines)
 
 
@@ -112,6 +141,8 @@ def ask_llm(
     member: dict | None = None,
     coupons: list | None = None,
     vip_upgrade_threshold: int | None = None,
+    preferences: list | None = None,
+    lottery_prize: dict | None = None,
 ) -> str:
     """
     回覆單次會員系統客服問題，不保存對話紀錄。
@@ -124,9 +155,15 @@ def ask_llm(
     vip_upgrade_threshold：升級 VIP 所需的累積消費金額門檻
     （呼叫端傳 routes/line.py 的 VIP_UPGRADE_THRESHOLD），
     用來讓 LLM 回答「還差多少錢升級 VIP」。
+    preferences：該會員註冊時勾選的喜好類別清單（database.db 的
+    get_member_preferences() 輸出，例如 ["餐廳"]）。
+    lottery_prize：該會員這次抽獎活動抽中的最終獎項（database.db 的
+    get_member_prize() 輸出經呼叫端整理成 {"prize_name", "status",
+    "expires_at_text"}；查無資料或尚未抽獎時傳 None）。
     以上都會被組成一則額外的 system 訊息一併送給 LLM，讓它能回答
-    「我的會員等級」「我有哪些優惠券」「我要怎麼升級」之類需要
-    真實資料的問題，而不是每次都因為沒有資料而回答查不到。
+    「我的會員等級」「我有哪些優惠券」「我要怎麼升級」「我的喜好」
+    「我抽獎抽中什麼」之類需要真實資料的問題，而不是每次都因為
+    沒有資料而回答查不到。
     """
     if not isinstance(user_message, str) or not user_message.strip():
         return _EMPTY_MESSAGE
@@ -149,6 +186,8 @@ def ask_llm(
                 member,
                 coupons,
                 vip_upgrade_threshold,
+                preferences,
+                lottery_prize,
             ),
         })
     messages.append({"role": "user", "content": user_message.strip()})
