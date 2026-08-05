@@ -236,8 +236,8 @@ if LINE_ENABLED:
             )
             return
 
-        # 其他訊息交給 LLM；先查真實會員資料與優惠券明細一併提供，
-        # 避免被問「我的會員等級」「我有哪些優惠券」之類問題時，因為沒有資料而答不出來。
+        # 其他訊息交給 LLM；先查真實會員資料與優惠券明細一併提供，避免被問
+        # 「我的會員等級」「我有哪些優惠券」「怎麼升級」之類問題時，因為沒有資料而答不出來。
         member = _fetch_member_by_line_user_id(user_id)
         coupons = None
         if member:
@@ -256,6 +256,7 @@ if LINE_ENABLED:
             text,
             member=member,
             coupons=coupons,
+            vip_upgrade_threshold=VIP_UPGRADE_THRESHOLD,
         )
         line_bot_api.reply_message(
             event.reply_token,
