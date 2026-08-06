@@ -3002,3 +3002,3044 @@ body {
         line-height: 1.5;
     }
 }
+
+/* Unified light admin interface */
+:root {
+    --ui-ink: #172033;
+    --ui-muted: #667085;
+    --ui-primary: #315b9c;
+    --ui-primary-dark: #244878;
+    --ui-primary-soft: #eef4fb;
+    --ui-border: #e3e8ef;
+    --ui-surface-soft: #f7f9fc;
+    --ui-shadow: 0 8px 24px rgba(24, 39, 75, 0.07);
+    --ui-radius: 16px;
+}
+
+html,
+body {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+body,
+.dashboard-page,
+.customer-page,
+.member-coupon-page {
+    background: #ffffff;
+    color: var(--ui-ink);
+}
+
+body {
+    font-family: "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif;
+    line-height: 1.6;
+}
+
+.site-navbar {
+    width: 100%;
+    height: 72px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--ui-border);
+    background: rgba(255, 255, 255, 0.98);
+    box-shadow: 0 2px 12px rgba(24, 39, 75, 0.04);
+}
+
+.navbar-inner {
+    display: flex;
+    width: min(1180px, 100%);
+    height: 100%;
+    margin: 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 28px;
+}
+
+.site-navbar .logo {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 10px;
+    color: var(--ui-ink);
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+}
+
+.logo-mark {
+    display: block;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    overflow: hidden;
+    border-radius: 10px;
+    background: var(--ui-primary);
+    object-fit: cover;
+    object-position: center;
+}
+
+.site-navbar .nav-links {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+}
+
+.site-navbar .nav-links a {
+    display: inline-flex;
+    min-height: 42px;
+    margin: 0;
+    padding: 9px 13px;
+    align-items: center;
+    gap: 8px;
+    border-radius: 10px;
+    color: #4c566a;
+    font-size: 14px;
+    font-weight: 700;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.site-navbar .nav-links a:hover {
+    background: var(--ui-primary-soft);
+    color: var(--ui-primary-dark);
+}
+
+.site-navbar .nav-links a[aria-current="page"] {
+    background: var(--ui-primary-soft);
+    color: var(--ui-primary-dark);
+    text-decoration: none;
+    box-shadow: inset 0 0 0 1px rgba(49, 91, 156, 0.1);
+}
+
+.nav-icon {
+    display: inline-grid;
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    place-items: center;
+    color: currentColor;
+    font-family: Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.nav-member-icon {
+    display: block;
+    object-fit: contain;
+    object-position: center;
+}
+
+.site-navbar a:focus-visible,
+.primary-btn:focus-visible,
+.secondary-btn:focus-visible {
+    outline: 3px solid rgba(49, 91, 156, 0.22);
+    outline-offset: 2px;
+}
+
+.container {
+    width: min(1180px, calc(100% - 48px));
+    max-width: none;
+    margin: 36px auto 64px;
+}
+
+.hero,
+.page-header,
+.dashboard-header,
+.card,
+.panel,
+.dashboard-card,
+.recognition-log-card,
+.vip-alert-card,
+.member-toolbar,
+.search-box,
+.member-table-card,
+.member-detail-card,
+.member-photo-card,
+.line-status-card,
+.line-test-card,
+.notification-log-card,
+.data-rule-card,
+.register-card,
+.benefit-card,
+.member-coupon-panel,
+.member-coupon-card,
+.member-coupon-stat {
+    border: 1px solid var(--ui-border);
+    background: #ffffff;
+    box-shadow: var(--ui-shadow);
+}
+
+.hero,
+.page-header,
+.dashboard-header {
+    border-radius: 20px;
+    background: #ffffff;
+}
+
+.hero {
+    padding: clamp(32px, 6vw, 58px);
+}
+
+.page-header,
+.dashboard-header {
+    padding: clamp(26px, 4vw, 42px);
+}
+
+.page-header h1,
+.dashboard-header h1,
+.hero h1 {
+    color: var(--ui-ink);
+    line-height: 1.25;
+}
+
+.tag {
+    margin-top: 0;
+    color: var(--ui-primary);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.primary-btn,
+.secondary-btn {
+    display: inline-flex;
+    min-height: 44px;
+    margin: 0;
+    padding: 10px 18px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    font: inherit;
+    font-weight: 750;
+    line-height: 1.2;
+    transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.primary-btn {
+    border: 1px solid var(--ui-primary);
+    background: var(--ui-primary);
+    color: #ffffff;
+}
+
+.primary-btn:hover {
+    border-color: var(--ui-primary-dark);
+    background: var(--ui-primary-dark);
+    box-shadow: 0 5px 14px rgba(49, 91, 156, 0.18);
+}
+
+.secondary-btn,
+.secondary-btn.button-reset {
+    border: 1px solid #c8d4e3;
+    background: #ffffff;
+    color: var(--ui-primary-dark);
+}
+
+.secondary-btn:hover {
+    border-color: #9fb4cf;
+    background: var(--ui-primary-soft);
+}
+
+.hero-actions,
+.member-detail-actions,
+.camera-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.card,
+.dashboard-card,
+.member-toolbar,
+.search-box,
+.member-table-card,
+.recognition-log-card,
+.member-detail-card,
+.member-photo-card,
+.line-status-card,
+.data-rule-card {
+    border-radius: var(--ui-radius);
+}
+
+.feature-card-link:hover,
+.dashboard-card:hover {
+    transform: translateY(-2px);
+    border-color: #cbd7e6;
+    box-shadow: 0 12px 26px rgba(24, 39, 75, 0.09);
+}
+
+.camera-live-layout {
+    display: grid;
+    width: min(1040px, 100%);
+    margin: 0 auto 64px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+}
+
+.camera-preview-card {
+    min-width: 0;
+    padding: 18px;
+    border: 1px solid var(--ui-border);
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: var(--ui-shadow);
+}
+
+.camera-preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 2px 2px 16px;
+}
+
+.camera-preview-kicker {
+    margin: 0 0 3px;
+    color: var(--ui-muted);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+}
+
+.camera-preview-header h2 {
+    display: flex;
+    margin: 0;
+    align-items: center;
+    gap: 8px;
+    color: var(--ui-ink);
+    font-size: 19px;
+}
+
+.camera-preview-icon {
+    color: var(--ui-primary);
+    font-size: 18px;
+}
+
+.live-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px;
+    border: 1px solid #fecaca;
+    border-radius: 999px;
+    background: #fff7f7;
+    color: #b42318;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+}
+
+.live-chip > span {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #dc2626;
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+}
+
+.camera-stream-frame {
+    width: min(860px, 100%);
+    min-height: 0;
+    aspect-ratio: 4 / 3;
+    margin: 0 auto;
+    border: 1px solid #1f2937;
+    border-radius: 14px;
+    background: #111827;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.camera-stream-image {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+    object-fit: contain;
+}
+
+.camera-actions {
+    width: min(860px, 100%);
+    margin: 16px auto 0;
+    justify-content: flex-end;
+}
+
+.camera-control-panel {
+    display: grid;
+    min-width: 0;
+    padding: 22px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    border: 1px solid var(--ui-border);
+    box-shadow: var(--ui-shadow);
+}
+
+.camera-control-panel > h2,
+.camera-control-panel > .camera-feedback,
+.camera-control-panel > .rule-note {
+    grid-column: 1 / -1;
+}
+
+.camera-control-panel > h2 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.camera-control-panel .result-card,
+.camera-control-panel .rule-note {
+    margin-top: 0;
+    border-color: var(--ui-border);
+    background: var(--ui-surface-soft);
+}
+
+.line-mode-card {
+    display: flex;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 28px;
+    align-items: flex-start;
+    gap: 18px;
+}
+
+.line-mode-indicator {
+    width: 12px;
+    height: 12px;
+    margin-top: 9px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+}
+
+.line-mode-indicator.is-online {
+    background: #16a34a;
+    box-shadow: 0 0 0 5px #dcfce7;
+}
+
+.line-mode-indicator.is-testing {
+    background: #d97706;
+    box-shadow: 0 0 0 5px #fef3c7;
+}
+
+.line-mode-label {
+    margin: 0 0 4px;
+    color: var(--ui-muted);
+    font-size: 13px;
+    font-weight: 750;
+}
+
+.line-mode-card h2 {
+    margin: 0 0 8px;
+}
+
+.line-mode-card p:last-child {
+    margin: 0;
+    color: var(--ui-muted);
+}
+
+.member-admin-form {
+    max-width: 920px;
+    margin: 0 auto 48px;
+}
+
+.member-form-heading {
+    display: flex;
+    margin-bottom: 22px;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.member-form-heading h2,
+.member-form-heading p {
+    margin-top: 0;
+}
+
+.member-form-heading h2 {
+    margin-bottom: 5px;
+}
+
+.member-form-heading p {
+    margin-bottom: 0;
+    color: var(--ui-muted);
+}
+
+.member-form-wide {
+    grid-column: 1 / -1;
+}
+
+.member-file-input {
+    padding: 7px;
+}
+
+.member-file-input::file-selector-button {
+    margin-right: 10px;
+    padding: 8px 12px;
+    border: 1px solid #c8d4e3;
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--ui-primary-dark);
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.member-admin-actions {
+    margin: 24px 0 0;
+}
+
+.member-coupon-hero,
+.customer-register-hero,
+.promo-hero {
+    border: 1px solid var(--ui-border);
+    background: #ffffff;
+    color: var(--ui-ink);
+    box-shadow: var(--ui-shadow);
+}
+
+.promo-hero::before,
+.promo-hero::after,
+.promo-decoration,
+.member-coupon-hero::after {
+    display: none;
+}
+
+.promo-hero h1,
+.member-coupon-hero h1,
+.promo-hero .promo-tag,
+.member-coupon-hero .promo-tag {
+    color: var(--ui-ink);
+    text-shadow: none;
+}
+
+.promo-hero .promo-subtitle,
+.member-coupon-hero > p:last-child {
+    color: var(--ui-muted);
+}
+
+.promo-coupon,
+.promo-bottom-badge {
+    border: 1px solid #d6e0ec;
+    background: var(--ui-primary-soft);
+    color: var(--ui-primary-dark);
+    box-shadow: none;
+}
+
+.promo-coupon span {
+    background: var(--ui-primary);
+}
+
+.member-coupon-container,
+.customer-register-container {
+    padding-top: 36px;
+}
+
+@media (max-width: 768px) {
+    .site-navbar {
+        height: auto;
+        padding: 10px 14px 0;
+    }
+
+    .navbar-inner {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .site-navbar .logo {
+        min-height: 44px;
+    }
+
+    .site-navbar .nav-links {
+        display: grid;
+        width: calc(100% + 28px);
+        margin: 0 -14px;
+        padding: 0 14px 10px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 3px;
+        overflow: visible;
+        flex-wrap: nowrap;
+    }
+
+    .site-navbar .nav-links a {
+        min-width: 0;
+        min-height: 40px;
+        padding: 8px 4px;
+        gap: 4px;
+        justify-content: center;
+        font-size: 11.5px;
+    }
+
+    .site-navbar .nav-icon {
+        width: 17px;
+        height: 17px;
+        flex-basis: 17px;
+        font-size: 14px;
+    }
+
+    .container {
+        width: min(100% - 28px, 1180px);
+        margin: 24px auto 48px;
+    }
+
+    .dashboard-header,
+    .camera-page-header {
+        padding: 26px 22px;
+    }
+
+    .dashboard-table.responsive-data-table {
+        min-width: 0;
+    }
+
+    .recognition-log-card,
+    .vip-alert-card {
+        overflow: visible;
+    }
+
+    .camera-preview-card {
+        padding: 12px;
+    }
+
+    .camera-stream-frame,
+    .camera-stream-image {
+        min-height: 0;
+    }
+
+    .camera-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .camera-control-panel {
+        grid-template-columns: minmax(0, 1fr);
+        padding: 18px;
+    }
+
+    .camera-control-panel > h2,
+    .camera-control-panel > .camera-feedback,
+    .camera-control-panel > .rule-note {
+        grid-column: auto;
+    }
+
+    .member-form-wide {
+        grid-column: auto;
+    }
+
+    .member-form-heading {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .member-coupon-container,
+    .customer-register-container {
+        padding-top: 24px;
+    }
+}
+
+@media (max-width: 420px) {
+    .logo-text {
+        font-size: 16px;
+    }
+
+    .camera-preview-header {
+        align-items: flex-start;
+    }
+
+    .camera-preview-header h2 {
+        font-size: 17px;
+    }
+
+    .line-mode-card {
+        padding: 22px 18px;
+    }
+}
+
+/* Homepage product overview */
+.home-page {
+    background:
+        radial-gradient(circle at 8% 14%, rgba(113, 169, 229, 0.12), transparent 25rem),
+        radial-gradient(circle at 92% 46%, rgba(157, 139, 231, 0.08), transparent 23rem),
+        #f5f8fc;
+}
+
+.home-page .container {
+    position: relative;
+}
+
+.home-page svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.home-hero {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    padding: clamp(28px, 4.8vw, 54px);
+    border-color: #dbe6f3;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 18px 45px rgba(37, 71, 118, 0.09);
+}
+
+.home-hero-decoration {
+    position: absolute;
+    z-index: -1;
+    right: -8%;
+    bottom: -42%;
+    width: 62%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle, rgba(72, 132, 203, 0.11) 0 2px, transparent 3px) 0 0 / 18px 18px,
+        radial-gradient(circle at 50% 50%, rgba(223, 237, 253, 0.92), rgba(239, 246, 255, 0.22) 58%, transparent 70%);
+    opacity: 0.85;
+}
+
+.home-hero-grid {
+    display: grid;
+    align-items: center;
+    grid-template-columns: minmax(0, 1.48fr) minmax(290px, 0.72fr);
+    gap: clamp(30px, 5vw, 68px);
+}
+
+.home-hero-copy,
+.home-status-panel {
+    min-width: 0;
+}
+
+.home-hero-meta,
+.home-title-row,
+.home-section-heading,
+.home-process-intro,
+.home-status-header,
+.home-service-item,
+.home-updated {
+    display: flex;
+    align-items: center;
+}
+
+.home-hero-meta {
+    flex-wrap: wrap;
+    gap: 12px 16px;
+}
+
+.home-hero-meta .tag {
+    margin: 0;
+}
+
+.home-status-chip {
+    display: inline-flex;
+    min-height: 32px;
+    padding: 5px 12px;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid #cbe9d4;
+    border-radius: 999px;
+    background: #f1fbf4;
+    color: #168044;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.home-status-chip > span,
+.service-state::before {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    border-radius: 50%;
+    background: #23ad60;
+    box-shadow: 0 0 0 4px rgba(35, 173, 96, 0.1);
+}
+
+.home-title-row {
+    margin-top: 23px;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.home-title-row h1 {
+    max-width: 700px;
+    margin: 0;
+    font-size: clamp(31px, 4.1vw, 50px);
+    letter-spacing: -0.035em;
+}
+
+.home-title-icon,
+.home-section-icon,
+.feature-icon,
+.home-service-icon,
+.home-pulse-icon {
+    display: inline-grid;
+    flex: 0 0 auto;
+    place-items: center;
+}
+
+.home-title-icon {
+    width: 52px;
+    height: 52px;
+    padding: 10px;
+    border: 1px solid #cfe0f4;
+    border-radius: 15px;
+    background: #eef5fd;
+    color: #3272bb;
+}
+
+.home-hero .hero-description {
+    max-width: 670px;
+    margin: 22px 0 0;
+    color: #59677c;
+    font-size: 16px;
+}
+
+.home-capability-tags {
+    display: flex;
+    margin-top: 22px;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.home-capability-tags span {
+    padding: 5px 11px;
+    border: 1px solid #dee7f2;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.86);
+    color: #617087;
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.home-hero .hero-actions {
+    margin-top: 27px;
+}
+
+.home-hero .primary-btn,
+.home-hero .secondary-btn {
+    min-height: 48px;
+    padding: 11px 19px;
+    gap: 9px;
+}
+
+.home-hero .primary-btn:hover,
+.home-hero .secondary-btn:hover {
+    transform: translateY(-1px);
+}
+
+.button-icon {
+    width: 19px !important;
+    height: 19px !important;
+}
+
+.home-status-panel {
+    padding: 22px;
+    border: 1px solid #dce6f2;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 14px 32px rgba(42, 76, 120, 0.11);
+}
+
+.home-status-header {
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.home-status-header p,
+.home-process-intro p,
+.home-section-heading p {
+    margin: 0 0 3px;
+    color: #8190a5;
+    font-size: 11px;
+    font-weight: 850;
+    letter-spacing: 0.12em;
+}
+
+.home-status-header h2,
+.home-process-intro h2,
+.home-section-heading h2 {
+    margin: 0;
+    color: var(--ui-ink);
+}
+
+.home-status-header h2 {
+    font-size: 18px;
+}
+
+.home-pulse-icon {
+    width: 40px;
+    height: 40px;
+    padding: 9px;
+    border-radius: 12px;
+    background: #edf5ff;
+    color: #3272bb;
+}
+
+.home-service-list {
+    display: grid;
+    margin-top: 19px;
+    gap: 9px;
+}
+
+.home-service-item {
+    min-width: 0;
+    padding: 10px;
+    gap: 11px;
+    border: 1px solid #edf1f6;
+    border-radius: 13px;
+    background: #fbfcfe;
+}
+
+.home-service-icon {
+    width: 35px;
+    height: 35px;
+    padding: 8px;
+    border-radius: 10px;
+}
+
+.home-service-icon.is-blue,
+.feature-icon.is-blue {
+    background: #eaf3ff;
+    color: #2f72c4;
+}
+
+.home-service-icon.is-green,
+.feature-icon.is-green,
+.home-section-icon.is-mint {
+    background: #e9f8f4;
+    color: #218c73;
+}
+
+.home-service-icon.is-violet,
+.feature-icon.is-violet {
+    background: #f1edff;
+    color: #7154c7;
+}
+
+.home-service-item > div {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.home-service-item strong,
+.home-service-item small {
+    display: block;
+}
+
+.home-service-item strong {
+    color: #354259;
+    font-size: 13px;
+}
+
+.home-service-item small {
+    overflow: hidden;
+    margin-top: 1px;
+    color: #8a96a8;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.service-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #218653;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.service-state::before {
+    content: "";
+    display: block;
+    width: 5px;
+    height: 5px;
+    flex-basis: 5px;
+    box-shadow: none;
+}
+
+.home-updated {
+    margin-top: 16px;
+    padding-top: 14px;
+    gap: 8px;
+    border-top: 1px dashed #dfe6ef;
+    color: #78869a;
+    font-size: 12px;
+}
+
+.home-updated svg {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+}
+
+.home-process {
+    display: grid;
+    margin-top: 22px;
+    padding: 22px 25px;
+    align-items: center;
+    grid-template-columns: minmax(205px, 0.75fr) minmax(0, 2fr);
+    gap: 28px;
+    border: 1px solid #e0e8f2;
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 8px 24px rgba(34, 60, 98, 0.055);
+}
+
+.home-process-intro {
+    gap: 12px;
+}
+
+.home-process-intro h2 {
+    font-size: 18px;
+}
+
+.home-section-icon {
+    width: 44px;
+    height: 44px;
+    padding: 10px;
+    border-radius: 13px;
+    background: #edf5ff;
+    color: #3272bb;
+}
+
+.home-process-list {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    list-style: none;
+}
+
+.home-process-list li {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    padding: 6px 18px;
+    align-items: center;
+    gap: 10px;
+}
+
+.home-process-list li + li {
+    border-left: 1px solid #e4eaf2;
+}
+
+.process-number {
+    display: inline-grid;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    place-items: center;
+    border: 1px solid #d8e4f3;
+    border-radius: 50%;
+    background: #f4f8fd;
+    color: #3975b8;
+    font-size: 11px;
+    font-weight: 900;
+}
+
+.home-process-list strong,
+.home-process-list small {
+    display: block;
+}
+
+.home-process-list strong {
+    color: #39465b;
+    font-size: 13px;
+}
+
+.home-process-list small {
+    margin-top: 1px;
+    color: #8692a4;
+    font-size: 11px;
+}
+
+.home-section-title {
+    display: flex;
+    margin: 44px 0 22px;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    text-align: left;
+}
+
+.home-section-heading {
+    gap: 13px;
+}
+
+.home-section-heading h2 {
+    font-size: 27px;
+}
+
+.home-section-title > p {
+    max-width: 500px;
+    margin: 0 0 3px;
+    text-align: right;
+}
+
+.home-feature-grid {
+    gap: 20px;
+}
+
+.home-feature-card {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    min-height: 270px;
+    padding: 25px;
+    flex-direction: column;
+    overflow: hidden;
+    color: var(--ui-ink);
+    text-decoration: none;
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.home-feature-card::after {
+    content: "";
+    position: absolute;
+    right: -48px;
+    bottom: -62px;
+    width: 150px;
+    height: 150px;
+    border: 24px solid rgba(55, 111, 178, 0.035);
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.home-feature-card:hover {
+    transform: translateY(-5px);
+    border-color: #b9cce3;
+    box-shadow: 0 17px 36px rgba(36, 72, 116, 0.12);
+}
+
+.home-feature-card:focus-visible {
+    outline: 3px solid rgba(49, 91, 156, 0.22);
+    outline-offset: 3px;
+}
+
+.home-feature-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.feature-icon {
+    width: 56px;
+    height: 56px;
+    padding: 13px;
+    border-radius: 16px;
+}
+
+.feature-arrow {
+    display: inline-grid;
+    width: 32px;
+    height: 32px;
+    padding: 7px;
+    place-items: center;
+    border: 1px solid #e1e7ef;
+    border-radius: 50%;
+    background: #ffffff;
+    color: #8b98aa;
+    transition: color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.home-feature-card:hover .feature-arrow {
+    transform: translateX(2px);
+    border-color: #bfd0e4;
+    color: #315b9c;
+}
+
+.feature-kicker {
+    margin-top: 22px;
+    color: #8390a3;
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: 0.12em;
+}
+
+.home-feature-card h3 {
+    margin: 5px 0 7px;
+    color: #253248;
+    font-size: 21px;
+}
+
+.home-feature-card p {
+    margin: 0;
+    color: #68768a;
+    font-size: 14px;
+}
+
+.feature-link-label {
+    margin-top: auto;
+    padding-top: 18px;
+    color: #315b9c;
+    font-size: 12px;
+    font-weight: 850;
+}
+
+@media (max-width: 980px) {
+    .home-hero-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(270px, 0.72fr);
+        gap: 28px;
+    }
+
+    .home-title-row {
+        gap: 12px;
+    }
+
+    .home-title-icon {
+        width: 46px;
+        height: 46px;
+    }
+
+    .home-process {
+        grid-template-columns: 1fr;
+        gap: 17px;
+    }
+
+    .home-process-list li:first-child {
+        padding-left: 0;
+    }
+}
+
+@media (max-width: 768px) {
+    .home-page .container {
+        margin-top: 18px;
+    }
+
+    .home-hero {
+        padding: 25px 21px;
+    }
+
+    .home-hero-decoration {
+        top: 34%;
+        right: -42%;
+        bottom: auto;
+        width: 105%;
+    }
+
+    .home-hero-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 25px;
+    }
+
+    .home-title-row {
+        margin-top: 20px;
+    }
+
+    .home-title-row h1 {
+        font-size: clamp(28px, 9vw, 38px);
+        letter-spacing: -0.025em;
+    }
+
+    .home-title-icon {
+        width: 44px;
+        height: 44px;
+        padding: 9px;
+        border-radius: 13px;
+    }
+
+    .home-status-panel {
+        padding: 18px;
+    }
+
+    .home-process {
+        padding: 20px;
+    }
+
+    .home-process-list {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0;
+    }
+
+    .home-process-list li,
+    .home-process-list li:first-child {
+        padding: 11px 0;
+    }
+
+    .home-process-list li + li {
+        border-top: 1px solid #e4eaf2;
+        border-left: 0;
+    }
+
+    .home-section-title {
+        margin-top: 36px;
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 13px;
+    }
+
+    .home-section-title > p {
+        text-align: left;
+    }
+
+    .home-feature-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .home-feature-card {
+        min-height: 250px;
+    }
+}
+
+@media (max-width: 420px) {
+    .home-hero-meta {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .home-title-row {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .home-hero .hero-description {
+        font-size: 15px;
+    }
+
+    .home-hero .hero-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .home-service-item {
+        gap: 9px;
+    }
+
+    .home-service-item small {
+        max-width: 130px;
+    }
+
+    .home-section-heading {
+        align-items: flex-start;
+    }
+}
+
+/* Member coupon and registration product experience */
+.member-coupon-page,
+.member-register-page {
+    background:
+        radial-gradient(circle at 7% 16%, rgba(96, 165, 250, 0.11), transparent 24rem),
+        radial-gradient(circle at 93% 48%, rgba(139, 92, 246, 0.07), transparent 25rem),
+        #f5f8fc;
+}
+
+.member-coupon-page svg,
+.member-register-page svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.member-coupon-container,
+.customer-register-container {
+    width: min(1180px, calc(100% - 48px));
+    max-width: none;
+    padding: 30px 0 64px;
+}
+
+.member-portal-header {
+    margin-bottom: 16px;
+}
+
+.member-portal-brand {
+    color: #315b9c;
+    font-size: 15px;
+    letter-spacing: 0.08em;
+}
+
+/* Coupon hero */
+.member-coupon-hero {
+    position: relative;
+    display: grid;
+    min-height: 300px;
+    padding: clamp(30px, 4.5vw, 50px);
+    align-items: center;
+    grid-template-columns: minmax(0, 1.45fr) minmax(240px, 0.55fr);
+    gap: clamp(28px, 5vw, 62px);
+    isolation: isolate;
+    overflow: hidden;
+    border-color: #dbe6f3;
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 18px 45px rgba(37, 71, 118, 0.09);
+}
+
+.member-coupon-hero::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    right: -7%;
+    bottom: -54%;
+    display: block;
+    width: 58%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle, rgba(78, 132, 198, 0.12) 0 2px, transparent 3px) 0 0 / 18px 18px,
+        radial-gradient(circle, rgba(222, 237, 255, 0.95), rgba(240, 246, 255, 0.2) 64%, transparent 70%);
+}
+
+.member-hero-orb {
+    position: absolute;
+    z-index: -1;
+    top: -75px;
+    left: 44%;
+    width: 210px;
+    height: 210px;
+    border-radius: 50%;
+    background: rgba(229, 239, 252, 0.58);
+    filter: blur(2px);
+}
+
+.member-coupon-hero-copy,
+.member-coupon-title-row > div {
+    min-width: 0;
+}
+
+.member-coupon-hero-tags,
+.member-coupon-title-row,
+.member-section-title {
+    display: flex;
+    align-items: center;
+}
+
+.member-coupon-hero-tags {
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.member-coupon-hero-tags .promo-tag {
+    margin: 0 5px 0 0;
+    color: #315b9c;
+}
+
+.member-coupon-hero-tags > span {
+    padding: 5px 10px;
+    border: 1px solid #dce7f4;
+    border-radius: 999px;
+    background: #f7faff;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 750;
+}
+
+.member-coupon-title-row {
+    margin-top: 22px;
+    align-items: flex-start;
+    gap: 15px;
+}
+
+.member-coupon-title-icon,
+.member-hero-ticket-icon,
+.member-section-icon,
+.coupon-stat-icon,
+.coupon-empty-icon,
+.register-hero-icon,
+.register-section-icon,
+.field-label-icon,
+.face-upload-icon,
+.benefit-title-icon,
+.lottery-prize-heading > span,
+.lottery-prize-empty > span {
+    display: inline-grid;
+    flex: 0 0 auto;
+    place-items: center;
+}
+
+.member-coupon-title-icon {
+    width: 52px;
+    height: 52px;
+    padding: 11px;
+    border: 1px solid #cfe0f4;
+    border-radius: 15px;
+    background: #edf5ff;
+    color: #3272bb;
+}
+
+.member-coupon-hero h1 {
+    margin: 0;
+    color: #172033;
+    font-size: clamp(34px, 4.5vw, 52px);
+    letter-spacing: -0.035em;
+}
+
+.member-coupon-hero #couponHeroSubtitle {
+    max-width: 650px;
+    margin: 13px 0 0;
+    color: #657287;
+    font-size: 16px;
+    line-height: 1.75;
+}
+
+.member-hero-ticket {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    padding: 24px;
+    flex-direction: column;
+    border: 1px solid #d9e5f2;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 14px 32px rgba(42, 76, 120, 0.11);
+}
+
+.member-hero-ticket-icon {
+    width: 42px;
+    height: 42px;
+    padding: 10px;
+    border-radius: 12px;
+    background: #edf5ff;
+    color: #3272bb;
+}
+
+.member-hero-ticket small {
+    margin-top: 17px;
+    color: #8290a4;
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: 0.14em;
+}
+
+.member-hero-ticket strong {
+    margin-top: 3px;
+    color: #26354c;
+    font-size: 21px;
+}
+
+.member-hero-ticket-line {
+    margin: 16px 0 12px;
+    border-top: 1px dashed #dbe4ef;
+}
+
+.member-hero-ticket p {
+    margin: 0;
+    color: #7b889b;
+    font-size: 12px;
+}
+
+/* Coupon summary and ticket cards */
+.member-coupon-panel {
+    margin-top: 22px;
+    padding: clamp(22px, 3.5vw, 34px);
+    border-color: #e0e8f2;
+    border-radius: 20px;
+    box-shadow: 0 9px 26px rgba(37, 65, 104, 0.065);
+}
+
+.member-coupon-heading {
+    align-items: center;
+}
+
+.member-coupon-heading h2 {
+    color: #253248;
+    font-size: 24px;
+}
+
+.member-section-title {
+    align-items: flex-start;
+    gap: 13px;
+}
+
+.member-section-icon {
+    width: 44px;
+    height: 44px;
+    padding: 10px;
+    border-radius: 13px;
+}
+
+.member-section-icon.is-blue {
+    background: #edf5ff;
+    color: #3272bb;
+}
+
+.member-coupon-stat-grid {
+    gap: 14px;
+}
+
+.member-coupon-stat {
+    display: grid;
+    min-height: 156px;
+    padding: 20px;
+    align-items: start;
+    grid-template-columns: 45px minmax(0, 1fr);
+    gap: 14px;
+    border-radius: 17px;
+    background: #fbfcfe;
+    box-shadow: none;
+}
+
+.coupon-stat-icon {
+    width: 45px;
+    height: 45px;
+    padding: 10px;
+    border-radius: 13px;
+}
+
+.member-coupon-stat.is-stat-1 .coupon-stat-icon {
+    background: #eaf3ff;
+    color: #2f72c4;
+}
+
+.member-coupon-stat.is-stat-2 .coupon-stat-icon {
+    background: #e9f8f1;
+    color: #218c62;
+}
+
+.member-coupon-stat.is-stat-3 .coupon-stat-icon {
+    background: #fff4e5;
+    color: #ca741c;
+}
+
+.coupon-stat-copy {
+    min-width: 0;
+}
+
+.member-coupon-stat p {
+    color: #5d6b80;
+    font-size: 13px;
+}
+
+.member-coupon-stat strong {
+    margin: 12px 0 6px;
+    color: #26354c;
+    font-size: 36px;
+}
+
+.member-coupon-stat span:not(.coupon-stat-icon) {
+    color: #8b97a8;
+}
+
+.member-coupon-list {
+    gap: 20px;
+}
+
+.member-coupon-card {
+    position: relative;
+    padding: 25px;
+    overflow: visible;
+    border: 1px solid #dce5f0;
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 10px 24px rgba(38, 67, 105, 0.065);
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.member-coupon-card:hover {
+    transform: translateY(-2px);
+    border-color: #bfd0e4;
+    box-shadow: 0 15px 30px rgba(38, 67, 105, 0.1);
+}
+
+.member-coupon-card::before,
+.member-coupon-card::after {
+    content: "";
+    position: absolute;
+    top: 58%;
+    width: 18px;
+    height: 18px;
+    border: 1px solid #dce5f0;
+    border-radius: 50%;
+    background: #ffffff;
+}
+
+.member-coupon-card::before {
+    left: -10px;
+    border-left-color: transparent;
+    border-bottom-color: transparent;
+    transform: rotate(45deg);
+}
+
+.member-coupon-card::after {
+    right: -10px;
+    border-top-color: transparent;
+    border-right-color: transparent;
+    transform: rotate(45deg);
+}
+
+.member-coupon-card h3 {
+    color: #26354c;
+    font-size: 20px;
+}
+
+.member-coupon-code {
+    color: #738197;
+}
+
+.member-coupon-status {
+    border: 1px solid transparent;
+}
+
+.member-coupon-status.is-available {
+    border-color: #c9ead5;
+    background: #eefaf2;
+    color: #197345;
+}
+
+.member-coupon-status.is-upcoming,
+.member-coupon-status.is-expiring {
+    border-color: #f4dfbd;
+    background: #fff8ec;
+    color: #aa641d;
+}
+
+.member-coupon-status.is-used,
+.member-coupon-status.is-expired,
+.member-coupon-status.is-unavailable {
+    border-color: #e1e6ec;
+    background: #f4f6f8;
+    color: #697587;
+}
+
+.member-coupon-description {
+    color: #657287;
+}
+
+.member-coupon-discount {
+    margin-bottom: 20px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: #edf5ff;
+    color: #2867ae;
+    font-size: 21px;
+    line-height: 1.2;
+}
+
+.member-coupon-meta {
+    padding-top: 18px;
+    border-top: 1px dashed #dbe4ef;
+}
+
+.member-coupon-meta > div {
+    background: #f6f8fb;
+}
+
+.member-coupon-empty,
+.member-coupon-list-empty {
+    padding: 26px;
+    border-style: dashed;
+    border-color: #cfe0f2;
+    background: #f6faff;
+    text-align: center;
+}
+
+.coupon-empty-icon {
+    width: 54px;
+    height: 54px;
+    margin: 0 auto 13px;
+    padding: 13px;
+    border-radius: 17px;
+    background: #eaf3ff;
+    color: #3978bd;
+}
+
+.member-coupon-empty strong {
+    color: #34445b;
+}
+
+/* Registration hero and form */
+.customer-register-hero {
+    position: relative;
+    overflow: hidden;
+    padding: clamp(28px, 4.2vw, 48px);
+    border-color: #dbe6f3;
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 18px 45px rgba(37, 71, 118, 0.09);
+}
+
+.member-register-page .promo-decoration {
+    display: block;
+    opacity: 0.55;
+}
+
+.member-register-page .promo-light-left {
+    background: rgba(225, 238, 254, 0.75);
+}
+
+.member-register-page .promo-light-right {
+    background: rgba(237, 232, 255, 0.62);
+}
+
+.register-hero-heading,
+.register-welcome-row,
+.register-card-heading,
+.benefit-title-row,
+.lottery-prize-heading {
+    display: flex;
+    align-items: center;
+}
+
+.register-hero-heading {
+    position: relative;
+    z-index: 1;
+    align-items: flex-start;
+    gap: 15px;
+}
+
+.register-hero-icon {
+    width: 52px;
+    height: 52px;
+    padding: 11px;
+    border: 1px solid #cfe0f4;
+    border-radius: 15px;
+    background: #edf5ff;
+    color: #3272bb;
+}
+
+.register-hero-heading .promo-tag {
+    margin: 0 0 5px;
+    color: #315b9c;
+}
+
+.customer-register-hero h1 {
+    margin: 0;
+    color: #172033;
+    font-size: clamp(31px, 4.2vw, 48px);
+    letter-spacing: -0.035em;
+}
+
+.member-register-page .promo-subtitle {
+    position: relative;
+    z-index: 1;
+    max-width: 780px;
+    margin: 20px 0 0 67px;
+    color: #657287;
+    font-size: 15px;
+}
+
+.register-welcome-row {
+    position: relative;
+    z-index: 1;
+    margin: 25px 0 0 67px;
+    align-items: stretch;
+    gap: 16px;
+}
+
+.register-welcome-ticket {
+    position: relative;
+    display: flex;
+    min-width: 305px;
+    padding: 17px 21px;
+    align-items: center;
+    gap: 15px;
+    overflow: hidden;
+    border: 1px solid #cfe0f4;
+    border-radius: 16px;
+    background: #f4f8fd;
+    box-shadow: 0 9px 20px rgba(45, 89, 145, 0.08);
+}
+
+.register-welcome-ticket::after {
+    content: "";
+    position: absolute;
+    right: -18px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #ffffff;
+}
+
+.welcome-ticket-mark {
+    width: 46px;
+    height: 46px;
+    flex: 0 0 46px;
+    padding: 11px;
+    border-radius: 13px;
+    background: #e3effd;
+    color: #2f72c4;
+}
+
+.welcome-ticket-copy small,
+.welcome-ticket-copy strong,
+.welcome-ticket-copy em {
+    display: block;
+}
+
+.welcome-ticket-copy small {
+    color: #66809f;
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: 0.13em;
+}
+
+.welcome-ticket-copy strong {
+    color: #244f85;
+    font-size: 23px;
+}
+
+.welcome-ticket-copy em {
+    color: #8390a3;
+    font-size: 11px;
+    font-style: normal;
+}
+
+.register-benefit-tags {
+    display: flex;
+    min-width: 0;
+    align-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.register-benefit-tags span {
+    padding: 6px 11px;
+    border: 1px solid #dee7f2;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.88);
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.member-register-page .promo-bottom-badge {
+    position: relative;
+    z-index: 1;
+    margin: 18px 0 0 67px;
+    border-color: #dbe5f0;
+    background: #ffffff;
+    color: #758399;
+}
+
+.customer-register-layout {
+    align-items: start;
+    grid-template-columns: minmax(0, 1.05fr) minmax(340px, 0.95fr);
+    gap: 22px;
+}
+
+.register-card,
+.benefit-card {
+    padding: clamp(22px, 3vw, 30px);
+    border-color: #e0e8f2;
+    border-radius: 20px;
+    box-shadow: 0 9px 26px rgba(37, 65, 104, 0.065);
+}
+
+.register-card-heading {
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.register-section-icon {
+    width: 44px;
+    height: 44px;
+    padding: 10px;
+    border-radius: 13px;
+    background: #edf5ff;
+    color: #3272bb;
+}
+
+.register-card-heading p {
+    margin: 0 0 2px;
+    color: #8190a5;
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: 0.12em;
+}
+
+.register-card-heading h2 {
+    margin: 0;
+    color: #253248;
+    font-size: 23px;
+}
+
+.register-progress {
+    display: grid;
+    margin: 23px 0 18px;
+    padding: 15px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border: 1px solid #e2e9f2;
+    border-radius: 15px;
+    background: #f8fafc;
+    list-style: none;
+}
+
+.register-progress li {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    color: #8591a2;
+    font-size: 11px;
+}
+
+.register-progress li + li::before {
+    content: "";
+    position: absolute;
+    left: -13%;
+    width: 26%;
+    border-top: 1px dashed #ced8e5;
+}
+
+.register-progress li > span {
+    display: inline-grid;
+    width: 25px;
+    height: 25px;
+    flex: 0 0 25px;
+    place-items: center;
+    border: 1px solid #d5dfeb;
+    border-radius: 50%;
+    background: #ffffff;
+    font-size: 10px;
+    font-weight: 850;
+}
+
+.register-progress li.is-current {
+    color: #315b9c;
+}
+
+.register-progress li.is-current > span {
+    border-color: #315b9c;
+    background: #315b9c;
+    color: #ffffff;
+}
+
+#lineHint {
+    position: relative;
+    margin: 0;
+    padding: 12px 14px 12px 42px;
+    border: 1px solid #dce6f1;
+    border-radius: 13px;
+    background: #f7faff;
+    color: #52647c;
+}
+
+#lineHint::before {
+    content: "";
+    position: absolute;
+    top: 13px;
+    left: 14px;
+    width: 18px;
+    height: 18px;
+    border: 2px solid currentColor;
+    border-radius: 50%;
+    box-sizing: border-box;
+}
+
+#lineHint::after {
+    content: "";
+    position: absolute;
+    top: 18px;
+    left: 19px;
+    width: 7px;
+    height: 4px;
+    border-bottom: 2px solid currentColor;
+    border-left: 2px solid currentColor;
+    transform: rotate(-45deg);
+}
+
+#lineHint.success {
+    border-color: #c9ead5;
+    background: #effaf3;
+    color: #197345;
+}
+
+#lineHint.error {
+    border-color: #f1cccc;
+    background: #fff6f6;
+    color: #a33c3c;
+}
+
+.member-register-page .register-form {
+    margin-top: 22px;
+}
+
+.member-register-page .form-group {
+    margin-bottom: 20px;
+}
+
+.member-register-page .form-group > label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: #3d4b60;
+    font-size: 14px;
+}
+
+.field-label-icon {
+    width: 18px;
+    height: 18px;
+    color: #527eb3;
+}
+
+.member-register-page .form-group input:not([type="checkbox"]):not([type="file"]) {
+    min-height: 48px;
+    padding: 11px 14px;
+    border-color: #d7e0eb;
+    border-radius: 12px;
+    background: #fbfcfe;
+    color: #253248;
+    box-sizing: border-box;
+    transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.member-register-page .form-group input:not([type="checkbox"]):not([type="file"]):focus {
+    border-color: #6f9ed0;
+    background: #ffffff;
+    box-shadow: 0 0 0 4px rgba(49, 91, 156, 0.1);
+}
+
+.member-register-page .pref-options {
+    gap: 9px;
+}
+
+.member-register-page .form-group label.pref-option {
+    width: auto;
+    min-height: 42px;
+    margin: 0;
+    padding: 8px 12px;
+    border: 1px solid #dce4ee;
+    border-radius: 11px;
+    background: #fbfcfe;
+    font-size: 13px;
+    transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.member-register-page .form-group label.pref-option:has(input:checked) {
+    border-color: #a9c4e3;
+    background: #edf5ff;
+    color: #315b9c;
+}
+
+.member-register-page .pref-options input[type="checkbox"] {
+    accent-color: #315b9c;
+}
+
+.face-upload-zone {
+    position: relative;
+    display: grid;
+    min-height: 150px;
+    padding: 22px;
+    place-items: center;
+    align-content: center;
+    gap: 9px;
+    overflow: hidden;
+    border: 1.5px dashed #a9bfd9;
+    border-radius: 16px;
+    background: #f7faff;
+    text-align: center;
+    transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.face-upload-zone:hover,
+.face-upload-zone:focus-within {
+    border-color: #5d8fc6;
+    background: #f1f7ff;
+}
+
+.face-upload-icon {
+    width: 48px;
+    height: 48px;
+    padding: 11px;
+    border-radius: 14px;
+    background: #e5f0fd;
+    color: #3475bc;
+}
+
+.face-upload-copy strong,
+.face-upload-copy span {
+    display: block;
+}
+
+.face-upload-copy strong {
+    color: #35445a;
+    font-size: 14px;
+}
+
+.face-upload-copy span {
+    margin-top: 3px;
+    color: #8290a4;
+    font-size: 11px;
+}
+
+.member-register-page .face-upload-zone input[type="file"] {
+    width: min(100%, 290px);
+    padding: 7px;
+    border: 1px solid #d7e2ef;
+    border-radius: 10px;
+    background: #ffffff;
+    color: #657287;
+    font-size: 12px;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+.member-register-page .face-upload-zone input[type="file"]::file-selector-button {
+    margin-right: 8px;
+    padding: 7px 9px;
+    border: 0;
+    border-radius: 8px;
+    background: #315b9c;
+    color: #ffffff;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.face-upload-hint {
+    margin-bottom: 0;
+    color: #8491a4;
+    font-size: 11px;
+}
+
+.member-register-page .face-preview {
+    width: min(210px, 100%);
+    height: auto;
+    aspect-ratio: 1;
+    margin: 14px auto 0;
+    border: 4px solid #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 8px 20px rgba(37, 65, 104, 0.12);
+}
+
+.member-register-page .clear-file-btn {
+    display: block;
+    margin: 10px auto 0;
+    padding: 7px 11px;
+    border: 1px solid #d5dfeb;
+    border-radius: 9px;
+    background: #ffffff;
+    color: #657287;
+    font-weight: 700;
+}
+
+.member-register-page #registerButton,
+.member-register-page #spinButton {
+    position: relative;
+    gap: 8px;
+}
+
+.member-register-page #registerButton {
+    width: 100%;
+    min-height: 50px;
+}
+
+.member-register-page #registerButton::before,
+.member-register-page #spinButton::before {
+    content: "";
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+    border: 1.8px solid currentColor;
+    border-radius: 50%;
+    box-sizing: border-box;
+}
+
+.member-register-page #registerButton::after {
+    content: "";
+    position: absolute;
+    left: calc(50% - 42px);
+    width: 7px;
+    height: 4px;
+    border-bottom: 1.8px solid currentColor;
+    border-left: 1.8px solid currentColor;
+    transform: rotate(-45deg);
+}
+
+.member-register-page #registerButton:hover,
+.member-register-page #spinButton:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+.member-register-page #registerButton:active,
+.member-register-page #spinButton:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+/* Benefits, lottery, and prize state */
+.customer-benefits {
+    gap: 22px;
+}
+
+.benefit-card h2 {
+    color: #253248;
+    font-size: 21px;
+    line-height: 1.4;
+}
+
+.benefit-card p {
+    color: #657287;
+}
+
+.benefit-label {
+    color: #315b9c;
+    font-size: 11px;
+    letter-spacing: 0.11em;
+}
+
+.coupon-ticket {
+    position: relative;
+    overflow: hidden;
+    border: 1px dashed #9db9da;
+    background: #f3f8fe;
+}
+
+.coupon-ticket::before,
+.coupon-ticket::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #ffffff;
+    transform: translateY(-50%);
+}
+
+.coupon-ticket::before {
+    left: -12px;
+}
+
+.coupon-ticket::after {
+    right: -12px;
+}
+
+.coupon-ticket strong {
+    color: #244f85;
+}
+
+.benefit-title-row {
+    align-items: flex-start;
+    gap: 11px;
+}
+
+.benefit-title-icon {
+    width: 42px;
+    height: 42px;
+    padding: 10px;
+    border-radius: 13px;
+    background: #f1edff;
+    color: #7154c7;
+}
+
+.benefit-title-row .benefit-label {
+    margin: 0 0 5px;
+}
+
+.lottery-limit-chip {
+    display: inline-flex;
+    padding: 4px 9px;
+    border: 1px solid #eadffb;
+    border-radius: 999px;
+    background: #f8f4ff;
+    color: #7254a8;
+    font-size: 10px;
+    font-weight: 750;
+}
+
+.lottery-area {
+    padding: 20px;
+    border: 1px solid #e1e8f1;
+    border-radius: 17px;
+    background: #f9fbfd;
+}
+
+.wheel-wrapper {
+    width: min(270px, 74vw);
+    height: min(270px, 74vw);
+    border: 9px solid #ffffff;
+    box-shadow: 0 0 0 1px #cfdaea, 0 13px 28px rgba(50, 78, 117, 0.16);
+}
+
+.spin-wheel {
+    width: 100%;
+    height: 100%;
+    border: 6px solid #315b9c;
+    background: conic-gradient(
+        #dbeafe 0deg 60deg,
+        #fff2bd 60deg 120deg,
+        #eee8ff 120deg 180deg,
+        #d9f1ea 180deg 240deg,
+        #e9f3ff 240deg 300deg,
+        #f6e7fb 300deg 360deg
+    );
+    box-sizing: border-box;
+}
+
+.wheel-wrapper::after {
+    border-color: #ffffff;
+    background: #315b9c;
+    box-shadow: 0 4px 12px rgba(37, 71, 118, 0.2);
+}
+
+.wheel-pointer {
+    border-top-color: #e29a2c;
+    filter: drop-shadow(0 3px 3px rgba(91, 62, 20, 0.16));
+}
+
+.wheel-item {
+    color: #324257;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.member-register-page #spinButton {
+    min-width: 190px;
+    min-height: 48px;
+    margin-top: 21px;
+    border-color: #315b9c;
+    background: #315b9c;
+    color: #ffffff;
+    box-shadow: 0 7px 16px rgba(49, 91, 156, 0.16);
+}
+
+.member-register-page #spinButton::before {
+    border-style: dashed;
+}
+
+.member-register-page #spinButton:disabled {
+    border-color: #cbd5e1;
+    background: #e8edf3;
+    color: #7e8999;
+    box-shadow: none;
+}
+
+.lottery-result {
+    padding: 11px 13px;
+    border: 1px solid #dbe5f0;
+    border-radius: 11px;
+    background: #ffffff;
+    color: #66758a;
+}
+
+.lottery-prize-heading {
+    margin-top: 22px;
+    padding-top: 20px;
+    gap: 10px;
+    border-top: 1px dashed #dbe3ed;
+    text-align: left;
+}
+
+.lottery-prize-heading > span {
+    width: 39px;
+    height: 39px;
+    padding: 9px;
+    border-radius: 12px;
+    background: #fff4df;
+    color: #c67a20;
+}
+
+.lottery-prize-heading small {
+    color: #8a96a8;
+    font-size: 9px;
+    font-weight: 850;
+    letter-spacing: 0.12em;
+}
+
+.lottery-prize-heading h3 {
+    margin: 0;
+    color: #334259;
+    font-size: 17px;
+}
+
+.lottery-prize-card {
+    border-color: #cfe0f2;
+    background: #f6faff;
+    box-shadow: none;
+}
+
+.lottery-prize-empty {
+    display: grid;
+    margin-top: 13px;
+    padding: 22px 18px;
+    place-items: center;
+    border: 1px dashed #d4deea;
+    border-radius: 14px;
+    background: #ffffff;
+    text-align: center;
+}
+
+.lottery-prize-empty > span {
+    width: 45px;
+    height: 45px;
+    margin-bottom: 9px;
+    padding: 11px;
+    border-radius: 14px;
+    background: #fff5e7;
+    color: #c57a24;
+}
+
+.lottery-prize-empty strong {
+    color: #455369;
+    font-size: 13px;
+}
+
+.lottery-prize-empty p {
+    margin: 4px 0 0;
+    color: #8995a6;
+    font-size: 11px;
+}
+
+.lottery-area:has(#lotteryPrizeCard:not([hidden])) .lottery-prize-empty {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .member-coupon-hero {
+        grid-template-columns: minmax(0, 1fr) minmax(220px, 0.58fr);
+        gap: 25px;
+    }
+
+    .customer-register-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .customer-benefits {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .member-coupon-container,
+    .customer-register-container {
+        width: min(100% - 28px, 1180px);
+        padding: 18px 0 48px;
+    }
+
+    .member-coupon-hero {
+        min-height: 0;
+        padding: 25px 21px;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 22px;
+    }
+
+    .member-coupon-hero::before {
+        right: -42%;
+        bottom: -15%;
+        width: 105%;
+    }
+
+    .member-coupon-title-icon {
+        width: 44px;
+        height: 44px;
+        padding: 9px;
+        border-radius: 13px;
+    }
+
+    .member-coupon-hero h1 {
+        font-size: clamp(29px, 9vw, 39px);
+    }
+
+    .member-hero-ticket {
+        padding: 19px;
+    }
+
+    .member-coupon-panel {
+        padding: 22px 18px;
+    }
+
+    .member-coupon-stat-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .member-coupon-stat {
+        min-height: 0;
+        padding: 17px;
+        grid-template-columns: 43px minmax(0, 1fr) auto;
+        align-items: center;
+    }
+
+    .coupon-stat-icon {
+        width: 43px;
+        height: 43px;
+    }
+
+    .coupon-stat-copy {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 2px 14px;
+    }
+
+    .member-coupon-stat strong {
+        grid-row: 1 / 3;
+        grid-column: 2;
+        margin: 0;
+        font-size: 32px;
+    }
+
+    .member-coupon-stat span:not(.coupon-stat-icon) {
+        grid-column: 1;
+    }
+
+    .member-coupon-list {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .customer-register-hero {
+        padding: 25px 21px;
+    }
+
+    .register-hero-icon {
+        width: 44px;
+        height: 44px;
+        padding: 9px;
+        border-radius: 13px;
+    }
+
+    .customer-register-hero h1 {
+        font-size: clamp(27px, 8vw, 38px);
+    }
+
+    .member-register-page .promo-subtitle,
+    .register-welcome-row,
+    .member-register-page .promo-bottom-badge {
+        margin-left: 0;
+    }
+
+    .register-welcome-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .register-welcome-ticket {
+        min-width: 0;
+    }
+
+    .customer-benefits {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 420px) {
+    .member-portal-header {
+        margin-bottom: 10px;
+    }
+
+    .member-coupon-title-row,
+    .register-hero-heading {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 11px;
+    }
+
+    .member-coupon-hero-tags .promo-tag {
+        width: 100%;
+    }
+
+    .member-coupon-hero #couponHeroSubtitle,
+    .member-register-page .promo-subtitle {
+        font-size: 14px;
+        line-height: 1.65;
+    }
+
+    .member-coupon-heading {
+        align-items: flex-start;
+    }
+
+    .member-section-icon {
+        width: 40px;
+        height: 40px;
+    }
+
+    .member-coupon-heading h2 {
+        font-size: 21px;
+    }
+
+    .member-coupon-card {
+        padding: 21px 18px;
+    }
+
+    .member-coupon-card-header,
+    .member-coupon-redemption {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .member-coupon-meta {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .member-register-page .promo-bottom-badge {
+        text-align: left;
+    }
+
+    .register-progress {
+        padding: 12px 7px;
+    }
+
+    .register-progress li {
+        align-items: center;
+        flex-direction: column;
+        gap: 4px;
+        text-align: center;
+    }
+
+    .register-progress li + li::before {
+        top: 13px;
+        left: -18%;
+        width: 36%;
+    }
+
+    .register-progress li strong {
+        font-size: 10px;
+        white-space: nowrap;
+    }
+
+    .member-register-page .form-group label.pref-option {
+        flex: 1 1 calc(50% - 9px);
+    }
+
+    .face-upload-zone {
+        padding: 19px 13px;
+    }
+
+    .member-register-page .face-upload-zone input[type="file"] {
+        width: 100%;
+    }
+
+    .wheel-wrapper {
+        width: min(250px, 72vw);
+        height: min(250px, 72vw);
+    }
+
+    .member-register-page #spinButton {
+        width: 100%;
+        min-width: 0;
+    }
+}
+
+@media (max-width: 370px) {
+    .member-coupon-container,
+    .customer-register-container {
+        width: min(100% - 20px, 1180px);
+    }
+
+    .member-coupon-hero,
+    .customer-register-hero {
+        padding: 22px 17px;
+    }
+
+    .register-benefit-tags span {
+        flex: 1 1 auto;
+        text-align: center;
+    }
+
+    .wheel-wrapper {
+        width: min(230px, 70vw);
+        height: min(230px, 70vw);
+    }
+}
+
+/* Premium welcome area on the member registration page */
+.member-register-page .member-welcome-premium {
+    isolation: isolate;
+    padding: clamp(32px, 4.5vw, 52px);
+    border: 1px solid rgba(247, 214, 116, 0.32);
+    border-radius: 28px;
+    background:
+        radial-gradient(circle at 72% 8%, rgba(79, 126, 234, 0.38), transparent 34%),
+        radial-gradient(circle at 15% 12%, rgba(44, 94, 201, 0.32), transparent 31%),
+        linear-gradient(135deg, #10295d 0%, #173f8d 48%, #0e1c3d 100%);
+    box-shadow:
+        0 22px 48px rgba(19, 46, 99, 0.23),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.member-register-page .member-welcome-premium::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    border-radius: inherit;
+    background:
+        linear-gradient(115deg, transparent 15%, rgba(255, 255, 255, 0.06) 43%, transparent 67%),
+        radial-gradient(circle at 83% 30%, rgba(250, 211, 105, 0.11), transparent 20%);
+    pointer-events: none;
+}
+
+.member-register-page .member-welcome-premium .promo-light-left {
+    top: -80px;
+    left: -75px;
+    background: #3b82f6;
+    opacity: 0.22;
+}
+
+.member-register-page .member-welcome-premium .promo-light-right {
+    top: -40px;
+    right: 6%;
+    background: #f6d365;
+    opacity: 0.12;
+}
+
+.premium-sparkles {
+    position: absolute;
+    z-index: 2;
+    top: clamp(27px, 4vw, 46px);
+    right: clamp(28px, 4.5vw, 54px);
+    display: flex;
+    align-items: center;
+    gap: clamp(12px, 2vw, 24px);
+    color: #f5d778;
+    pointer-events: none;
+}
+
+.premium-sparkles span {
+    font-size: clamp(16px, 2.1vw, 25px);
+    text-shadow: 0 0 16px rgba(247, 215, 116, 0.58);
+}
+
+.premium-sparkles span:nth-child(even) {
+    font-size: clamp(11px, 1.5vw, 18px);
+    opacity: 0.76;
+}
+
+.premium-welcome-copy,
+.member-welcome-premium > .promo-subtitle,
+.premium-benefit-grid,
+.premium-security-note {
+    position: relative;
+    z-index: 2;
+}
+
+.member-register-page .member-welcome-premium .premium-eyebrow {
+    margin: 0 0 13px;
+    color: #d8e7ff;
+    font-size: clamp(15px, 1.6vw, 19px);
+    font-weight: 650;
+    letter-spacing: 0.04em;
+}
+
+.member-register-page .member-welcome-premium h1 {
+    margin: 0;
+    color: #fff0ad;
+    font-size: clamp(38px, 5vw, 62px);
+    line-height: 1.16;
+    letter-spacing: 0.025em;
+    text-shadow: 0 7px 22px rgba(4, 16, 44, 0.35);
+}
+
+.member-register-page .member-welcome-premium > .promo-subtitle {
+    max-width: 920px;
+    margin: 25px 0 31px;
+    color: #e8f0ff;
+    font-size: clamp(15px, 1.55vw, 18px);
+    line-height: 1.8;
+}
+
+.premium-benefit-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(14px, 2vw, 22px);
+}
+
+.premium-benefit-card {
+    display: grid;
+    min-width: 0;
+    min-height: 218px;
+    padding: 24px 18px 22px;
+    align-content: start;
+    justify-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    border-radius: 20px;
+    background: linear-gradient(180deg, #fff9d8 0%, #f9e594 100%);
+    box-shadow:
+        0 13px 25px rgba(5, 20, 52, 0.22),
+        inset 0 1px 0 #ffffff;
+    color: #173a7d;
+    text-align: center;
+}
+
+.premium-benefit-icon {
+    display: inline-grid;
+    width: 42px;
+    height: 42px;
+    margin-bottom: 10px;
+    padding: 9px;
+    place-items: center;
+    border: 1px solid rgba(33, 79, 163, 0.16);
+    border-radius: 13px;
+    background: rgba(255, 255, 255, 0.57);
+    color: #2457af;
+}
+
+.premium-benefit-label {
+    display: inline-block;
+    padding: 5px 13px;
+    border-radius: 999px;
+    background: #2457bb;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 850;
+    line-height: 1.3;
+}
+
+.premium-benefit-card strong {
+    display: block;
+    margin-top: 12px;
+    color: #2051ae;
+    font-size: clamp(34px, 4vw, 46px);
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: -0.02em;
+}
+
+.premium-benefit-card p {
+    margin: 13px 0 0;
+    color: #1d4389;
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1.45;
+}
+
+.premium-security-note {
+    display: flex;
+    width: 100%;
+    margin-top: 25px;
+    padding: 14px 20px;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.58);
+    border-radius: 16px;
+    background: linear-gradient(180deg, #fff1a6 0%, #f4cd45 100%);
+    box-shadow: 0 10px 22px rgba(6, 23, 54, 0.2);
+    color: #173875;
+}
+
+.premium-security-note span {
+    display: inline-grid;
+    width: 23px;
+    height: 23px;
+    flex: 0 0 23px;
+    place-items: center;
+}
+
+.premium-security-note p {
+    margin: 0;
+    color: inherit;
+    font-size: 15px;
+    font-weight: 850;
+    line-height: 1.45;
+    text-align: center;
+}
+
+@media (max-width: 768px) {
+    .member-register-page .member-welcome-premium {
+        padding: 30px 24px;
+        border-radius: 23px;
+    }
+
+    .premium-sparkles {
+        top: 28px;
+        right: 25px;
+        gap: 12px;
+    }
+
+    .member-register-page .member-welcome-premium > .promo-subtitle {
+        margin: 21px 0 26px;
+    }
+
+    .premium-benefit-card {
+        min-height: 198px;
+        padding: 20px 13px;
+    }
+}
+
+@media (max-width: 620px) {
+    .premium-benefit-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+    }
+
+    .premium-benefit-card {
+        min-height: 0;
+        padding: 17px 18px;
+        grid-template-columns: 44px minmax(0, 1fr) auto;
+        grid-template-rows: auto auto;
+        align-items: center;
+        justify-items: start;
+        column-gap: 13px;
+        text-align: left;
+    }
+
+    .premium-benefit-icon {
+        grid-row: 1 / 3;
+        margin: 0;
+    }
+
+    .premium-benefit-label {
+        grid-column: 2;
+        padding: 4px 10px;
+        font-size: 12px;
+    }
+
+    .premium-benefit-card strong {
+        grid-row: 1 / 3;
+        grid-column: 3;
+        margin: 0;
+        font-size: 31px;
+    }
+
+    .premium-benefit-card p {
+        grid-row: 2;
+        grid-column: 2;
+        margin: 5px 0 0;
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 420px) {
+    .member-register-page .member-welcome-premium {
+        padding: 25px 20px;
+        border-radius: 20px;
+    }
+
+    .premium-sparkles {
+        top: 24px;
+        right: 20px;
+    }
+
+    .premium-sparkles span:nth-child(n + 3) {
+        display: none;
+    }
+
+    .premium-eyebrow {
+        margin-bottom: 11px;
+        font-size: 13px;
+    }
+
+    .member-register-page .member-welcome-premium h1 {
+        max-width: calc(100% - 48px);
+        font-size: clamp(31px, 9.3vw, 38px);
+    }
+
+    .member-register-page .member-welcome-premium > .promo-subtitle {
+        margin: 18px 0 22px;
+        font-size: 13px;
+        line-height: 1.65;
+    }
+
+    .premium-benefit-card {
+        padding: 15px 13px;
+        grid-template-columns: 40px minmax(0, 1fr) auto;
+        column-gap: 10px;
+        border-radius: 16px;
+    }
+
+    .premium-benefit-icon {
+        width: 40px;
+        height: 40px;
+        padding: 9px;
+    }
+
+    .premium-benefit-card strong {
+        font-size: 28px;
+    }
+
+    .premium-security-note {
+        padding: 12px 11px;
+        border-radius: 14px;
+    }
+
+    .premium-security-note p {
+        font-size: 12px;
+    }
+}

@@ -3,7 +3,7 @@ import cv2
 import time
 import threading
 from datetime import datetime
-from flask import Blueprint, Response, jsonify
+from flask import Blueprint, Response, jsonify, render_template
 from services.visit_service import (
     build_subject_key,
     handle_recognition,
@@ -883,99 +883,7 @@ def generate_frames():
 
 @camera_bp.route("/camera")
 def camera():
-    return """
-    <h1>智慧會員辨識系統 - 攝影機畫面</h1>
-
-    <p>即時攝影機串流</p>
-
-    <p>
-        Camera Status：
-        <strong id="camera-status">
-            Connecting
-        </strong>
-    </p>
-
-    <p id="camera-message">
-        正在確認攝影機狀態
-    </p>
-
-    <p>
-        本週測試重點：
-        攝影機 FPS、連線／中斷狀態、
-        VIP／一般會員／散客標籤、
-        no_face／failed 防呆
-    </p>
-
-    <img
-        id="camera-stream"
-        src="/camera/video_feed"
-        width="640"
-        alt="攝影機串流"
-    >
-
-    <script>
-        async function refreshCameraStatus() {
-            const statusElement =
-                document.getElementById(
-                    "camera-status"
-                );
-
-            const messageElement =
-                document.getElementById(
-                    "camera-message"
-                );
-
-            try {
-                const response = await fetch(
-                    "/camera/status",
-                    {
-                        cache: "no-store"
-                    }
-                );
-
-                const data = await response.json();
-
-                statusElement.textContent =
-                    data.status;
-
-                messageElement.textContent =
-                    data.message;
-
-                if (data.connected) {
-                    statusElement.style.color =
-                        "green";
-
-                } else if (
-                    data.status === "Connecting"
-                ) {
-                    statusElement.style.color =
-                        "orange";
-
-                } else {
-                    statusElement.style.color =
-                        "red";
-                }
-
-            } catch (error) {
-                statusElement.textContent =
-                    "Disconnected";
-
-                statusElement.style.color =
-                    "red";
-
-                messageElement.textContent =
-                    "無法取得攝影機狀態";
-            }
-        }
-
-        refreshCameraStatus();
-
-        setInterval(
-            refreshCameraStatus,
-            2000
-        );
-    </script>
-    """
+    return render_template("camera.html")
 
 
 @camera_bp.route("/camera/status")
