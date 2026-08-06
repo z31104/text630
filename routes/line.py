@@ -78,6 +78,28 @@ def _cleanup_registration_image(local_path, stored_path=None):
 
 REGISTER_KEYWORDS = {"註冊", "會員", "加入會員", "register"}
 
+# 顧客用自然語句詢問「怎麼註冊」時（不是單獨打關鍵字），用固定文案說明流程，
+# 一樣不送給 LLM，避免 LLM 自己編造步驟。
+HOW_TO_REGISTER_KEYWORDS = (
+    "如何註冊", "怎麼註冊", "怎樣註冊", "怎么注册",
+    "如何加入會員", "怎麼加入會員", "怎樣加入會員",
+    "如何成為會員", "怎麼成為會員",
+    "註冊流程", "註冊步驟", "註冊教學",
+)
+
+HOW_TO_REGISTER_MESSAGE = (
+    "點選下方【立即註冊會員】即可開始註冊。\n"
+    "\n"
+    "📋 註冊流程：\n"
+    "1️⃣ 填寫基本資料\n"
+    "2️⃣ 上傳人臉照片\n"
+    "3️⃣ 完成會員建立\n"
+    "4️⃣ 領取新會員優惠券\n"
+    "5️⃣ 參加新會員抽獎\n"
+    "\n"
+    "👉 點擊下方按鈕開始"
+)
+
 # 顧客用 LINE 官方帳號
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
@@ -234,6 +256,18 @@ if LINE_ENABLED:
             line_bot_api.reply_message(
                 event.reply_token,
                 build_register_message(user_id)
+            )
+            return
+
+        # 客戶用自然語句問「如何註冊」時，回覆固定的流程說明 + 註冊按鈕，
+        # 一樣不送給 LLM，避免步驟被 LLM 講錯。
+        if any(keyword in text for keyword in HOW_TO_REGISTER_KEYWORDS):
+            line_bot_api.reply_message(
+                event.reply_token,
+                [
+                    TextSendMessage(text=HOW_TO_REGISTER_MESSAGE),
+                    build_register_message(user_id),
+                ]
             )
             return
 
