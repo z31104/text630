@@ -293,6 +293,16 @@ VALUES
     NOW(),
     DATE_ADD(NOW(), INTERVAL 30 DAY),
     'active'
+),
+(
+    5,
+    '新會員 100 元註冊禮',
+    '完成會員註冊後贈送，消費時可折抵 100 元',
+    'amount',
+    100,
+    NULL,
+    NULL,
+    'active'
 );
 
 INSERT INTO coupons (
