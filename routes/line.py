@@ -496,6 +496,13 @@ def _issue_registration_welcome_coupon_safely(member_id):
         return None
 
 
+def _build_welcome_message(name, welcome_coupon):
+    message = f"{name} 您好，歡迎加入會員！記得下次到店讓我們認出您 😊"
+    if welcome_coupon and welcome_coupon.get("issued"):
+        message += "\n已贈送您 100 元迎新禮券，可至會員中心查看。"
+    return message
+
+
 def _decode_line_id_token(id_token, channel_id=None):
     """
     向 LINE 官方驗證 ID Token 是否有效，成功時回傳 token 本身認證出的 line_user_id
@@ -799,7 +806,7 @@ def register_from_line():
 
         push_message(
             line_user_id,
-            f"{name} 您好，歡迎加入會員！記得下次到店讓我們認出您 😊"
+            _build_welcome_message(name, welcome_coupon)
         )
 
         return jsonify({
@@ -856,7 +863,7 @@ def register_from_line():
 
     push_message(
         line_user_id,
-        f"{name} 您好，歡迎加入會員！記得下次到店讓我們認出您 😊"
+        _build_welcome_message(name, welcome_coupon)
     )
 
     return jsonify({
