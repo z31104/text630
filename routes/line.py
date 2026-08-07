@@ -6,7 +6,7 @@ import traceback
 from routes.llm_service import ask_llm
 
 import requests
-from flask import Blueprint, request, abort, jsonify, redirect
+from flask import Blueprint, request, abort, jsonify, redirect, render_template
 from markupsafe import escape
 
 from linebot import LineBotApi, WebhookHandler
@@ -186,15 +186,7 @@ def build_register_message(line_user_id):
 
 @line_bp.route("/line")
 def line_index():
-    if not LINE_ENABLED:
-        return """
-        <h1>LINE Bot - 測試模式</h1>
-        <p>未設定 LINE_CHANNEL_ACCESS_TOKEN / LINE_CHANNEL_SECRET，目前為測試模式</p>
-        """
-    return """
-    <h1>LINE Bot - 正式模式</h1>
-    <p>已偵測到 LINE_CHANNEL_ACCESS_TOKEN / LINE_CHANNEL_SECRET，LINE Bot 已啟動</p>
-    """
+    return render_template("line.html", line_enabled=LINE_ENABLED)
 
 
 @line_bp.route("/line/config")

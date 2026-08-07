@@ -3,7 +3,9 @@ import json
 import random
 import secrets
 import threading
-from datetime import datetime, timedelta
+from calendar import monthrange
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import mysql.connector
 from mysql.connector import pooling
@@ -50,6 +52,16 @@ LOTTERY_PRIZE_DISPLAY_NAMES = {
     "WELCOME_FREE_SHIP": "免運券",
     "WELCOME_RETRY": "再抽一次",
 }
+# 迎新禮、生日禮與 VIP 禮遇設定
+REGISTRATION_WELCOME_COUPON_SOURCE = "registration_welcome"
+REGISTRATION_WELCOME_COUPON_NAME = "新會員 100 元註冊禮"
+
+BIRTHDAY_COUPON_SOURCE_PREFIX = "birthday_"
+BIRTHDAY_COUPON_NAME = "生日禮 200 元優惠券"
+
+VIP_BENEFIT_CODE = "VIP_DISCOUNT_5"
+VIP_MEMBER_LEVEL = "vip"
+VIP_DISCOUNT_PERCENT = Decimal("5.00")
 
 
 def get_lottery_prize_display_name(prize_code, fallback=None):
@@ -3685,6 +3697,835 @@ def get_recognition_logs(
 
     except Exception as e:
         print("取得辨識紀錄失敗：", e)
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
+
+# =========================================================
+# 生日禮功能
+# 放在 get_member_coupons() 前面，避免改動既有 API 與查詢格式。
+# =========================================================
+def _coerce_datetime(value=None):
+    """
+    將 None、date、datetime 或 ISO 日期字串統一轉成 datetime。
+
+    這個 helper 讓正式執行可使用現在時間，測試時也能傳入
+    "2026-08-06"，不用修改電腦日期。
+    """
+    if value is None:
+        return datetime.now()
+
+    if isinstance(value, datetime):
+        return value
+
+    if isinstance(value, date):
+        return datetime.combine(value, time.min)
+
+    if isinstance(value, str):
+        cleaned_value = value.strip()
+
+        try:
+            return datetime.fromisoformat(cleaned_value)
+        except ValueError as error:
+            raise ValueError(
+                "as_of 日期格式必須是 YYYY-MM-DD "
+                "或合法的 ISO datetime"
+            ) from error
+
+    raise TypeError(
+        "as_of 必須是 None、date、datetime 或 ISO 日期字串"
+    )
+
+
+def _month_bounds(value=None):
+    """回傳指定日期所在月份的開始與結束時間。"""
+    current = _coerce_datetime(value)
+    last_day = monthrange(current.year, current.month)[1]
+
+    start_at = datetime(
+        current.year,
+        current.month,
+        1,
+        0,
+        0,
+        0,
+    )
+
+    end_at = datetime(
+        current.year,
+        current.month,
+        last_day,
+        23,
+        59,
+        59,
+    )
+
+    return start_at, end_at
+
+
+
+def issue_registration_welcome_coupon(member_id):
+    """
+    發送新會員 100 元迎新禮。
+
+    使用 member_coupons.source='registration_welcome'
+    判斷是否已領取，確保同一會員只能領一次。
+    """
+    try:
+        member_id = int(member_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("member_id 必須是整數") from error
+
+    if member_id <= 0:
+        raise ValueError("member_id 必須大於 0")
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        conn.autocommit = False
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute(
+            """
+            SELECT member_id
+            FROM members
+            WHERE member_id = %s
+            FOR UPDATE
+            """,
+            (member_id,),
+        )
+
+        if cursor.fetchone() is None:
+            raise ValueError("找不到要發送迎新禮的會員")
+
+        cursor.execute(
+            """
+            SELECT member_coupon_id, coupon_id
+            FROM member_coupons
+            WHERE member_id = %s
+              AND source = %s
+            LIMIT 1
+            """,
+            (
+                member_id,
+                REGISTRATION_WELCOME_COUPON_SOURCE,
+            ),
+        )
+
+        existing = cursor.fetchone()
+
+        if existing is not None:
+            conn.commit()
+            return {
+                "member_id": member_id,
+                "member_coupon_id": existing[
+                    "member_coupon_id"
+                ],
+                "coupon_id": existing["coupon_id"],
+                "source": REGISTRATION_WELCOME_COUPON_SOURCE,
+                "issued": False,
+                "reason": "迎新禮已發送",
+            }
+
+        cursor.execute(
+            """
+            SELECT coupon_id
+            FROM coupons
+            WHERE coupon_name = %s
+              AND status = 'active'
+            LIMIT 1
+            """,
+            (REGISTRATION_WELCOME_COUPON_NAME,),
+        )
+
+        coupon = cursor.fetchone()
+
+        if coupon is None:
+            cursor.execute(
+                """
+                INSERT INTO coupons (
+                    coupon_name,
+                    description,
+                    discount_type,
+                    discount_value,
+                    start_at,
+                    end_at,
+                    status
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    'amount',
+                    100,
+                    NULL,
+                    NULL,
+                    'active'
+                )
+                """,
+                (
+                    REGISTRATION_WELCOME_COUPON_NAME,
+                    "完成會員註冊後贈送，消費時可折抵 100 元",
+                ),
+            )
+            coupon_id = cursor.lastrowid
+        else:
+            coupon_id = coupon["coupon_id"]
+
+        cursor.execute(
+            """
+            INSERT INTO member_coupons (
+                member_id,
+                coupon_id,
+                source,
+                status,
+                receive_time,
+                used_time
+            )
+            VALUES (
+                %s,
+                %s,
+                %s,
+                'unused',
+                NOW(),
+                NULL
+            )
+            """,
+            (
+                member_id,
+                coupon_id,
+                REGISTRATION_WELCOME_COUPON_SOURCE,
+            ),
+        )
+
+        member_coupon_id = cursor.lastrowid
+        conn.commit()
+
+        return {
+            "member_id": member_id,
+            "member_coupon_id": member_coupon_id,
+            "coupon_id": coupon_id,
+            "coupon_name": REGISTRATION_WELCOME_COUPON_NAME,
+            "source": REGISTRATION_WELCOME_COUPON_SOURCE,
+            "issued": True,
+        }
+
+    except Exception:
+        if conn:
+            conn.rollback()
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
+
+
+def issue_birthday_coupon(member_id, as_of=None):
+    """
+    在會員生日月份發送一次 200 元生日禮。
+
+    規則：
+    1. 會員必須存在且 birthday 有資料。
+    2. 只有生日月份可以領取。
+    3. source 使用 birthday_年份，同一會員每年只能領一次。
+    4. 優惠券有效期為該生日月份第一天到最後一天。
+    """
+    try:
+        member_id = int(member_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("member_id 必須是整數") from error
+
+    if member_id <= 0:
+        raise ValueError("member_id 必須大於 0")
+
+    current = _coerce_datetime(as_of)
+    start_at, end_at = _month_bounds(current)
+
+    source = (
+        f"{BIRTHDAY_COUPON_SOURCE_PREFIX}"
+        f"{current.year}"
+    )
+
+    coupon_name = (
+        f"{BIRTHDAY_COUPON_NAME}"
+        f"（{current.year}-{current.month:02d}）"
+    )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        conn.autocommit = False
+        cursor = conn.cursor(dictionary=True)
+
+        # 先鎖定會員，避免同一位會員同時重複領券。
+        cursor.execute(
+            """
+            SELECT member_id, birthday
+            FROM members
+            WHERE member_id = %s
+            FOR UPDATE
+            """,
+            (member_id,),
+        )
+
+        member = cursor.fetchone()
+
+        if member is None:
+            raise ValueError("找不到要發送生日禮的會員")
+
+        birthday = member.get("birthday")
+
+        if birthday is None:
+            conn.commit()
+            return {
+                "member_id": member_id,
+                "issued": False,
+                "reason": "會員尚未填寫生日",
+            }
+
+        if isinstance(birthday, datetime):
+            birthday = birthday.date()
+
+        elif isinstance(birthday, str):
+            try:
+                birthday = date.fromisoformat(
+                    birthday.strip()[:10]
+                )
+            except ValueError as error:
+                raise ValueError(
+                    "members.birthday 不是合法日期"
+                ) from error
+
+        if not isinstance(birthday, date):
+            raise TypeError(
+                "members.birthday 必須是 DATE 或日期字串"
+            )
+
+        if birthday.month != current.month:
+            conn.commit()
+            return {
+                "member_id": member_id,
+                "issued": False,
+                "reason": "目前不是會員生日月份",
+            }
+
+        # source=birthday_2026 可防止同一會員同一年重複領取。
+        cursor.execute(
+            """
+            SELECT member_coupon_id, coupon_id
+            FROM member_coupons
+            WHERE member_id = %s
+              AND source = %s
+            LIMIT 1
+            """,
+            (member_id, source),
+        )
+
+        existing = cursor.fetchone()
+
+        if existing is not None:
+            conn.commit()
+            return {
+                "member_id": member_id,
+                "member_coupon_id": existing[
+                    "member_coupon_id"
+                ],
+                "coupon_id": existing["coupon_id"],
+                "source": source,
+                "issued": False,
+                "reason": "本年度生日禮已發送",
+            }
+
+        # 每個月份建立一張共用生日券，會員領券紀錄放在 member_coupons。
+        cursor.execute(
+            """
+            SELECT coupon_id
+            FROM coupons
+            WHERE coupon_name = %s
+              AND status = 'active'
+            LIMIT 1
+            """,
+            (coupon_name,),
+        )
+
+        coupon = cursor.fetchone()
+
+        if coupon is None:
+            cursor.execute(
+                """
+                INSERT INTO coupons (
+                    coupon_name,
+                    description,
+                    discount_type,
+                    discount_value,
+                    start_at,
+                    end_at,
+                    status
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    'amount',
+                    200,
+                    %s,
+                    %s,
+                    'active'
+                )
+                """,
+                (
+                    coupon_name,
+                    "生日月份專屬優惠，消費時可折抵 200 元",
+                    start_at,
+                    end_at,
+                ),
+            )
+            coupon_id = cursor.lastrowid
+
+        else:
+            coupon_id = coupon["coupon_id"]
+
+        cursor.execute(
+            """
+            INSERT INTO member_coupons (
+                member_id,
+                coupon_id,
+                source,
+                status,
+                receive_time,
+                used_time
+            )
+            VALUES (
+                %s,
+                %s,
+                %s,
+                'unused',
+                NOW(),
+                NULL
+            )
+            """,
+            (member_id, coupon_id, source),
+        )
+
+        member_coupon_id = cursor.lastrowid
+        conn.commit()
+
+        return {
+            "member_id": member_id,
+            "member_coupon_id": member_coupon_id,
+            "coupon_id": coupon_id,
+            "coupon_name": coupon_name,
+            "source": source,
+            "start_at": start_at,
+            "end_at": end_at,
+            "issued": True,
+        }
+
+    except Exception:
+        if conn:
+            conn.rollback()
+        raise
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
+
+
+def issue_monthly_birthday_coupons(as_of=None):
+    """
+    找出指定月份生日的所有會員，逐一發送生日禮。
+
+    可由排程、後台管理功能或 LINE 組每天呼叫一次；
+    issue_birthday_coupon() 會防止同一年重複發送。
+    """
+    current = _coerce_datetime(as_of)
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT member_id
+            FROM members
+            WHERE birthday IS NOT NULL
+              AND MONTH(birthday) = %s
+            ORDER BY member_id
+            """,
+            (current.month,),
+        )
+        members = cursor.fetchall()
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
+
+    issued_count = 0
+    existing_count = 0
+    skipped_count = 0
+    failed = []
+    results = []
+
+    for member in members:
+        member_id = member["member_id"]
+
+        try:
+            result = issue_birthday_coupon(
+                member_id,
+                as_of=current,
+            )
+            results.append(result)
+
+            if result.get("issued") is True:
+                issued_count += 1
+            elif result.get("reason") == "本年度生日禮已發送":
+                existing_count += 1
+            else:
+                skipped_count += 1
+
+        except Exception as error:
+            failed.append({
+                "member_id": member_id,
+                "error": str(error),
+            })
+
+    return {
+        "year": current.year,
+        "month": current.month,
+        "matched_members": len(members),
+        "issued_count": issued_count,
+        "existing_count": existing_count,
+        "skipped_count": skipped_count,
+        "failed_count": len(failed),
+        "failed": failed,
+        "results": results,
+    }
+
+
+
+def get_member_benefit(member_id):
+    """
+    依 members.vip 與 members.member_level 回傳會員權益。
+
+    雲端第四週欄位已經有 vip、member_level，
+    因此 VIP 5% 不需要新增資料表或修改其他組欄位。
+    """
+    try:
+        member_id = int(member_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError("member_id 必須是整數") from error
+
+    if member_id <= 0:
+        raise ValueError("member_id 必須大於 0")
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(
+            """
+            SELECT
+                member_id,
+                name,
+                vip,
+                member_level
+            FROM members
+            WHERE member_id = %s
+            LIMIT 1
+            """,
+            (member_id,),
+        )
+
+        member = cursor.fetchone()
+
+        if member is None:
+            raise ValueError("找不到會員")
+
+        member_level = str(
+            member.get("member_level") or ""
+        ).strip().lower()
+
+        eligible = (
+            to_bool(member.get("vip"))
+            and member_level == VIP_MEMBER_LEVEL
+        )
+
+        return {
+            "member_id": member["member_id"],
+            "name": member.get("name"),
+            "vip": to_bool(member.get("vip")),
+            "member_level": member_level,
+            "eligible": eligible,
+            "benefit_code": (
+                VIP_BENEFIT_CODE
+                if eligible
+                else None
+            ),
+            "benefit_name": (
+                "VIP 會員 5% 禮遇"
+                if eligible
+                else None
+            ),
+            "discount_type": (
+                "percentage"
+                if eligible
+                else None
+            ),
+            "discount_value": (
+                float(VIP_DISCOUNT_PERCENT)
+                if eligible
+                else 0.0
+            ),
+        }
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn and conn.is_connected():
+            conn.close()
+
+
+def calculate_member_discount(
+    member_id,
+    original_amount,
+):
+    """
+    計算會員結帳金額。
+
+    VIP 會員套用 5% 折扣；一般會員維持原價。
+    此函式只回傳計算結果，不修改 total_amount 或訂單資料。
+    """
+    try:
+        amount = Decimal(str(original_amount))
+    except (InvalidOperation, TypeError, ValueError) as error:
+        raise ValueError("original_amount 必須是有效金額") from error
+
+    if amount < 0:
+        raise ValueError("original_amount 不可小於 0")
+
+    amount = amount.quantize(
+        Decimal("0.01"),
+        rounding=ROUND_HALF_UP,
+    )
+
+    benefit = get_member_benefit(member_id)
+
+    if benefit["eligible"]:
+        discount_amount = (
+            amount
+            * VIP_DISCOUNT_PERCENT
+            / Decimal("100")
+        ).quantize(
+            Decimal("0.01"),
+            rounding=ROUND_HALF_UP,
+        )
+    else:
+        discount_amount = Decimal("0.00")
+
+    final_amount = (
+        amount - discount_amount
+    ).quantize(
+        Decimal("0.01"),
+        rounding=ROUND_HALF_UP,
+    )
+
+    return {
+        **benefit,
+        "original_amount": float(amount),
+        "discount_amount": float(discount_amount),
+        "final_amount": float(final_amount),
+    }
+
+
+def redeem_member_coupon(
+    member_coupon_id,
+    member_id,
+):
+    """
+    核銷迎新禮或生日禮。
+
+    抽獎券仍沿用 redeem_member_prize() 的 QR Code 流程，
+    避免同一張抽獎券在兩套流程中產生狀態不一致。
+    """
+    try:
+        member_coupon_id = int(member_coupon_id)
+        member_id = int(member_id)
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "member_coupon_id 與 member_id 必須是整數"
+        ) from error
+
+    if member_coupon_id <= 0 or member_id <= 0:
+        raise ValueError(
+            "member_coupon_id 與 member_id 必須大於 0"
+        )
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = get_connection()
+        conn.autocommit = False
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute(
+            """
+            SELECT
+                mc.member_coupon_id,
+                mc.member_id,
+                mc.source,
+                mc.status,
+                mc.used_time,
+                c.coupon_name,
+                c.status AS coupon_status,
+                c.start_at,
+                c.end_at
+            FROM member_coupons AS mc
+            JOIN coupons AS c
+                ON c.coupon_id = mc.coupon_id
+            WHERE mc.member_coupon_id = %s
+              AND mc.member_id = %s
+            FOR UPDATE
+            """,
+            (
+                member_coupon_id,
+                member_id,
+            ),
+        )
+
+        coupon = cursor.fetchone()
+
+        if coupon is None:
+            conn.rollback()
+            return {
+                "success": False,
+                "message": "找不到會員優惠券",
+            }
+
+        source = str(coupon.get("source") or "")
+
+        is_direct_redeem_source = (
+            source == REGISTRATION_WELCOME_COUPON_SOURCE
+            or source.startswith(
+                BIRTHDAY_COUPON_SOURCE_PREFIX
+            )
+        )
+
+        if not is_direct_redeem_source:
+            conn.rollback()
+            return {
+                "success": False,
+                "message": "此優惠券需使用原本的抽獎核銷流程",
+            }
+
+        if coupon.get("status") == "used":
+            conn.rollback()
+            return {
+                "success": False,
+                "message": "此優惠券已使用",
+            }
+
+        if coupon.get("status") == "expired":
+            conn.rollback()
+            return {
+                "success": False,
+                "message": "此優惠券已過期",
+            }
+
+        if coupon.get("status") != "unused":
+            conn.rollback()
+            return {
+                "success": False,
+                "message": "此優惠券目前無法使用",
+            }
+
+        now = datetime.now()
+        start_at = coupon.get("start_at")
+        end_at = coupon.get("end_at")
+
+        if coupon.get("coupon_status") != "active":
+            conn.rollback()
+            return {
+                "success": False,
+                "message": "此優惠券目前未啟用",
+            }
+
+        if start_at is not None and start_at > now:
+            conn.rollback()
+            return {
+                "success": False,
+                "message": "此優惠券尚未生效",
+            }
+
+        if end_at is not None and end_at < now:
+            cursor.execute(
+                """
+                UPDATE member_coupons
+                SET status = 'expired'
+                WHERE member_coupon_id = %s
+                  AND status = 'unused'
+                """,
+                (member_coupon_id,),
+            )
+            conn.commit()
+            return {
+                "success": False,
+                "message": "此優惠券已過期",
+            }
+
+        cursor.execute(
+            """
+            UPDATE member_coupons
+            SET
+                status = 'used',
+                used_time = CURRENT_TIMESTAMP
+            WHERE member_coupon_id = %s
+              AND member_id = %s
+              AND status = 'unused'
+            """,
+            (
+                member_coupon_id,
+                member_id,
+            ),
+        )
+
+        if cursor.rowcount != 1:
+            raise RuntimeError("更新優惠券使用狀態失敗")
+
+        conn.commit()
+
+        return {
+            "success": True,
+            "message": "優惠券核銷成功",
+            "member_coupon_id": member_coupon_id,
+            "member_id": member_id,
+            "coupon_name": coupon.get("coupon_name"),
+            "source": source,
+        }
+
+    except Exception:
+        if conn:
+            conn.rollback()
         raise
 
     finally:

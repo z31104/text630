@@ -21,7 +21,15 @@
     data-stream-url="{{ url_for('camera.video_feed') }}"
     data-reload-url="{{ url_for('camera.reload_faces') }}"
 >
-    <article class="camera-preview">
+    <article class="camera-preview camera-preview-card">
+        <div class="camera-preview-header">
+            <div>
+                <p class="camera-preview-kicker">即時辨識串流</p>
+                <h2><span class="camera-preview-icon" aria-hidden="true">◉</span>入口攝影機</h2>
+            </div>
+            <span class="live-chip"><span aria-hidden="true"></span>LIVE</span>
+        </div>
+
         <div class="camera-stream-frame">
             <div class="camera-stream-state" id="cameraStreamState">
                 <strong>攝影機載入中</strong>
@@ -46,7 +54,7 @@
     </article>
 
     <aside class="recognition-panel camera-control-panel">
-        <h2>系統狀態</h2>
+        <h2>攝影機狀態</h2>
 
         <div class="result-card">
             <p class="result-label">Camera Status</p>
