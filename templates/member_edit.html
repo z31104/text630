@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}修改會員｜智慧會員系統{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <p class="tag">MEMBER MANAGEMENT</p>
+    <h1>修改會員</h1>
+    <p>更新會員基本資料、等級與辨識照片。</p>
+</section>
+
+<form
+    class="member-admin-form member-detail-card"
+    method="POST"
+    action="{{ url_for('member.edit_member', member_id=member.get('member_id')) }}"
+    enctype="multipart/form-data"
+>
+    <div class="member-form-heading">
+        <div>
+            <h2>會員 #{{ member.get("member_id") }}</h2>
+            <p>累積到店次數由系統自動計算，目前為 {{ member.get("total_visit_count") or 0 }} 次。</p>
+        </div>
+    </div>
+
+    <div class="member-detail-grid">
+        <div class="detail-field">
+            <label for="edit-member-name">姓名</label>
+            <input class="detail-input" id="edit-member-name" type="text" name="name" value="{{ member.get('name') or '' }}" required>
+        </div>
+
+        <div class="detail-field">
+            <label for="edit-member-phone">電話</label>
+            <input class="detail-input" id="edit-member-phone" type="text" name="phone" value="{{ member.get('phone') or '' }}">
+        </div>
+
+        <div class="detail-field">
+            <label for="edit-member-birthday">生日</label>
+            <input class="detail-input" id="edit-member-birthday" type="date" name="birthday" value="{{ member.get('birthday') or '' }}">
+        </div>
+
+        <div class="detail-field">
+            <label for="edit-member-line-user-id">LINE User ID</label>
+            <input class="detail-input" id="edit-member-line-user-id" type="text" name="line_user_id" value="{{ member.get('line_user_id') or '' }}">
+        </div>
+
+        <div class="detail-field">
+            <label for="edit-member-total-amount">累積消費</label>
+            <input class="detail-input" id="edit-member-total-amount" type="number" name="total_amount" min="0" step="1" value="{{ member.get('total_amount') or 0 }}">
+        </div>
+
+        <div class="detail-field">
+            <label for="edit-member-favorite-product">偏好商品</label>
+            <input class="detail-input" id="edit-member-favorite-product" type="text" name="favorite_product" value="{{ member.get('favorite_product') or '' }}">
+        </div>
+
+        <div class="detail-field member-form-wide">
+            <label for="edit-member-face-image">重新上傳會員照片</label>
+            <input class="detail-input member-file-input" id="edit-member-face-image" type="file" name="face_image" accept=".jpg,.jpeg,.png">
+            <p class="member-photo-hint">
+                目前圖片：{{ member.get("face_image") or "尚未設定" }}。未選擇新照片時會保留目前照片。
+            </p>
+        </div>
+
+        <div class="detail-field member-form-wide">
+            <label for="edit-member-vip">會員等級</label>
+            <select class="detail-input" id="edit-member-vip" name="vip">
+                <option value="0" {% if not member.get("vip") %}selected{% endif %}>一般會員</option>
+                <option value="1" {% if member.get("vip") %}selected{% endif %}>VIP 會員</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="member-detail-actions member-admin-actions">
+        <button type="submit" class="primary-btn member-save-btn">儲存修改</button>
+        <a class="secondary-btn" href="{{ url_for('member.member') }}">回會員列表</a>
+    </div>
+</form>
+{% endblock %}

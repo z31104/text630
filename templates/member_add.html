@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}新增會員｜智慧會員系統{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <p class="tag">MEMBER MANAGEMENT</p>
+    <h1>新增會員</h1>
+    <p>建立會員基本資料並上傳可供辨識的清楚臉部照片。</p>
+</section>
+
+<form
+    class="member-admin-form member-detail-card"
+    method="POST"
+    action="{{ url_for('member.add_member_page') }}"
+    enctype="multipart/form-data"
+>
+    <div class="member-form-heading">
+        <h2>會員資料</h2>
+        <p>標示為必填的欄位需完整填寫。</p>
+    </div>
+
+    <div class="member-detail-grid">
+        <div class="detail-field">
+            <label for="add-member-name">姓名</label>
+            <input class="detail-input" id="add-member-name" type="text" name="name" required>
+        </div>
+
+        <div class="detail-field">
+            <label for="add-member-phone">電話</label>
+            <input class="detail-input" id="add-member-phone" type="text" name="phone">
+        </div>
+
+        <div class="detail-field">
+            <label for="add-member-birthday">生日</label>
+            <input class="detail-input" id="add-member-birthday" type="date" name="birthday">
+        </div>
+
+        <div class="detail-field">
+            <label for="add-member-line-user-id">LINE User ID</label>
+            <input class="detail-input" id="add-member-line-user-id" type="text" name="line_user_id">
+        </div>
+
+        <div class="detail-field">
+            <label for="add-member-total-amount">累積消費</label>
+            <input class="detail-input" id="add-member-total-amount" type="number" name="total_amount" min="0" step="1" value="0">
+        </div>
+
+        <div class="detail-field">
+            <label for="add-member-favorite-product">偏好商品</label>
+            <input class="detail-input" id="add-member-favorite-product" type="text" name="favorite_product">
+        </div>
+
+        <div class="detail-field member-form-wide">
+            <label for="add-member-face-image">會員照片</label>
+            <input class="detail-input member-file-input" id="add-member-face-image" type="file" name="face_image" accept=".jpg,.jpeg,.png" required>
+            <p class="member-photo-hint">請選擇 JPG、JPEG 或 PNG，並確認臉部清楚可辨識。</p>
+        </div>
+
+        <div class="detail-field member-form-wide">
+            <label for="add-member-vip">會員等級</label>
+            <select class="detail-input" id="add-member-vip" name="vip">
+                <option value="0">一般會員</option>
+                <option value="1">VIP 會員</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="member-detail-actions member-admin-actions">
+        <button type="submit" class="primary-btn member-save-btn">新增會員</button>
+        <a class="secondary-btn" href="{{ url_for('member.member') }}">回會員列表</a>
+    </div>
+</form>
+{% endblock %}

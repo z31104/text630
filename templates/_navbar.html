@@ -1,0 +1,43 @@
+<header class="navbar site-navbar">
+    <div class="navbar-inner">
+        <a class="logo" href="{{ url_for('home.home') }}" aria-label="智慧會員系統首頁">
+            <img
+                class="logo-mark logo-avatar"
+                src="{{ url_for('static', filename='images/brand-avatar.png') }}"
+                alt=""
+                aria-hidden="true"
+            >
+            <span class="logo-text">智慧會員系統</span>
+        </a>
+
+        <nav class="nav-links" aria-label="主要導覽">
+            <a class="nav-link" href="{{ url_for('home.home') }}" {% if request.endpoint == "home.home" %}aria-current="page"{% endif %}>
+                <span class="nav-icon" aria-hidden="true">⌂</span>
+                <span>首頁</span>
+            </a>
+            <a class="nav-link" href="{{ url_for('home.dashboard') }}" {% if request.endpoint == "home.dashboard" %}aria-current="page"{% endif %}>
+                <span class="nav-icon" aria-hidden="true">▦</span>
+                <span>Dashboard</span>
+            </a>
+            <a
+                class="nav-link"
+                href="{{ url_for('camera.camera') }}"
+                target="_blank"
+                rel="noopener noreferrer"
+                {% if request.endpoint == "camera.camera" %}aria-current="page"{% endif %}
+            >
+                <span class="nav-icon" aria-hidden="true">◉</span>
+                <span>Camera</span>
+            </a>
+            <a class="nav-link" href="{{ url_for('member.member') }}" {% if request.endpoint and request.endpoint.startswith("member.") %}aria-current="page"{% endif %}>
+                <img
+                    class="nav-icon nav-member-icon"
+                    src="{{ url_for('static', filename='images/member-icon.png') }}"
+                    alt=""
+                    aria-hidden="true"
+                >
+                <span>會員管理</span>
+            </a>
+        </nav>
+    </div>
+</header>
