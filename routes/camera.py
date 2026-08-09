@@ -807,29 +807,40 @@ def update_member_visit(result, current_time):
             print(f"notification_status: {notification_status}")
             print("=======================================")
 
-        if outcome.get("subject_type") == "member":
-            try:
-                preferences = get_member_preferences(member_id)
-                promo_status = notify_preference_promo(
-                    {
-                        "name": result.get("name"),
-                        "line_user_id": result.get("line_user_id"),
-                    },
-                    preferences=preferences,
-                )
-                print("========== Preference Promo Result ==========")
-                print(f"log_id: {log_id}")
-                print(f"preferences: {preferences}")
-                print(f"promo_status: {promo_status}")
-                print("===============================================")
-            except Exception as e:
-                print(f"喜好推播失敗（member_id={member_id}）：", e)
-
     elif action == "failed":
         print(
             f"會員到店紀錄新增失敗，"
             f"member_id={member_id}"
         )
+
+    # 新建或從資料庫恢復本次到店紀錄時，都視為本程序首次處理到店事件。
+    # restored 常發生於服務重啟或跨執行個體接手，不能因此漏掉會員喜好推播。
+    if (
+        action in ("created", "restored")
+        and outcome.get("subject_type") == "member"
+    ):
+        try:
+            # 人臉辨識結果來自啟動時載入的快取；會員可能在快取建立後才完成
+            # LINE 綁定或修改姓名，因此送出前必須重新取得最新會員資料。
+            member = get_member_by_id(member_id) or {}
+            preferences = get_member_preferences(member_id)
+            promo_status = notify_preference_promo(
+                {
+                    "name": member.get("name") or result.get("name"),
+                    "line_user_id": (
+                        member.get("line_user_id")
+                        or result.get("line_user_id")
+                    ),
+                },
+                preferences=preferences,
+            )
+            print("========== Preference Promo Result ==========")
+            print(f"log_id: {log_id}")
+            print(f"preferences: {preferences}")
+            print(f"promo_status: {promo_status}")
+            print("===============================================")
+        except Exception as e:
+            print(f"喜好推播失敗（member_id={member_id}）：", e)
 
 def close_timeout_visits(current_time):
     """將離店逾時處理交由 visit_service 統一處理。"""
