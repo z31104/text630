@@ -8,7 +8,9 @@
 </head>
 
 <body class="customer-page member-coupon-page">
+    {% if not is_line_member_view %}
     {% include "_navbar.html" %}
+    {% endif %}
 
     <main class="member-coupon-container">
         <header class="member-portal-header">
