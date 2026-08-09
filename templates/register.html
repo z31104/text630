@@ -11,7 +11,9 @@
 </head>
 
 <body class="customer-page member-register-page">
+    {% if not is_line_register_view %}
     {% include "_navbar.html" %}
+    {% endif %}
 
     <main class="customer-register-container">
         <section class="customer-register-hero promo-hero register-hero-clean welcome-gift-hero member-welcome-premium">

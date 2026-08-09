@@ -179,11 +179,16 @@ def _get_connection_config():
         "connection_timeout": int(
             clean_env(os.getenv("DB_CONNECTION_TIMEOUT", "10"))
         ),
+
+        # 新增這兩行
+        "charset": "utf8mb4",
+        "collation": "utf8mb4_unicode_ci",
     }
 
     instance_connection_name = clean_env(
         os.getenv("INSTANCE_CONNECTION_NAME")
     )
+
     if instance_connection_name:
         config["unix_socket"] = (
             f"/cloudsql/{instance_connection_name}"

@@ -334,6 +334,10 @@ def dashboard_charts_api():
 
 @home_bp.route("/coupons")
 def coupons():
+    # LINE「我的會員」與管理網頁共用此頁。只在 LINE 內建瀏覽器中
+    # 隱藏管理端導覽列，一般瀏覽器的網頁外觀維持不變。
+    user_agent = request.headers.get("User-Agent", "")
+    is_line_member_view = " line/" in f" {user_agent.lower()}"
     member_id = _optional_positive_int(request.args.get("member_id"))
     summary, summary_error = _safe_fetch(get_coupon_summary, {})
     member_coupon_summary = None
@@ -375,9 +379,15 @@ def coupons():
         coupon_rows=coupon_rows,
         selected_member_id=member_id,
         load_error=coupons_error if member_id is not None else summary_error,
+        is_line_member_view=is_line_member_view,
     )
 
 
 @home_bp.route("/register")
 def register():
-    return render_template("register.html")
+    user_agent = request.headers.get("User-Agent", "")
+    is_line_register_view = " line/" in f" {user_agent.lower()}"
+    return render_template(
+        "register.html",
+        is_line_register_view=is_line_register_view,
+    )
