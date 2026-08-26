@@ -3,47 +3,22 @@
 {% block title %}首頁｜AI 熟客管理系統{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<section class="page-header">
+    <p class="tag">SMART MEMBER SYSTEM</p>
     <h1>AI 攝影機熟客管理系統</h1>
     <p>結合人臉辨識、會員資料、VIP 通知與互動行銷的智慧後台。</p>
-</div>
+</section>
 
-<div class="row g-4 mt-2">
-    <div class="col-md-3">
-        <a href="/dashboard" class="text-decoration-none">
-            <div class="menu-card">
-                <h4>Dashboard</h4>
-                <p>查看今日統計與最新辨識紀錄。</p>
-            </div>
-        </a>
-    </div>
+<section class="cards home-feature-grid">
+    <a href="{{ url_for('home.dashboard') }}" class="card feature-card-link">
+        <h3>Dashboard</h3>
+        <p>查看今日統計與最新辨識紀錄。</p>
+    </a>
 
-    <div class="col-md-3">
-        <a href="/members" class="text-decoration-none">
-            <div class="menu-card">
-                <h4>會員中心</h4>
-                <p>查看會員資料、VIP 狀態與喜好欄位。</p>
-            </div>
-        </a>
-    </div>
+    <a href="{{ url_for('member.member') }}" class="card feature-card-link">
+        <h3>會員中心</h3>
+        <p>查看會員資料、VIP 狀態與喜好欄位。</p>
+    </a>
 
-    <div class="col-md-3">
-        <a href="/coupons" class="text-decoration-none">
-            <div class="menu-card">
-                <h4>優惠券</h4>
-                <p>管理會員優惠券與使用狀態。</p>
-            </div>
-        </a>
-    </div>
-
-    <div class="col-md-3">
-        <a href="/lottery" class="text-decoration-none">
-            <div class="menu-card">
-                <h4>轉盤抽獎</h4>
-                <p>提供新會員入會禮抽獎活動。</p>
-            </div>
-        </a>
-    </div>
-</div>
+</section>
 {% endblock %}
-

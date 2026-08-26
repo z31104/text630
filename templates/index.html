@@ -1,43 +1,220 @@
 {% extends "base.html" %}
 
+{% block title %}智慧會員系統｜首頁{% endblock %}
+{% block body_class %}home-page{% endblock %}
+
 {% block content %}
 
-<section class="hero">
-    <p class="tag">Smart Member Recognition System</p>
+<section class="hero home-hero" aria-labelledby="home-hero-title">
+    <div class="home-hero-decoration" aria-hidden="true"></div>
 
-    <h1>智慧會員辨識與 VIP 到店通知系統</h1>
+    <div class="home-hero-grid">
+        <div class="home-hero-copy">
+            <div class="home-hero-meta">
+                <p class="tag">Smart Member Recognition System</p>
+                <span class="home-status-chip"><span aria-hidden="true"></span>系統運作中</span>
+            </div>
 
-    <p class="hero-description">
-        透過人臉辨識、會員資料管理與即時通知，協助店家快速辨識顧客身分，
-        提升服務品質與會員經營效率。
-    </p>
+            <div class="home-title-row">
+                <span class="home-title-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none">
+                        <path d="M5 7.5V6a2 2 0 0 1 2-2h1.5M15.5 4H17a2 2 0 0 1 2 2v1.5M19 16.5V18a2 2 0 0 1-2 2h-1.5M8.5 20H7a2 2 0 0 1-2-2v-1.5" />
+                        <circle cx="12" cy="10" r="3" />
+                        <path d="M7.8 17c.8-2 2.3-3 4.2-3s3.4 1 4.2 3" />
+                    </svg>
+                </span>
+                <h1 id="home-hero-title">智慧會員辨識與 VIP 到店通知系統</h1>
+            </div>
 
-    <div class="hero-actions">
-        <a class="primary-btn" href="/camera">開始辨識</a>
-        <a class="secondary-btn" href="/member">查看會員</a>
+            <p class="hero-description">
+                透過人臉辨識、會員資料管理與即時通知，協助店家快速辨識顧客身分，
+                提升服務品質與會員經營效率。
+            </p>
+
+            <div class="home-capability-tags" aria-label="核心功能">
+                <span>即時辨識</span>
+                <span>會員管理</span>
+                <span>VIP 通知</span>
+            </div>
+
+            <div class="hero-actions">
+                <a class="primary-btn" href="{{ url_for('camera.camera') }}">
+                    <svg class="button-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M5 7.5V6a2 2 0 0 1 2-2h1M16 4h1a2 2 0 0 1 2 2v1.5M19 16.5V18a2 2 0 0 1-2 2h-1M8 20H7a2 2 0 0 1-2-2v-1.5" />
+                        <circle cx="12" cy="11" r="3.5" />
+                    </svg>
+                    <span>開始辨識</span>
+                </a>
+                <a class="secondary-btn" href="{{ url_for('home.dashboard') }}">
+                    <svg class="button-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M5 20V10M12 20V4M19 20v-7" />
+                    </svg>
+                    <span>查看 Dashboard</span>
+                </a>
+            </div>
+        </div>
+
+        <aside class="home-status-panel" aria-label="系統服務狀態">
+            <div class="home-status-header">
+                <div>
+                    <p>System Overview</p>
+                    <h2>核心服務狀態</h2>
+                </div>
+                <span class="home-pulse-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none">
+                        <path d="M3 12h4l2-5 4 10 2-5h6" />
+                    </svg>
+                </span>
+            </div>
+
+            <div class="home-service-list">
+                <div class="home-service-item">
+                    <span class="home-service-icon is-blue" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none">
+                            <rect x="4" y="6" width="12" height="12" rx="2" />
+                            <path d="m16 10 4-2v8l-4-2" />
+                        </svg>
+                    </span>
+                    <div><strong>即時辨識</strong><small>攝影機與辨識服務</small></div>
+                    <span class="service-state">正常</span>
+                </div>
+                <div class="home-service-item">
+                    <span class="home-service-icon is-green" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none">
+                            <circle cx="12" cy="8" r="3" />
+                            <path d="M6.5 19c.6-3.5 2.5-5 5.5-5s4.9 1.5 5.5 5" />
+                        </svg>
+                    </span>
+                    <div><strong>會員資料</strong><small>會員辨識與資料管理</small></div>
+                    <span class="service-state">正常</span>
+                </div>
+                <div class="home-service-item">
+                    <span class="home-service-icon is-violet" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none">
+                            <path d="M6.5 9a5.5 5.5 0 0 1 11 0c0 6 2.5 6 2.5 7.5H4C4 15 6.5 15 6.5 9Z" />
+                            <path d="M10 20h4" />
+                        </svg>
+                    </span>
+                    <div><strong>VIP 通知</strong><small>到店通知服務</small></div>
+                    <span class="service-state">正常</span>
+                </div>
+            </div>
+
+            <div class="home-updated">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="12" cy="12" r="8" />
+                    <path d="M12 8v4l3 2" />
+                </svg>
+                <span>頁面更新：2026/08/06</span>
+            </div>
+        </aside>
     </div>
 </section>
 
-<section class="section-title">
-    <h2>系統主要功能</h2>
-    <p>前端先建立操作流程畫面，後續再串接 AI、資料庫與 LINE 功能。</p>
+<section class="home-process" aria-labelledby="home-process-title">
+    <div class="home-process-intro">
+        <span class="home-section-icon is-mint" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+                <path d="M4 12h5l2-4 3 8 2-4h4" />
+            </svg>
+        </span>
+        <div>
+            <p>SMART WORKFLOW</p>
+            <h2 id="home-process-title">智慧辨識流程</h2>
+        </div>
+    </div>
+
+    <ol class="home-process-list">
+        <li>
+            <span class="process-number">01</span>
+            <div><strong>攝影機辨識</strong><small>擷取即時到店畫面</small></div>
+        </li>
+        <li>
+            <span class="process-number">02</span>
+            <div><strong>會員資料比對</strong><small>確認會員身分與狀態</small></div>
+        </li>
+        <li>
+            <span class="process-number">03</span>
+            <div><strong>VIP 到店通知</strong><small>即時提供服務提醒</small></div>
+        </li>
+    </ol>
 </section>
 
-<section class="cards">
-    <div class="card">
+<section class="section-title home-section-title">
+    <div class="home-section-heading">
+        <span class="home-section-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+                <rect x="4" y="4" width="6" height="6" rx="1.5" />
+                <rect x="14" y="4" width="6" height="6" rx="1.5" />
+                <rect x="4" y="14" width="6" height="6" rx="1.5" />
+                <rect x="14" y="14" width="6" height="6" rx="1.5" />
+            </svg>
+        </span>
+        <div>
+            <p>CORE FUNCTIONS</p>
+            <h2>系統主要功能</h2>
+        </div>
+    </div>
+    <p>整合會員辨識、到店紀錄、VIP 通知與互動行銷管理。</p>
+</section>
+
+<section class="cards home-feature-grid" aria-label="系統主要功能連結">
+    <a class="card feature-card-link home-feature-card" href="{{ url_for('camera.camera') }}">
+        <div class="home-feature-card-top">
+            <span class="feature-icon is-blue" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M5 7.5V6a2 2 0 0 1 2-2h1.5M15.5 4H17a2 2 0 0 1 2 2v1.5M19 16.5V18a2 2 0 0 1-2 2h-1.5M8.5 20H7a2 2 0 0 1-2-2v-1.5" />
+                    <circle cx="12" cy="10" r="3" />
+                    <path d="M7.8 17c.8-2 2.3-3 4.2-3s3.4 1 4.2 3" />
+                </svg>
+            </span>
+            <span class="feature-arrow" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><path d="m9 6 6 6-6 6" /></svg>
+            </span>
+        </div>
+        <span class="feature-kicker">LIVE RECOGNITION</span>
         <h3>攝影機辨識</h3>
-        <p>顯示即時攝影機畫面、辨識狀態與會員資訊。</p>
-    </div>
+        <p>查看即時串流、連線狀態並重新載入人臉資料。</p>
+        <span class="feature-link-label">前往功能</span>
+    </a>
 
-    <div class="card">
+    <a class="card feature-card-link home-feature-card" href="{{ url_for('member.member') }}">
+        <div class="home-feature-card-top">
+            <span class="feature-icon is-green" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                    <circle cx="9" cy="8" r="3" />
+                    <path d="M3.5 19c.6-3.5 2.4-5 5.5-5s4.9 1.5 5.5 5M16 8h5M16 12h5M17 16h4" />
+                </svg>
+            </span>
+            <span class="feature-arrow" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><path d="m9 6 6 6-6 6" /></svg>
+            </span>
+        </div>
+        <span class="feature-kicker">MEMBER PROFILE</span>
         <h3>會員資料管理</h3>
         <p>提供會員列表、會員等級、聯絡資訊與顧客資料展示。</p>
-    </div>
+        <span class="feature-link-label">前往功能</span>
+    </a>
 
-    <div class="card">
-        <h3>VIP 到店通知</h3>
-        <p>當 VIP 會員到店時，可顯示通知狀態與紀錄。</p>
-    </div>
+    <a class="card feature-card-link home-feature-card" href="{{ url_for('home.dashboard') }}">
+        <div class="home-feature-card-top">
+            <span class="feature-icon is-violet" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                    <rect x="4" y="4" width="6" height="6" rx="1.5" />
+                    <rect x="14" y="4" width="6" height="6" rx="1.5" />
+                    <rect x="4" y="14" width="6" height="6" rx="1.5" />
+                    <path d="M15 19v-3M18 19v-5M21 19v-8" />
+                </svg>
+            </span>
+            <span class="feature-arrow" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><path d="m9 6 6 6-6 6" /></svg>
+            </span>
+        </div>
+        <span class="feature-kicker">DATA OVERVIEW</span>
+        <h3>Dashboard</h3>
+        <p>追蹤今日到店、店內人數與 VIP 通知紀錄。</p>
+        <span class="feature-link-label">前往功能</span>
+    </a>
 </section>
 
 {% endblock %}

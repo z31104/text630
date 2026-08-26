@@ -1,93 +1,171 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-Hant">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>會員註冊｜智慧會員系統</title>
+    <title>LINE 會員註冊</title>
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 
-<body class="customer-page">
+<body class="customer-page member-register-page">
+    {% if not is_line_register_view %}
+    {% include "_navbar.html" %}
+    {% endif %}
 
     <main class="customer-register-container">
-
-        <section class="customer-register-hero promo-hero">
+        <section class="customer-register-hero promo-hero register-hero-clean welcome-gift-hero member-welcome-premium">
             <div class="promo-decoration promo-light-left"></div>
             <div class="promo-decoration promo-light-right"></div>
 
-            <p class="promo-tag">Welcome Gift</p>
-
-            <h1>歡迎加入會員</h1>
-
-            <p class="promo-subtitle">
-                立即註冊會員，領取專屬優惠券，並參加一次輪盤抽獎活動。
-            </p>
-
-            <div class="promo-coupon-row">
-                <div class="promo-coupon">
-                <span>首購禮</span>
-                <strong>$100</strong>
-                <p>首次購物現折</p>
+            <div class="premium-sparkles" aria-hidden="true">
+                <span>✦</span><span>✦</span><span>✦</span><span>✦</span>
             </div>
 
-        <div class="promo-coupon">
-            <span>開卡禮</span>
-            <strong>$100</strong>
-            <p>完成會員資料</p>
-        </div>
+            <div class="premium-welcome-copy">
+                <p class="premium-eyebrow">Welcome Gift</p>
+                <h1>加入智慧會員</h1>
+            </div>
 
-        <div class="promo-coupon">
-            <span>生日禮</span>
-            <strong>$200</strong>
-            <p>生日當月贈送</p>
-        </div>
+            <p class="promo-subtitle">
+                完成 LINE 會員註冊並上傳臉部照片，讓門市能快速辨識會員身分、提供 VIP 通知與個人化服務。
+            </p>
 
-        <div class="promo-coupon">
-            <span>分享禮</span>
-            <strong>$100</strong>
-            <p>邀請好友加入</p>
-        </div>
-    </div>
+            <div class="premium-benefit-grid" aria-label="會員優惠說明">
+                <article class="premium-benefit-card">
+                    <span class="premium-benefit-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
+                            <path d="M4 10h16v10H4V10ZM3 7h18v3H3V7Z" />
+                            <path d="M12 7v13M12 7H8.5A2.5 2.5 0 1 1 11 4.5L12 7Zm0 0h3.5A2.5 2.5 0 1 0 13 4.5L12 7Z" />
+                        </svg></span>
+                    <span class="premium-benefit-label">迎新禮</span>
+                    <strong>$100</strong>
+                    <p>註冊完成即可領取</p>
+                </article>
 
-    <div class="promo-bottom-badge">
-        每筆訂單再享 <strong>5%</strong> 購物金回饋
-    </div>
-</section>
+                <article class="premium-benefit-card">
+                    <span class="premium-benefit-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
+                            <path d="M5 11h14v9H5v-9ZM4 8h16v3H4V8Z" />
+                            <path
+                                d="M8 8V6M12 8V5M16 8V6M8 5c0-.8.7-1.5 1.2-2M12 4c0-.8.7-1.5 1.2-2M16 5c0-.8.7-1.5 1.2-2M5 15c1.2 1 2.3 1 3.5 0 1.2 1 2.3 1 3.5 0 1.2 1 2.3 1 3.5 0 1.2 1 2.3 1 3.5 0" />
+                        </svg></span>
+                    <span class="premium-benefit-label">生日禮</span>
+                    <strong>$200</strong>
+                    <p>生日月份專屬優惠</p>
+                </article>
+
+                <article class="premium-benefit-card">
+                    <span class="premium-benefit-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
+                            <path d="m4 8 4 4 4-7 4 7 4-4-2 10H6L4 8Z" />
+                            <path d="M7 21h10M7 18h10" />
+                        </svg></span>
+                    <span class="premium-benefit-label">VIP 禮遇</span>
+                    <strong>5%</strong>
+                    <p>依會員等級享折扣</p>
+                </article>
+            </div>
+
+            <div class="premium-security-note">
+                <span aria-hidden="true"><svg viewBox="0 0 24 24">
+                        <path d="M12 3 5 6v5c0 4.4 2.7 8.4 7 10 4.3-1.6 7-5.6 7-10V6l-7-3Z" />
+                        <path d="m9 12 2 2 4-4" />
+                    </svg></span>
+                <p>註冊資料僅用於會員辨識與服務通知</p>
+            </div>
+        </section>
 
         <section class="customer-register-layout">
-
             <div class="register-card">
-                <h2>會員註冊</h2>
+                <div class="register-card-heading">
+                    <span class="register-section-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
+                            <path
+                                d="M5 5.5A1.5 1.5 0 0 1 6.5 4h11A1.5 1.5 0 0 1 19 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 18.5v-13Z" />
+                            <circle cx="12" cy="9" r="2" />
+                            <path d="M8.5 16a3.5 3.5 0 0 1 7 0" />
+                        </svg></span>
+                    <div>
+                        <p>MEMBER PROFILE</p>
+                        <h2>會員註冊資料</h2>
+                    </div>
+                </div>
+
+                <ol class="register-progress" aria-label="註冊流程提示">
+                    <li class="is-current"><span>1</span><strong>填寫資料</strong></li>
+                    <li><span>2</span><strong>上傳照片</strong></li>
+                    <li><span>3</span><strong>完成註冊</strong></li>
+                </ol>
 
                 <p class="form-hint" id="lineHint">
-                    正在確認您的 LINE 身分...
+                    正在取得 LINE User ID...
                 </p>
 
-                <form class="register-form" id="registerForm">
+                <form class="register-form" id="registerForm" action="/line/register" method="post"
+                    enctype="multipart/form-data">
                     <div class="form-group">
-                        <label for="name">姓名</label>
-                        <input type="text" id="name" placeholder="請輸入姓名" required>
-                    </div>
-                    <input type="hidden" id="line_user_id">
-
-
-                    <div class="form-group">
-                        <label for="birthday">生日</label>
-                        <input type="date" id="birthday">
+                        <label for="name"><span class="field-label-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
+                                    <circle cx="12" cy="8" r="3" />
+                                    <path d="M6.5 19a5.5 5.5 0 0 1 11 0" />
+                                </svg></span>姓名</label>
+                        <input type="text" id="name" name="name" placeholder="請輸入姓名" autocomplete="name" required>
                     </div>
 
                     <div class="form-group">
-                        <label>喜好項目（可複選）</label>
+                        <label for="phone"><span class="field-label-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
+                                    <rect x="7" y="3" width="10" height="18" rx="2" />
+                                    <path d="M10 6h4M11 18h2" />
+                                </svg></span>手機號碼</label>
+                        <input type="tel" id="phone" name="phone" placeholder="請輸入手機號碼" autocomplete="tel">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="birthday"><span class="field-label-icon" aria-hidden="true"><svg
+                                    viewBox="0 0 24 24">
+                                    <rect x="4" y="6" width="16" height="14" rx="2" />
+                                    <path d="M8 3v5M16 3v5M4 10h16" />
+                                </svg></span>生日</label>
+                        <input type="date" id="birthday" name="birthday">
+                    </div>
+
+                    <div class="form-group">
+                        <label><span class="field-label-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
+                                    <path d="M12 19s-7-4.1-7-9a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 4.9-7 9-7 9Z" />
+                                </svg></span>喜好項目 <span class="optional-text">可選填</span></label>
                         <div class="pref-options">
-                            <label class="pref-option"><input type="checkbox" name="preference" value="咖啡"> 咖啡</label>
-                            <label class="pref-option"><input type="checkbox" name="preference" value="甜點"> 甜點</label>
-                            <label class="pref-option"><input type="checkbox" name="preference" value="飲品"> 飲品</label>
-                            <label class="pref-option"><input type="checkbox" name="preference" value="服飾"> 服飾</label>
-                            <label class="pref-option"><input type="checkbox" name="preference" value="保養品"> 保養品</label>
-                            <label class="pref-option"><input type="checkbox" name="preference" value="新品通知"> 新品通知</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="家具"> 家具</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="收納"> 收納</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="燈飾"> 燈飾</label>
+                            <label class="pref-option"><input type="checkbox" name="preference" value="餐廳"> 餐廳</label>
                         </div>
+                    </div>
+
+                    <input type="hidden" id="line_user_id" name="line_user_id">
+                    <input type="hidden" id="id_token" name="id_token">
+
+                    <div class="form-group">
+                        <label for="face_image"><span class="field-label-icon" aria-hidden="true"><svg
+                                    viewBox="0 0 24 24">
+                                    <path
+                                        d="M4 8.5A1.5 1.5 0 0 1 5.5 7H8l1-2h6l1 2h2.5A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5v-9Z" />
+                                    <circle cx="12" cy="13" r="3" />
+                                </svg></span>會員臉部照片</label>
+                        <div class="face-upload-zone">
+                            <span class="face-upload-icon" aria-hidden="true"><svg viewBox="0 0 24 24">
+                                    <path
+                                        d="M5 9V6.5A1.5 1.5 0 0 1 6.5 5H9M15 5h2.5A1.5 1.5 0 0 1 19 6.5V9M19 15v2.5a1.5 1.5 0 0 1-1.5 1.5H15M9 19H6.5A1.5 1.5 0 0 1 5 17.5V15" />
+                                    <circle cx="12" cy="10" r="2.5" />
+                                    <path d="M8.5 16a3.5 3.5 0 0 1 7 0" />
+                                </svg></span>
+                            <div class="face-upload-copy"><strong>選擇或拖放臉部照片</strong><span>支援 JPG、PNG，檔案上限 8 MB</span>
+                            </div>
+                            <input type="file" id="face_image" name="face_image" accept="image/jpeg,image/png"
+                                capture="user" required>
+                        </div>
+                        <img id="facePreview" class="face-preview" alt="臉部照片預覽" hidden>
+                        <button type="button" class="clear-file-btn" id="clearFaceImage" hidden>移除照片</button>
+                        <p class="form-hint face-upload-hint">
+                            請上傳 JPG 或 PNG，臉部需清楚可辨識，檔案大小不可超過 8 MB。
+                        </p>
                     </div>
 
                     <button type="submit" class="primary-btn" id="registerButton">完成註冊</button>
@@ -97,54 +175,104 @@
             </div>
 
             <div class="customer-benefits">
-
                 <div class="benefit-card">
-                    <p class="benefit-label">新會員優惠</p>
-                    <h2>折 50 元優惠券</h2>
-                    <p>註冊成功後即可獲得首次消費折抵優惠。</p>
+                    <p class="benefit-label">會員專屬服務</p>
+                    <h2>完成註冊，立即享有會員優惠與會員辨識服務</h2>
+                    <p>
+                        完成會員資料與照片送出後，即可享有會員專屬優惠，
+                        門市也能依會員身分進行辨識並提供後續服務。
+                    </p>
 
                     <div class="coupon-ticket">
                         <span>NEW MEMBER</span>
-                        <strong>折 50 元</strong>
+                        <strong>100元折價</strong>
                     </div>
                 </div>
 
                 <div class="benefit-card">
-                    <p class="benefit-label">會員限定活動</p>
-                    <h2>輪盤抽獎</h2>
-                    <p>完成註冊後，可參加一次抽獎活動。</p>
+                    <div class="benefit-title-row">
+                        <span class="benefit-title-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M4 10h16v10H4V10ZM3 7h18v3H3V7Z" />
+                                <path
+                                    d="M12 7v13M12 7H8.5A2.5 2.5 0 1 1 11 4.5L12 7Zm0 0h3.5A2.5 2.5 0 1 0 13 4.5L12 7Z" />
+                            </svg>
+                        </span>
 
-                    
+                        <div>
+                            <p class="benefit-label">迎新抽獎</p>
+                            <span class="lottery-limit-chip">每位新會員限抽一次</span>
+                        </div>
+                    </div>
+
+                    <h2>註冊成功即可參加一次抽獎</h2>
+
+                    <p>
+                        註冊成功後會啟用抽獎功能；中獎後系統將產生獎項 QR Code，
+                        出示給門市人員即可完成核銷與兌換。
+                    </p>
+
                     <div class="lottery-area">
-    <div class="wheel-wrapper">
-        <div class="wheel-pointer"></div>
+                        <div class="wheel-wrapper">
+                            <div class="wheel-pointer"></div>
+                            <div class="spin-wheel" id="spinWheel">
+                                <span class="wheel-item item-1">$50</span>
+                                <span class="wheel-item item-2">9 折</span>
+                                <span class="wheel-item item-3">$200</span>
+                                <span class="wheel-item item-4">小禮品</span>
+                                <span class="wheel-item item-5">免運</span>
+                                <span class="wheel-item item-6">再抽一次</span>
+                            </div>
+                        </div>
 
-        <div class="spin-wheel" id="spinWheel">
-            <span class="wheel-item item-1">現折 50 元</span>
-            <span class="wheel-item item-2">9 折券</span>
-            <span class="wheel-item item-3">200元<br>購物券</span>
-            <span class="wheel-item item-4">神秘小禮</span>
-            <span class="wheel-item item-5">贈品<br>三選一</span>
-            <span class="wheel-item item-6">再接再厲</span>
-        </div>
-    </div>
+                        <button type="button" class="secondary-btn" id="spinButton" disabled>
+                            開始抽獎
+                        </button>
 
-    <button type="button" class="secondary-btn" id="spinButton" disabled>
-        開始抽獎
-    </button>
+                        <p class="lottery-result" id="lotteryResult" aria-live="polite">
+                            註冊成功後即可參加迎新抽獎。
+                        </p>
 
-    <p class="lottery-result" id="lotteryResult">
-        完成註冊後可獲得一次抽獎機會
-    </p>
-</div>
+                        <div class="lottery-prize-heading">
+                            <span aria-hidden="true"><svg viewBox="0 0 24 24">
+                                    <path d="M4 10h16v10H4V10ZM3 7h18v3H3V7Z" />
+                                    <path
+                                        d="M12 7v13M12 7H8.5A2.5 2.5 0 1 1 11 4.5L12 7Zm0 0h3.5A2.5 2.5 0 1 0 13 4.5L12 7Z" />
+                                </svg></span>
+                            <div><small>MY REWARD</small>
+                                <h3>我的獎品</h3>
+                            </div>
+                        </div>
+
+                        <div class="lottery-prize-card" id="lotteryPrizeCard" hidden>
+                            <p class="lottery-prize-label">中獎獎項</p>
+                            <h3 id="lotteryPrizeName">尚未抽獎</h3>
+                            <div class="lottery-qr-wrap">
+                                <div class="lottery-qr-code" id="lotteryQrCode" aria-label="中獎兌換 QR Code"></div>
+                                <p class="lottery-qr-note">請出示此 QR Code 供門市兌換</p>
+                            </div>
+                            <p class="lottery-prize-detail" id="lotteryPrizeDetail"></p>
+                        </div>
+
+                        <div class="lottery-prize-empty" role="status">
+                            <span aria-hidden="true"><svg viewBox="0 0 24 24">
+                                    <path d="M5 9h14v11H5V9ZM4 6h16v3H4V6Z" />
+                                    <path
+                                        d="M12 6v14M12 6H8.5A2.5 2.5 0 1 1 11 3.5L12 6Zm0 0h3.5A2.5 2.5 0 1 0 13 3.5L12 6Z" />
+                                </svg></span>
+                            <strong>尚無其他獎品</strong>
+                            <p>完成註冊並參加迎新抽獎後，中獎資訊會顯示在這裡。</p>
+                        </div>
+
+                        <div class="lottery-confetti" id="lotteryConfetti" aria-hidden="true"></div>
+                    </div>
                 </div>
-
             </div>
-
         </section>
-
     </main>
-    <script src="{{ url_for('static', filename='js/register.js') }}"></script>
-</body>
-</html>
 
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="{{ url_for('static', filename='js/register.js', v='20260802-1') }}"></script>
+</body>
+
+</html>

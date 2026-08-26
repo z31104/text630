@@ -8,21 +8,9 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 
-<body>
+<body class="{% block body_class %}{% endblock %}">
 
-    <header class="navbar">
-        <div class="logo">
-            智慧會員系統
-        </div>
-
-        <nav class="nav-links">
-           <a href="/">首頁</a>
-           <a href="/dashboard">Dashboard</a>
-           <a href="/camera">攝影機</a>
-           <a href="/member">會員資料</a>
-           <a href="/line">LINE 測試</a>    
-        </nav>
-    </header>
+    {% include "_navbar.html" %}
 
     <main class="container">
         {% block content %}

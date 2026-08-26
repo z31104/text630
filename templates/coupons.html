@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的會員｜優惠券</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body class="customer-page member-coupon-page">
+    {% if not is_line_member_view %}
+    {% include "_navbar.html" %}
+    {% endif %}
+
+    <main class="member-coupon-container">
+        <header class="member-portal-header">
+            <a class="member-portal-brand" href="{{ url_for('home.coupons') }}">
+                智慧會員
+            </a>
+        </header>
+
+        <section class="member-coupon-hero">
+            <span class="member-hero-orb" aria-hidden="true"></span>
+            <div class="member-coupon-hero-copy">
+                <div class="member-coupon-hero-tags">
+                    <p class="promo-tag">MY MEMBERSHIP</p>
+                    <span>會員專屬</span>
+                    <span>可使用優惠</span>
+                </div>
+                <div class="member-coupon-title-row">
+                    <span class="member-coupon-title-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24"><path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5V9a3 3 0 0 0 0 6v1.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 16.5V15a3 3 0 0 0 0-6V7.5Z"/><path d="M9 8.5v7M15 8.5v7"/></svg>
+                    </span>
+                    <div>
+                        <h1 id="couponHeroTitle">{% if selected_member_id %}我的優惠券{% else %}會員優惠券{% endif %}</h1>
+                        <p id="couponHeroSubtitle">
+                            {% if selected_member_id %}
+                            查看目前持有、可使用及即將到期的優惠券數量。
+                            {% else %}
+                            查看優惠券活動總覽；從 LINE「我的會員」進入後可顯示個人優惠券。
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="member-hero-ticket" aria-hidden="true">
+                <span class="member-hero-ticket-icon"><svg viewBox="0 0 24 24"><path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5V9a3 3 0 0 0 0 6v1.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 16.5V15a3 3 0 0 0 0-6V7.5Z"/><path d="M9 8.5v7"/></svg></span>
+                <small>MEMBER PASS</small>
+                <strong>專屬優惠券</strong>
+                <span class="member-hero-ticket-line"></span>
+                <p>隨時查看期限與使用狀態</p>
+            </div>
+        </section>
+
+        {% if load_error %}
+        <div class="page-message error member-coupon-message" role="alert">
+            優惠券資料載入失敗，請稍後再試。
+        </div>
+        {% endif %}
+
+        <section class="member-coupon-panel" aria-labelledby="couponSummaryTitle">
+            <div class="member-coupon-heading">
+                <div>
+                    <p class="tag" id="couponPanelTag">{% if selected_member_id %}MY COUPONS{% else %}COUPON OVERVIEW{% endif %}</p>
+                    <h2 id="couponSummaryTitle">
+                        {% if selected_member_id %}會員優惠券摘要{% else %}優惠券活動摘要{% endif %}
+                    </h2>
+                </div>
+                {% if selected_member_id %}
+                <span class="member-id-chip">會員 #{{ selected_member_id }}</span>
+                {% endif %}
+            </div>
+
+            {% if selected_member_id %}
+                {% set coupon_stats = [
+                    ("優惠券總數", member_coupon_summary.get("total_coupons") if member_coupon_summary else none, "目前持有"),
+                    ("可使用", member_coupon_summary.get("available_coupons") if member_coupon_summary else none, "尚未使用"),
+                    ("即將過期", member_coupon_summary.get("expiring_soon") if member_coupon_summary else none, "7 日內到期")
+                ] %}
+            {% else %}
+                {% set coupon_stats = [
+                    ("優惠券總數", summary.get("total_coupons"), "所有優惠券"),
+                    ("進行中活動", summary.get("active_coupons"), "目前有效"),
+                    ("累積發放", summary.get("total_issued"), "歷史領取紀錄")
+                ] %}
+            {% endif %}
+
+            <div class="member-coupon-stat-grid">
+                {% for label, value, note in coupon_stats %}
+                <article class="member-coupon-stat is-stat-{{ loop.index }}{% if load_error %} is-placeholder{% endif %}">
+                    <span class="coupon-stat-icon" aria-hidden="true">
+                        {% if loop.index == 1 %}
+                        <svg viewBox="0 0 24 24"><path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5V9a3 3 0 0 0 0 6v1.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 16.5V15a3 3 0 0 0 0-6V7.5Z"/><path d="M9 8.5v7"/></svg>
+                        {% elif loop.index == 2 %}
+                        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg>
+                        {% else %}
+                        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 1.5"/></svg>
+                        {% endif %}
+                    </span>
+                    <div class="coupon-stat-copy">
+                        <p id="couponStatLabel{{ loop.index }}">{{ label }}</p>
+                        <strong id="couponStatValue{{ loop.index }}">{{ value if value is not none and not load_error else "—" }}</strong>
+                        <span id="couponStatNote{{ loop.index }}">{{ note }}</span>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+
+            {% if not selected_member_id %}
+            <div class="member-coupon-empty" id="couponUnboundNotice" role="status">
+                <strong>尚未取得會員身分</strong>
+                <p id="couponUnboundMessage">
+                    個人「優惠券總數、可使用、即將過期」需由 LINE LIFF 驗證會員後顯示，
+                    不會在未登入時載入其他會員的優惠券資料。
+                </p>
+            </div>
+            {% endif %}
+        </section>
+
+        <section
+            class="member-coupon-panel member-coupon-list-panel"
+            id="prizeListPanel"
+            aria-labelledby="prizeListTitle"
+            hidden
+        >
+            <div class="member-coupon-heading">
+                <div>
+                    <p class="tag">MY PRIZES</p>
+                    <h2 id="prizeListTitle">我的獎品</h2>
+                    <p class="member-coupon-list-note">非優惠券獎品可在這裡查看並開啟門市兌換入口。</p>
+                </div>
+            </div>
+            <div class="member-coupon-list" id="prizeList" aria-live="polite"></div>
+            <div class="member-coupon-empty member-coupon-list-empty" id="prizeListEmpty" role="status">
+                目前沒有其他獎品。
+            </div>
+        </section>
+
+        <section
+            class="member-coupon-panel member-coupon-list-panel"
+            id="couponListPanel"
+            aria-labelledby="couponListTitle"
+            {% if not selected_member_id %}hidden{% endif %}
+        >
+            <div class="member-coupon-heading">
+                <div class="member-section-title">
+                    <span class="member-section-icon is-blue" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7.5A1.5 1.5 0 0 1 5.5 6h13A1.5 1.5 0 0 1 20 7.5V9a3 3 0 0 0 0 6v1.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 16.5V15a3 3 0 0 0 0-6V7.5Z"/><path d="M9 8.5v7"/></svg></span>
+                    <div>
+                        <p class="tag">COUPON DETAILS</p>
+                        <h2 id="couponListTitle">優惠券明細</h2>
+                        <p class="member-coupon-list-note">
+                            依取得時間由新到舊排列，兌換狀態以系統資料為準。
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                class="member-coupon-list"
+                id="couponList"
+                aria-live="polite"
+            >
+                {% for coupon in coupon_rows %}
+                <article class="member-coupon-card">
+                    <div class="member-coupon-card-header">
+                        <div>
+                            <p class="member-coupon-code">
+                                優惠券 #{{ coupon.get("member_coupon_id") }}
+                            </p>
+                            <h3>{{ coupon.get("coupon_name") or "未命名優惠券" }}</h3>
+                        </div>
+                        <span class="member-coupon-status is-{{ coupon.get('status_key', 'unavailable') }}">
+                            {{ coupon.get("status_label") or "不可使用" }}
+                        </span>
+                    </div>
+
+                    <p class="member-coupon-description">
+                        {{ coupon.get("description") or coupon.get("discount_text") or "依活動內容使用" }}
+                    </p>
+
+                    {% if coupon.get("discount_text") %}
+                    <p class="member-coupon-discount">
+                        {{ coupon.get("discount_text") }}
+                    </p>
+                    {% endif %}
+
+                    <dl class="member-coupon-meta">
+                        <div>
+                            <dt>取得時間</dt>
+                            <dd>{{ coupon.get("receive_time_text") or "-" }}</dd>
+                        </div>
+                        <div>
+                            <dt>到期時間</dt>
+                            <dd>{{ coupon.get("end_at_text") or "無期限" }}</dd>
+                        </div>
+                    </dl>
+
+                    <div class="member-coupon-redemption">
+                        <div>
+                            <span>兌換資訊</span>
+                            <strong>{{ coupon.get("redemption_info") or "-" }}</strong>
+                        </div>
+
+                        {% if coupon.get("can_open_redemption") and coupon.get("redeem_url") %}
+                        <a
+                            class="member-coupon-redeem-link"
+                            href="{{ coupon.get('redeem_url') }}"
+                            target="_blank"
+                            rel="noopener"
+                        >
+                            查看兌換入口
+                        </a>
+                        {% endif %}
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+
+            <div
+                class="member-coupon-empty member-coupon-list-empty"
+                id="couponListEmpty"
+                role="status"
+                {% if coupon_rows or load_error %}hidden{% endif %}
+            >
+                <span class="coupon-empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 9h14l-1 11H6L5 9Z"/><path d="M9 9a3 3 0 0 1 6 0M12 9v11M5 13h14"/></svg></span>
+                <strong>目前沒有優惠券</strong>
+                <p>完成指定活動或領取優惠後，優惠券明細會顯示在這裡。</p>
+            </div>
+        </section>
+    </main>
+
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="{{ url_for('static', filename='js/coupons.js', v='20260802-1') }}"></script>
+</body>
+</html>
